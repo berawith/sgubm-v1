@@ -1,0 +1,31 @@
+# Core Framework
+Flask==3.0.0
+python-dotenv==1.0.0
+
+# Database
+SQLAlchemy==2.0.23
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# API & Validation
+Flask-CORS==4.0.0
+marshmallow==3.20.1
+pydantic==2.5.2
+
+# Security
+Flask-JWT-Extended==4.6.0
+bcrypt==4.1.2
+cryptography==41.0.7
+
+# MikroTik Integration
+routeros-api==0.17.0
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Development
+pytest==7.4.3
+pytest-cov==4.1.0
+black==23.12.1
+flake8==6.1.0
