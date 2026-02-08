@@ -1,0 +1,120 @@
+{
+  "PRINCIPAL": [
+    {
+      "id": null,
+      "ip": "12.12.12.73",
+      "mac": "74:83:C2:5C:D1:52",
+      "hostname": "FerroAgro-DiazPerez",
+      "server": "DHCP_PRINCIPAL",
+      "arp_status": "none",
+      "comment": ""
+    },
+    {
+      "id": null,
+      "ip": "12.12.12.98",
+      "mac": "24:5A:4C:B2:11:B5",
+      "hostname": "CerroMiguel",
+      "server": "DHCP_PRINCIPAL",
+      "arp_status": "none",
+      "comment": ""
+    },
+    {
+      "id": null,
+      "ip": "177.77.71.44",
+      "mac": "24:5A:4C:CE:DA:FB",
+      "hostname": "Emmanuel vivas",
+      "server": "ABEJALES-1",
+      "arp_status": "none",
+      "comment": ""
+    },
+    {
+      "id": null,
+      "ip": "177.77.72.43",
+      "mac": "70:A7:41:2A:E6:3A",
+      "hostname": "Maria Rodriguez Milagro",
+      "server": "ABEJALES-2",
+      "arp_status": "none",
+      "comment": ""
+    },
+    {
+      "id": null,
+      "ip": "177.77.70.51",
+      "mac": "74:AC:B9:7A:EF:DB",
+      "hostname": "Jhonn-Parada",
+      "server": "AYARI-2",
+      "arp_status": "none",
+      "comment": ""
+    },
+    {
+      "id": null,
+      "ip": "177.77.72.31",
+      "mac": "F4:92:BF:FC:BE:3B",
+      "hostname": "FatimaColmenaresCorrea",
+      "server": "ABEJALES-2",
+      "arp_status": "none",
+      "comment": ""
+    },
+    {
+      "id": null,
+      "ip": "177.77.72.21",
+      "mac": "74:AC:B9:F0:A8:BC",
+      "hostname": "Jeans Carlos Tarazona",
+      "server": "ABEJALES-2",
+      "arp_status": "none",
+      "comment": ""
+    },
+    {
+      "id": null,
+      "ip": "177.77.73.56",
+      "mac": "18:E8:29:84:DF:DF",
+      "hostname": "Santa Rosalia ",
+      "server": "ABEJALES-3",
+      "arp_status": "none",
+      "comment": ""
+    }
+  ],
+  "PUERTO VIVAS": [],
+  "GUIMARAL": [
+    {
+      "id": null,
+      "ip": "192.168.17.3",
+      "mac": "C0:25:2F:9F:26:EF",
+      "hostname": "MW302R",
+      "server": "DHCP_CLIENTES",
+      "arp_status": "none",
+      "comment": ""
+    }
+  ],
+  "LOS BANCOS": [
+    {
+      "id": null,
+      "ip": "77.16.91.254",
+      "mac": "B0:48:7A:D0:F7:3F",
+      "hostname": "TL-WR941N",
+      "server": "F-BANCOS",
+      "arp_status": "none",
+      "comment": ""
+    }
+  ],
+  "MI JARDIN": [
+    {
+      "id": null,
+      "ip": "172.16.41.19",
+      "mac": "9C:05:D6:8E:04:5B",
+      "hostname": "N/A",
+      "server": "AIRE-MI-JARDIN",
+      "arp_status": "none",
+      "comment": ""
+    },
+    {
+      "id": null,
+      "ip": "172.16.41.90",
+      "mac": "F4:E2:C6:3A:46:29",
+      "hostname": "N/A",
+      "server": "AIRE-MI-JARDIN",
+      "arp_status": "none",
+      "comment": ""
+    }
+  ],
+  "GUAYANITO": []
+}

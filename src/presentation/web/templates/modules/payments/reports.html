@@ -1,0 +1,192 @@
+<!-- REPORTS VIEW (WITH STATISTICS) -->
+<div id="reports-view" class="view content-view" style="display: none;">
+    <div class="view-header"
+        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+            <h1 class="page-title">Reportes y Estadísticas</h1>
+            <p class="page-subtitle">Análisis financiero y métricas de rendimiento</p>
+        </div>
+    </div>
+
+    <!-- Toolbar for Reports - Enhanced Premium -->
+    <div class="glass-panel"
+        style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%); border: 1px solid rgba(99, 102, 241, 0.1); box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08);">
+        <div style="display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap;">
+            <div class="filter-item" style="flex: 1; min-width: 180px;">
+                <label
+                    style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">
+                    <i class="fas fa-calendar-alt" style="margin-right: 6px; color: #6366f1;"></i>Desde
+                </label>
+                <input type="date" id="filter-date-start" class="input-premium"
+                    onchange="app.modules.payments.applyFilters()"
+                    style="border: 2px solid #e2e8f0; transition: all 0.3s ease;">
+            </div>
+            <div class="filter-item" style="flex: 1; min-width: 180px;">
+                <label
+                    style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">
+                    <i class="fas fa-calendar-check" style="margin-right: 6px; color: #6366f1;"></i>Hasta
+                </label>
+                <input type="date" id="filter-date-end" class="input-premium"
+                    onchange="app.modules.payments.applyFilters()"
+                    style="border: 2px solid #e2e8f0; transition: all 0.3s ease;">
+            </div>
+            <div class="filter-item" style="flex: 1; min-width: 180px;">
+                <label
+                    style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">
+                    <i class="fas fa-credit-card" style="margin-right: 6px; color: #6366f1;"></i>Método
+                </label>
+                <select id="filter-method" class="select-premium" onchange="app.modules.payments.applyFilters()"
+                    style="border: 2px solid #e2e8f0; transition: all 0.3s ease;">
+                    <option value="">Todos los Métodos</option>
+                    <option value="efectivo">💵 Efectivo</option>
+                    <option value="transferencia">🏦 Transferencia</option>
+                    <option value="pago_movil">📱 Pago Móvil</option>
+                    <option value="zelle">💲 Zelle</option>
+                    <option value="binance">₿ Binance</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 12px; margin-left: auto;">
+                <button class="btn-primary" onclick="app.modules.payments.openReportModal()"
+                    style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white !important; padding: 12px 24px; font-weight: 600; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3); border: none; transition: all 0.3s ease;">
+                    <i class="fas fa-file-invoice-dollar"></i> Generar Reporte
+                </button>
+                <button class="btn-secondary" onclick="app.modules.payments.exportDebtors()"
+                    style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white !important; padding: 12px 24px; font-weight: 600; box-shadow: 0 4px 16px rgba(239, 68, 68, 0.2); border: none; transition: all 0.3s ease;">
+                    <i class="fas fa-user-clock"></i> Morosos
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Section (Minimalista) -->
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px;">
+        <!-- Today Card -->
+        <div class="stat-card-premium"
+            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #667eea; transition: all 0.2s ease;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span
+                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #667eea;">Hoy</span>
+            </div>
+            <div id="pay-stat-today" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #667eea;">
+                $0.00</div>
+            <div style="font-size: 0.72rem; opacity: 0.6;">Recaudación del día</div>
+        </div>
+
+        <!-- Month Card -->
+        <div class="stat-card-premium"
+            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #f5576c; transition: all 0.2s ease;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span
+                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #f5576c;">Este
+                    Mes</span>
+            </div>
+            <div id="pay-stat-month" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #f5576c;">
+                $0.00</div>
+            <div style="font-size: 0.72rem; opacity: 0.6;">Ingreso mensual</div>
+        </div>
+
+        <!-- Pending Card -->
+        <div class="stat-card-premium"
+            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #f59e0b; transition: all 0.2s ease;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span
+                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #f59e0b;">Pendiente</span>
+            </div>
+            <div id="pay-stat-pending" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #f59e0b;">
+                $0.00</div>
+            <div style="font-size: 0.72rem; opacity: 0.6;">Por cobrar</div>
+        </div>
+
+        <!-- Total Card -->
+        <div class="stat-card-premium"
+            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #4facfe; transition: all 0.2s ease;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span
+                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #4facfe;">Total</span>
+            </div>
+            <div id="pay-stat-total" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #4facfe;">
+                $0.00</div>
+            <div style="font-size: 0.72rem; opacity: 0.6;">Histórico completo</div>
+        </div>
+
+        <!-- Pagos Card -->
+        <div class="stat-card-premium"
+            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #43e97b; transition: all 0.2s ease;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span
+                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #43e97b;">Pagos</span>
+            </div>
+            <div id="pay-stat-clients-paid"
+                style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #43e97b;">
+                0</div>
+            <div style="font-size: 0.72rem; opacity: 0.6;">Clientes al día</div>
+        </div>
+
+        <!-- Morosos Card -->
+        <div class="stat-card-premium"
+            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #ff6b6b; transition: all 0.2s ease;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span
+                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #ff6b6b;">Morosos</span>
+            </div>
+            <div id="pay-stat-clients-pending"
+                style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #ff6b6b;">
+                0</div>
+            <div style="font-size: 0.72rem; opacity: 0.6;">Con deuda pendiente</div>
+        </div>
+    </div>
+
+    <!-- Charts Section - Enhanced -->
+    <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; margin-bottom: 24px;">
+        <!-- Payment Methods Breakdown -->
+        <div class="glass-panel"
+            style="padding: 24px; background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%); border: 1px solid rgba(99, 102, 241, 0.1); box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08); border-radius: 16px;">
+            <h3
+                style="margin: 0 0 20px 0; font-size: 1.1rem; color: #1e293b; font-weight: 800; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-chart-pie" style="color: #6366f1;"></i>
+                Resumen por Método de Pago
+            </h3>
+            <div id="method-breakdown" style="display: flex; gap: 12px; flex-direction: column;"><!-- JS Rendered -->
+            </div>
+        </div>
+
+        <!-- Revenue Trend Chart -->
+        <div class="glass-panel"
+            style="padding: 24px; background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%); border: 1px solid rgba(99, 102, 241, 0.1); box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08); border-radius: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3
+                    style="margin: 0; font-size: 1.1rem; color: #1e293b; font-weight: 800; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-chart-line" style="color: #6366f1;"></i>
+                    Tendencia de Recaudación
+                </h3>
+            </div>
+            <div style="height: 280px; position: relative;">
+                <canvas id="revenue-chart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .stat-card-premium:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .input-premium:focus,
+    .select-premium:focus {
+        border-color: #6366f1 !important;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4) !important;
+    }
+
+    .btn-secondary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 24px rgba(239, 68, 68, 0.3) !important;
+    }
+</style>

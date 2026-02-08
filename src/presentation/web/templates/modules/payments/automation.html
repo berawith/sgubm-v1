@@ -1,0 +1,153 @@
+<!-- AUTOMATION VIEW -->
+<div id="automation-view" class="view content-view" style="display: none;">
+    <div class="view-header"
+        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+            <h1 class="page-title">Automatización</h1>
+            <p class="page-subtitle">Ciclos de facturación y tareas automáticas</p>
+        </div>
+    </div>
+
+    <div class="activity-card automation-card"
+        style="background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%); border-left: 4px solid #6366f1;">
+        <div class="card-header">
+            <div>
+                <h3 style="color: #1e293b; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-robot" style="color: #6366f1;"></i> Control de Automatización
+                </h3>
+                <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: #64748b;">Gestión de facturación, cortes y
+                    tareas programadas</p>
+            </div>
+            <div class="badge active"
+                style="background: rgba(16, 185, 129, 0.1); color: #059669; border: 1px solid rgba(16, 185, 129, 0.2);">
+                Motor Activo</div>
+        </div>
+
+        <!-- Granular Controls Section -->
+        <div style="padding: 20px 24px 0 24px;">
+            <div class="glass-panel"
+                style="padding: 15px; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; background: rgba(255,255,255,0.5);">
+                <div class="filter-item" style="flex: 1; min-width: 200px;">
+                    <label
+                        style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block;">ÁMBITO
+                        DE EJECUCIÓN</label>
+                    <select id="automation-scope" class="select-premium"
+                        onchange="app.modules.payments.toggleAutomationFilters()">
+                        <option value="all">General (Todos los Clientes)</option>
+                        <option value="router">Por Router Especial</option>
+                    </select>
+                </div>
+                <div id="automation-router-filter" class="filter-item"
+                    style="flex: 1; min-width: 200px; display: none;">
+                    <label
+                        style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block;">SELECCIONAR
+                        ROUTER</label>
+                    <select id="automation-router-id" class="select-premium"
+                        onchange="app.modules.payments.onAutomationRouterChange()">
+                        <option value="">Cargando routers...</option>
+                    </select>
+                </div>
+                <!-- New Time Parameters Row -->
+                <div class="filter-item" style="width: 150px;">
+                    <label
+                        style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block;">MES
+                        COBRO</label>
+                    <select id="automation-month" class="select-premium">
+                        <option value="1">Enero</option>
+                        <option value="2">Febrero</option>
+                        <option value="3">Marzo</option>
+                        <option value="4">Abril</option>
+                        <option value="5">Mayo</option>
+                        <option value="6">Junio</option>
+                        <option value="7">Julio</option>
+                        <option value="8">Agosto</option>
+                        <option value="9">Septiembre</option>
+                        <option value="10">Octubre</option>
+                        <option value="11">Noviembre</option>
+                        <option value="12">Diciembre</option>
+                    </select>
+                </div>
+                <div class="filter-item" style="width: 100px;">
+                    <label
+                        style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block;">AÑO</label>
+                    <input type="number" id="automation-year" class="input-premium" value="2026">
+                </div>
+            </div>
+        </div>
+
+        <!-- Router Params Info Box -->
+        <div id="automation-router-params" style="display: none; padding: 0 24px; margin-top: 15px;">
+            <div class="glass-panel"
+                style="padding: 12px 20px; background: rgba(var(--primary-rgb), 0.05); border: 1px solid rgba(var(--primary-rgb), 0.1); border-radius: 12px; display: flex; gap: 40px; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-calendar-check" style="color: var(--primary-color);"></i>
+                    <div>
+                        <span
+                            style="font-size: 0.65rem; color: #64748b; font-weight: 800; text-transform: uppercase;">Día
+                            Cobro:</span>
+                        <span id="router-param-day" style="font-weight: 700; color: var(--primary-color);">--</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-hourglass-start" style="color: #f59e0b;"></i>
+                    <div>
+                        <span
+                            style="font-size: 0.65rem; color: #64748b; font-weight: 800; text-transform: uppercase;">Gracia
+                            (Días):</span>
+                        <span id="router-param-grace" style="font-weight: 700; color: #f59e0b;">--</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-scissors" style="color: #ef4444;"></i>
+                    <div>
+                        <span
+                            style="font-size: 0.65rem; color: #64748b; font-weight: 800; text-transform: uppercase;">Día
+                            Corte:</span>
+                        <span id="router-param-cut" style="font-weight: 700; color: #ef4444;">--</span>
+                    </div>
+                </div>
+                <div style="flex: 1; text-align: right;">
+                    <button class="btn-text" style="font-size: 0.75rem; color: #64748b;"
+                        onclick="app.modules.routers.showView()">
+                        <i class="fas fa-external-link-alt"></i> Editar en Routers
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div style="padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div
+                style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 15px;">
+                <div
+                    style="background: rgba(99, 102, 241, 0.1); color: #6366f1; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                </div>
+                <div style="flex: 1;">
+                    <h4 style="margin: 0; color: #1e293b; font-size: 1rem;">Ciclo de Facturación</h4>
+                    <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: #64748b;">Genera deudas y procesa cortes de
+                        servicio automáticamente.</p>
+                </div>
+                <button class="btn-primary" onclick="app.modules.payments.runBillingCycle()"
+                    style="padding: 10px 20px; font-weight: 600;">
+                    Ejecutar Ahora
+                </button>
+            </div>
+
+            <div
+                style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 15px; opacity: 0.7; cursor: not-allowed;">
+                <div
+                    style="background: rgba(148, 163, 184, 0.1); color: #64748b; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <div style="flex: 1;">
+                    <h4 style="margin: 0; color: #1e293b; font-size: 1rem;">Backup Automático</h4>
+                    <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: #64748b;">Respaldo diario de configuraciones
+                        (Próximamente).</p>
+                </div>
+                <button class="btn-secondary" disabled style="padding: 10px 20px;">
+                    Configurar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

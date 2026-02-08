@@ -3,6 +3,7 @@ Servers API Controller
 Endpoints CRUD para gestión de servidores
 """
 from flask import Blueprint, jsonify, request
+from src.application.services.audit_service import AuditService
 # from application.services.server_service import ServerService
 # from infrastructure.database.repositories.server_repository import ServerRepository
 
@@ -111,6 +112,14 @@ def create_server():
         'memory_usage': 0
     }
     
+    # Auditoría
+    AuditService.log(
+        operation='server_created',
+        category='router', # Usamos category router o system para servidores
+        description=f"Nuevo servidor creado (Simulado): {data.get('alias')}",
+        new_state=server
+    )
+    
     return jsonify(server), 201
 
 
@@ -129,6 +138,14 @@ def update_server(server_id):
         **data
     }
     
+    # Auditoría
+    AuditService.log(
+        operation='server_updated',
+        category='router',
+        description=f"Servidor actualizado (Simulado): {data.get('alias')}",
+        new_state=data
+    )
+    
     return jsonify(server)
 
 
@@ -139,6 +156,13 @@ def delete_server(server_id):
     """
     # TODO: Usar servicio real
     # server_service.delete(server_id)
+    
+    # Auditoría
+    AuditService.log(
+        operation='server_deleted',
+        category='router',
+        description=f"Servidor eliminado (Simulado): ID {server_id}"
+    )
     
     return jsonify({'message': 'Servidor eliminado correctamente'}), 200
 

@@ -5,16 +5,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SGUBM - Sistema de Gestión ISP</title>
-    <link rel="stylesheet" href="/static/css/core.css">
-    <link rel="stylesheet" href="/static/css/dashboard.css">
-    <link rel="stylesheet" href="/static/css/routers.css">
-    <link rel="stylesheet" href="/static/css/clients.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/core.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/routers.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/clients.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/toast.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/modal.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/payments.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/plans.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/compact.css?v=1.0.17">
+    <link href="/static/vendor/css/inter.css" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="/static/vendor/css/all.min.css">
+    <!-- Real-time Communication -->
+    <script src="/static/vendor/js/socket.io.min.js"></script>
 </head>
 
 <body>
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+        <div class="logo">
+            <div class="logo-icon small">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 6v6l4 2" />
+                </svg>
+            </div>
+            <span class="logo-text">SGUBM</span>
+        </div>
+        <button id="mobile-menu-toggle" class="btn-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
         <div class="sidebar-header">
@@ -70,13 +97,72 @@
                 <span>Planes</span>
             </a>
 
-            <a href="#" class="nav-item" data-view="payments">
+            <a href="#" class="nav-item has-submenu" id="nav-finanzas">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="2" y="5" width="20" height="14" rx="2" />
                     <line x1="2" y1="10" x2="22" y2="10" />
                 </svg>
-                <span>Pagos</span>
+                <span>Finanzas</span>
+                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
             </a>
+            <div class="submenu-container" id="finanzas-submenu">
+                <a href="#" class="submenu-item" data-view="payments-list">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="16" />
+                        <line x1="8" y1="12" x2="16" y2="12" />
+                    </svg>
+                    <span>Pagos</span>
+                </a>
+                <a href="#" class="submenu-item" data-view="invoices">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                    <span>Facturas</span>
+                </a>
+                <a href="#" class="submenu-item" data-view="reports">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 3v18h18" />
+                        <path d="M18 17l-5-5-4 4-6-6" />
+                    </svg>
+                    <span>Reportes</span>
+                </a>
+                <a href="#" class="submenu-item" data-view="promises">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                    <span>Promesas</span>
+                </a>
+                <a href="#" class="submenu-item" data-view="batch-payments">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="8" y1="6" x2="21" y2="6" />
+                        <line x1="8" y1="12" x2="21" y2="12" />
+                        <line x1="8" y1="18" x2="21" y2="18" />
+                        <line x1="3" y1="6" x2="3.01" y2="6" />
+                        <line x1="3" y1="12" x2="3.01" y2="12" />
+                        <line x1="3" y1="18" x2="3.01" y2="18" />
+                    </svg>
+                    <span>Gestión Masiva</span>
+                </a>
+                <a href="#" class="submenu-item" data-view="automation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M12 1v6m0 6v6m9-9h-6M7 12H1m17.7 4.7l-4.2-4.2M10.5 10.5l-4.2-4.2m12.4 0l-4.2 4.2M10.5 13.5l-4.2 4.2" />
+                    </svg>
+                    <span>Automatización</span>
+                </a>
+                <a href="#" class="submenu-item" data-view="trash">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    <span>Papelera</span>
+                </a>
+            </div>
         </nav>
 
         <div class="sidebar-footer">
@@ -97,310 +183,28 @@
 
     <!-- Main Content -->
     <main class="main-content">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-left">
-                <h1 class="page-title">Dashboard</h1>
-                <p class="page-subtitle">Visión general del sistema</p>
-            </div>
-            <div class="header-right">
-                <div class="search-box">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8" />
-                        <path d="m21 21-4.35-4.35" />
-                    </svg>
-                    <input type="text" placeholder="Buscar...">
-                </div>
-                <button class="btn-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                    </svg>
-                    <span class="badge">3</span>
-                </button>
-            </div>
-        </header>
+        {% include 'modules/dashboard.html' %}
+        {% include 'modules/routers.html' %}
+        {% include 'modules/clients.html' %}
+        {% include 'modules/plans_manager.html' %}
 
-        <!-- Dashboard Content -->
-        <div id="dashboard-view" class="content-view active">
-            <!-- Stats Cards -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon blue">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="2" y="2" width="20" height="8" rx="2" />
-                            <rect x="2" y="14" width="20" height="8" rx="2" />
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <span class="stat-label">Servidores Activos</span>
-                        <span class="stat-value" id="stat-servers">0</span>
-                        <span class="stat-trend positive">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                            </svg>
-                            100%
-                        </span>
-                    </div>
-                </div>
+        <!-- Finance Sub-Views -->
+        {% include 'modules/payments/payments_list.html' %}
+        {% include 'modules/payments/invoices.html' %}
+        {% include 'modules/payments/reports.html' %}
+        {% include 'modules/payments/promises.html' %}
+        {% include 'modules/payments/batch.html' %}
+        {% include 'modules/payments/automation.html' %}
+        {% include 'modules/payments/trash.html' %}
 
-                <div class="stat-card">
-                    <div class="stat-icon green">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <span class="stat-label">Clientes Activos</span>
-                        <span class="stat-value" id="stat-clients">0</span>
-                        <span class="stat-trend positive">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                            </svg>
-                            +12%
-                        </span>
-                    </div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-icon purple">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="2" y="5" width="20" height="14" rx="2" />
-                            <line x1="2" y1="10" x2="22" y2="10" />
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <span class="stat-label">Facturación del Mes</span>
-                        <span class="stat-value" id="stat-revenue">$0</span>
-                        <span class="stat-trend positive">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                            </svg>
-                            +8%
-                        </span>
-                    </div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-icon orange">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <span class="stat-label">Uptime Promedio</span>
-                        <span class="stat-value" id="stat-uptime">0%</span>
-                        <span class="stat-trend positive">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                            </svg>
-                            99.9%
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Charts Row -->
-            <div class="charts-grid">
-                <div class="chart-card">
-                    <div class="card-header">
-                        <h3>Tráfico de Red</h3>
-                        <select class="time-selector">
-                            <option>Última hora</option>
-                            <option>Últimas 24h</option>
-                            <option>Última semana</option>
-                        </select>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="traffic-chart"></canvas>
-                    </div>
-                </div>
-
-                <div class="chart-card">
-                    <div class="card-header">
-                        <h3>Estado de Servidores</h3>
-                    </div>
-                    <div class="servers-status">
-                        <div class="status-item">
-                            <div class="status-indicator online"></div>
-                            <span>Online: <strong id="servers-online">0</strong></span>
-                        </div>
-                        <div class="status-item">
-                            <div class="status-indicator warning"></div>
-                            <span>Advertencia: <strong id="servers-warning">0</strong></span>
-                        </div>
-                        <div class="status-item">
-                            <div class="status-indicator offline"></div>
-                            <span>Offline: <strong id="servers-offline">0</strong></span>
-                        </div>
-                    </div>
-                    <div id="servers-list" class="servers-mini-list">
-                        <!-- Se llena dinámicamente -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Activity -->
-            <div class="activity-card">
-                <div class="card-header">
-                    <h3>Actividad Reciente</h3>
-                    <button class="btn-text">Ver todo</button>
-                </div>
-                <div id="activity-list" class="activity-list">
-                    <!-- Se llena dinámicamente -->
-                </div>
-            </div>
-        </div>
-
-        <!-- Routers View -->
-        <div id="routers-view" class="content-view">
-            <div class="view-header">
-                <h2>Gestión de Routers</h2>
-                <button class="btn-primary" onclick="app.modules.routers.showCreateModal()">
-                    <i class="fas fa-plus"></i> Nuevo Router
-                </button>
-            </div>
-            <div id="routers-grid" class="routers-grid">
-                <!-- Aquí se inyectan los routers vía JS -->
-            </div>
-        </div>
-
-        <!-- Clients View -->
-        <div id="clients-view" class="content-view">
-            <div class="view-header">
-                <h2>Gestión de Clientes</h2>
-                <div class="header-actions">
-                    <button class="btn-secondary" onclick="app.modules.clients.showImportModal()">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                            stroke-width="2" style="margin-right:8px">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                            <polyline points="7 10 12 15 17 10" />
-                            <line x1="12" y1="15" x2="12" y2="3" />
-                        </svg>
-                        Importar desde Router
-                    </button>
-                    <div class="search-box">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <circle cx="11" cy="11" r="8" />
-                            <path d="m21 21-4.35-4.35" />
-                        </svg>
-                        <input type="text" id="client-search" placeholder="Buscar cliente...">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Client Stats Bar -->
-            <div id="client-stats-bar" class="client-stats-bar"
-                style="display: flex; gap: 20px; margin-bottom: 20px; padding: 15px; background: rgba(30,30,40,0.5); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
-                <div class="stat-item" style="display:flex; flex-direction:column;">
-                    <span style="font-size:0.8em; color:#888;">TOTAL</span>
-                    <strong style="font-size:1.2em; color:#fff;" id="count-total">0</strong>
-                </div>
-                <div class="stat-item" style="display:flex; flex-direction:column;">
-                    <span style="font-size:0.8em; color:#888;">ACTIVOS</span>
-                    <strong style="font-size:1.2em; color:#00E096;" id="count-active">0</strong>
-                </div>
-                <div class="stat-item" style="display:flex; flex-direction:column;">
-                    <span style="font-size:0.8em; color:#888;">SUSPENDIDOS</span>
-                    <strong style="font-size:1.2em; color:#FF3D71;" id="count-suspended">0</strong>
-                </div>
-                <!-- Separator -->
-                <div style="width:1px; background:rgba(255,255,255,0.1); margin:0 10px;"></div>
-
-                <div class="stat-item" style="display:flex; flex-direction:column;">
-                    <span style="font-size:0.8em; color:#888;">ONLINE</span>
-                    <strong style="font-size:1.2em; color:#4BFFC4;" id="count-online">--</strong>
-                </div>
-                <div class="stat-item" style="display:flex; flex-direction:column;">
-                    <span style="font-size:0.8em; color:#888;">OFFLINE</span>
-                    <strong style="font-size:1.2em; color:#888;" id="count-offline">--</strong>
-                </div>
-            </div>
-
-            <div id="clients-grid" class="clients-grid"></div>
-        </div>
-
-        <!-- Import Modal -->
-        <div id="import-clients-modal" class="modal">
-            <div class="modal-content large-modal">
-                <div class="modal-header">
-                    <h3>Importar Clientes desde Router</h3>
-                    <button class="close-btn"
-                        onclick="document.getElementById('import-clients-modal').classList.remove('active')">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <!-- Step 1: Select Router -->
-                    <div class="import-step" id="import-step-1">
-                        <div class="form-group">
-                            <label>Seleccionar Router Origen</label>
-                            <select id="import-router-select" class="form-select">
-                                <option value="">Cargando routers...</option>
-                            </select>
-                        </div>
-                        <div class="step-actions">
-                            <button class="btn-primary" onclick="app.modules.clients.scanRouter()">
-                                Escanear Clientes
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Step 2: Preview & Select -->
-                    <div class="import-step" id="import-step-2" style="display:none;">
-                        <div class="scan-summary">
-                            <p>Se encontraron <strong id="scan-total">0</strong> clientes en el router.</p>
-                            <p class="text-warning" id="scan-duplicates" style="display:none">
-                                <i class="fas fa-exclamation-triangle"></i> Algunos clientes ya existen en la base de
-                                datos.
-                            </p>
-                        </div>
-
-                        <div class="table-container preview-table-container">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th width="40"><input type="checkbox" id="select-all-import"></th>
-                                        <th>Usuario (PPPoE/Hotspot)</th>
-                                        <th>IP</th>
-                                        <th>Perfil</th>
-                                        <th>Estado</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="import-preview-body">
-                                    <!-- Rows injected via JS -->
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="step-actions right-align">
-                            <button class="btn-secondary" onclick="app.modules.clients.resetImport()">Atrás</button>
-                            <button class="btn-primary" onclick="app.modules.clients.executeImport()">
-                                Importar Seleccionados (<span id="selected-count">0</span>)
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Loading State -->
-                    <div id="import-loading" style="display:none;" class="loading-overlay-modal">
-                        <div class="spinner"></div>
-                        <p id="import-loading-text">Conectando al router...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Payments View -->
-        <div id="payments-view" class="content-view">
-            <div class="view-header">
-                <h2>Gestión de Pagos</h2>
-            </div>
-            <div id="payments-stats" class="stats-grid"></div>
-            <div id="payments-list" class="payments-list"></div>
-        </div>
+        <!-- Keep original payments.html for modals and shared components -->
+        {% include 'modules/payments.html' %}
     </main>
 
-    <script type="module" src="/static/js/app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" src="/static/js/app.js?v=1.0.14"></script>
+
+    {% include 'modules/modals.html' %}
 </body>
 
 </html>

@@ -2,9 +2,10 @@
  * Routers Module - Gestión de Routers MikroTik
  */
 export class RoutersModule {
-    constructor(api, eventBus) {
+    constructor(api, eventBus, viewManager) {
         this.api = api;
         this.eventBus = eventBus;
+        this.viewManager = viewManager;
         this.routers = [];
 
         console.log('🌐 Routers Module initialized');
@@ -20,10 +21,21 @@ export class RoutersModule {
         await this.loadRouters();
     }
 
+    formatUptime(uptime) {
+        if (!uptime || uptime === 'N/A') return 'N/A';
+        // Traducir unidades crudas de MikroTik a versión corta: 2w5d -> 2sem 5d
+        return uptime
+            .replace(/(\d+)w/g, '$1sem ')
+            .replace(/(\d+)d/g, '$1d ')
+            .replace(/(\d+)h/g, '$1h ')
+            .replace(/(\d+)m/g, '$1m ')
+            .replace(/(\d+)s/g, '$1s ')
+            .trim();
+    }
+
     showView() {
-        document.querySelectorAll('.content-view').forEach(v => v.classList.remove('active'));
-        const view = document.getElementById('routers-view');
-        if (view) view.classList.add('active');
+        // Delegar visualización a ViewManager
+        this.viewManager.showMainView('routers');
     }
 
     async loadRouters() {
@@ -97,6 +109,12 @@ export class RoutersModule {
                 // Clientes
                 const clientsVal = card.querySelector('.meta-item:first-child .meta-value');
                 if (clientsVal) clientsVal.textContent = data.clients_connected;
+
+                // Uptime
+                const uptimeVal = card.querySelector('.uptime-value');
+                if (uptimeVal && data.uptime) {
+                    uptimeVal.textContent = this.formatUptime(data.uptime);
+                }
             }
         });
     }
@@ -157,8 +175,11 @@ export class RoutersModule {
                             <button onclick="app.modules.routers.syncRouter(${router.id})" class="action-btn minimal" title="Sincronizar">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
                             </button>
-                            <button onclick="app.modules.routers.editRouter(${router.id})" class="action-btn minimal" title="Configurar">
+                            <button onclick="app.modules.routers.showEditModal(${router.id})" class="action-btn minimal" title="Configurar">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                            <button onclick="app.modules.routers.deleteRouter(${router.id})" class="action-btn minimal delete" title="Eliminar">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                             </button>
                         </div>
                     </div>
@@ -191,7 +212,7 @@ export class RoutersModule {
                         </div>
                         <div class="meta-item">
                             <span class="meta-label">Uptime</span>
-                            <span class="meta-value">${uptimeDisplay.replace(/(\d+)([dhm])/g, '$1$2 ')}</span>
+                            <span class="meta-value uptime-value">${this.formatUptime(uptimeDisplay)}</span>
                         </div>
                         <div class="meta-item">
                             <span class="meta-label">Zona</span>
@@ -209,21 +230,52 @@ export class RoutersModule {
         const originalContent = btn ? btn.innerHTML : '';
 
         if (btn) {
-            btn.innerHTML = '<div class="spinner-mini"></div>'; // Necesitarías CSS para esto, o usa un texto simple
+            btn.innerHTML = '<div class="spinner-mini"></div>';
             btn.disabled = true;
             btn.style.opacity = '0.7';
         }
 
         try {
-            console.log('Syncing router', routerId);
-            const result = await this.api.post(`/api/routers/${routerId}/sync`, {});
+            console.log('Syncing router (discovery phase)', routerId);
+            // Paso 1: Descubrir candidatos sin provisionar
+            const discoveryResult = await this.api.post(`/api/routers/${routerId}/sync`, { confirm: false });
 
-            if (result.success) {
-                // Notificación Toast sería mejor, pero alert por ahora
-                // alert('Router sincronizado correctamente');
-                await this.loadRouters();
+            if (discoveryResult.success) {
+                // Si requiere confirmación, mostrar diálogo
+                if (discoveryResult.requires_confirmation) {
+                    const currentQueues = discoveryResult.current_queues || 0;
+                    const candidatesToAdd = discoveryResult.candidates_to_add || 0;
+
+                    const userConfirmed = confirm(
+                        `Resultados del análisis:\n\n` +
+                        `• Clientes actuales en Simple Queues: ${currentQueues}\n` +
+                        `• Nuevos clientes detectados para agregar: ${candidatesToAdd}\n\n` +
+                        `¿Desea agregar los ${candidatesToAdd} clientes nuevos?`
+                    );
+
+                    if (userConfirmed) {
+                        // Paso 2: Provisionar con confirmación
+                        console.log('User confirmed, provisioning', routerId);
+                        const provisionResult = await this.api.post(`/api/routers/${routerId}/sync`, { confirm: true });
+
+                        if (provisionResult.success) {
+                            alert(`Sincronización exitosa.\n\nSe han auto-provisionado ${provisionResult.details.provisioned} clientes nuevos.`);
+                            await this.loadRouters();
+                        } else {
+                            alert(`Error en aprovisionamiento: ${provisionResult.message}`);
+                        }
+                    } else {
+                        // Usuario canceló
+                        alert('Sincronización cancelada. No se agregaron clientes nuevos.');
+                        await this.loadRouters();
+                    }
+                } else {
+                    // No hay candidatos para aprovisionar
+                    alert('Sincronización completada. No se encontraron clientes nuevos para auto-provisionar.');
+                    await this.loadRouters();
+                }
             } else {
-                alert(`Error: ${result.message}`);
+                alert(`Error: ${discoveryResult.message}`);
             }
         } catch (error) {
             console.error('Error syncing router:', error);
@@ -242,25 +294,104 @@ export class RoutersModule {
         }
     }
 
-    async editRouter(routerId) {
-        console.log('Edit router', routerId);
-        alert('Función de edición en desarrollo');
-    }
+    switchTab(tabName) {
+        const modal = document.getElementById('router-form-modal');
+        if (!modal) return;
 
-    async deleteRouter(routerId) {
-        if (!confirm('¿Eliminar este router?')) return;
+        // Buttons
+        modal.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        if (tabName === 'connection') document.getElementById('tab-btn-r-conn').classList.add('active');
+        if (tabName === 'billing') document.getElementById('tab-btn-r-bill').classList.add('active');
 
-        try {
-            await this.api.delete(`/api/routers/${routerId}`);
-            await this.loadRouters();
-            alert('Router eliminado correctamente');
-        } catch (error) {
-            console.error('Error deleting router:', error);
-            alert('Error al eliminar router');
-        }
+        // Content
+        modal.querySelectorAll('.tab-content-router').forEach(c => c.style.display = 'none');
+        document.getElementById(`tab-router-${tabName}`).style.display = 'block';
     }
 
     showCreateModal() {
-        alert('Modal de creación en desarrollo');
+        const modal = document.getElementById('router-form-modal');
+        if (!modal) return;
+
+        document.getElementById('router-modal-title').textContent = 'Nuevo Router';
+        document.getElementById('router-id').value = '';
+        document.getElementById('router-form').reset();
+
+        // Defaults
+        document.getElementById('router-port').value = '8728';
+        document.getElementById('router-billing-day').value = '1';
+        document.getElementById('router-grace-period').value = '5';
+        document.getElementById('router-cut-day').value = '10';
+
+        this.switchTab('connection');
+        modal.classList.add('active');
+    }
+
+    showEditModal(routerId) {
+        const router = this.routers.find(r => r.id === routerId);
+        if (!router) return;
+
+        const modal = document.getElementById('router-form-modal');
+        if (!modal) return;
+
+        document.getElementById('router-modal-title').textContent = 'Editar Router';
+        document.getElementById('router-id').value = router.id;
+
+        // Connection Info
+        document.getElementById('router-alias').value = router.alias || '';
+        document.getElementById('router-host').value = router.host_address || '';
+        document.getElementById('router-user').value = router.api_username || '';
+        document.getElementById('router-pass').value = router.api_password || '';
+        document.getElementById('router-port').value = router.api_port || 8728;
+        document.getElementById('router-zone').value = router.zone || '';
+
+        // Billing Info
+        document.getElementById('router-billing-day').value = router.billing_day || 1;
+        document.getElementById('router-grace-period').value = router.grace_period || 5;
+        document.getElementById('router-cut-day').value = router.cut_day || 10;
+
+        this.switchTab('connection');
+        modal.classList.add('active');
+    }
+
+    async saveRouter() {
+        const id = document.getElementById('router-id').value;
+        const data = {
+            alias: document.getElementById('router-alias').value,
+            host_address: document.getElementById('router-host').value,
+            api_username: document.getElementById('router-user').value,
+            api_password: document.getElementById('router-pass').value,
+            api_port: parseInt(document.getElementById('router-port').value || 8728),
+            zone: document.getElementById('router-zone').value,
+            billing_day: parseInt(document.getElementById('router-billing-day').value || 1),
+            grace_period: parseInt(document.getElementById('router-grace-period').value || 5),
+            cut_day: parseInt(document.getElementById('router-cut-day').value || 10)
+        };
+
+        if (!data.alias || !data.host_address || !data.api_username) {
+            alert('Por favor complete los campos obligatorios (*)');
+            return;
+        }
+
+        try {
+            if (id) {
+                // Update
+                await this.api.put(`/api/routers/${id}`, data);
+                // Also update billing specifically if needed, but PUT /api/routers/:id usually updates all fields in a standard CRUD.
+                // Assuming create_router / update_router in backend handle all these fields.
+                // Our backend controller `routers_controller.py` uses `router_repo.update(id, data)`, so if the model has these columns (which it does), it works.
+                alert('Router actualizado correctamente');
+            } else {
+                // Create
+                await this.api.post('/api/routers', data);
+                alert('Router creado correctamente');
+            }
+
+            document.getElementById('router-form-modal').classList.remove('active');
+            await this.loadRouters();
+
+        } catch (error) {
+            console.error('Error saving router:', error);
+            alert('Error al guardar el router: ' + error.message);
+        }
     }
 }

@@ -1,0 +1,44 @@
+<!-- PROMISES VIEW -->
+<div id="promises-view" class="view content-view" style="display: none;">
+    <div class="view-header"
+        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+            <h1 class="page-title">Promesas de Pago</h1>
+            <p class="page-subtitle">Gestión de compromisos de pago de clientes</p>
+        </div>
+    </div>
+
+    <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
+        <div class="toolbar-group">
+            <div class="filter-item search-container" style="flex-grow: 1;">
+                <div class="input-with-icon">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="promise-search" class="input-premium" placeholder="Buscar promesas..."
+                        oninput="app.modules.payments.loadPromises()">
+                </div>
+            </div>
+        </div>
+        <div class="toolbar-actions">
+            <button class="btn-secondary btn-icon" onclick="app.modules.payments.loadPromises()" title="Recargar">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="table-container-premium glass-panel">
+        <table class="premium-data-table">
+            <thead>
+                <tr>
+                    <th>CLIENTE</th>
+                    <th>ROUTER</th>
+                    <th>SALDO</th>
+                    <th>VENCE</th>
+                    <th style="text-align: right;">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody id="promises-table-body">
+                <!-- Dynamic Rows -->
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -58,6 +58,7 @@ class BillingConfig:
     late_fee_days: int = int(os.getenv("LATE_FEE_DAYS", "3"))
     auto_suspend_days: int = int(os.getenv("AUTO_SUSPEND_DAYS", "15"))
     enable_auto_billing: bool = os.getenv("AUTO_BILLING", "true").lower() == "true"
+    suspension_freeze_until: Optional[str] = os.getenv("SUSPENSION_FREEZE_UNTIL")
 
 
 @dataclass

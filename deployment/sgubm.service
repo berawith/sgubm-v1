@@ -1,0 +1,15 @@
+[Unit]
+Description=Gunicorn instance to serve SGUBM
+After=network.target
+
+[Service]
+User=root
+# Ajustar ruta segun donde clones el repo (ej: /var/www/sgubm)
+WorkingDirectory=/var/www/sgubm
+Environment="PATH=/var/www/sgubm/venv/bin"
+Environment="FLASK_ENV=production"
+# Usamos Gunicorn con soporte para eventlet (SocketIO)
+ExecStart=/var/www/sgubm/venv/bin/gunicorn --worker-class eventlet -w 1 --bind 127.0.0.1:8000 run:app
+
+[Install]
+WantedBy=multi-user.target

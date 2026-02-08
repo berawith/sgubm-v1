@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "C:\SGUBM-V1\src\presentation\api\payments_controller.py", line 346, in get_statistics
+    'recent_payments': [p.to_dict() for p in recent_payments[:5]]
+                                             ^^^^^^^^^^^^^^^
+NameError: name 'recent_payments' is not defined. Did you mean: 'get_payments'?

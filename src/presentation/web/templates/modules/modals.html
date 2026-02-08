@@ -1,0 +1,266 @@
+<!-- Client History Modal -->
+<div id="client-history-modal" class="modal">
+    <div class="modal-content" style="max-width: 900px; height: 85vh;">
+        <div class="modal-header">
+            <div>
+                <h3 class="modal-title">Historial Financiero</h3>
+                <p id="history-client-name-subtitle" class="modal-subtitle-text">GESTIÓN DE PAGOS Y FACTURAS</p>
+            </div>
+
+            <!-- Info Box para nombre e ID (Ultra-Premium Consistency) -->
+            <div id="modal-history-summary" class="modal-client-summary-box">
+                <span id="history-header-name" class="header-info-name">Cargando...</span>
+                <span class="header-info-divider">|</span>
+                <span id="history-header-id" class="header-info-ip">CLI-0000</span>
+            </div>
+
+            <button class="close-btn"
+                onclick="document.getElementById('client-history-modal').classList.remove('active')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 0;">
+            <div id="client-history-list" class="history-list-premium">
+                <!-- History table populated by JS -->
+            </div>
+        </div>
+        <div class="modal-footer"
+            style="background: white; border-top: 1px solid #f1f5f9; margin: 0; padding: 20px 32px;">
+            <button type="button" class="btn-secondary"
+                onclick="document.getElementById('client-history-modal').classList.remove('active')">
+                Cerrar Historial
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Router Form Modal (Create/Edit) -->
+<div id="router-form-modal" class="modal">
+    <div class="modal-content large-modal" style="max-width: 800px;">
+        <div class="modal-header">
+            <div>
+                <h3 id="router-modal-title">Nuevo Router</h3>
+                <p class="modal-subtitle-text">CONFIGURACIÓN DE NODO MIKROTIK</p>
+            </div>
+            <button class="close-btn" onclick="document.getElementById('router-form-modal').classList.remove('active')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <!-- Tabs -->
+            <div class="modal-tabs">
+                <button class="tab-btn active" id="tab-btn-r-conn"
+                    onclick="app.modules.routers.switchTab('connection')">
+                    <i class="fas fa-network-wired"></i> Conexión
+                </button>
+                <button class="tab-btn" id="tab-btn-r-bill" onclick="app.modules.routers.switchTab('billing')">
+                    <i class="fas fa-file-invoice-dollar"></i> Facturación
+                </button>
+            </div>
+
+            <form id="router-form">
+                <input type="hidden" id="router-id">
+
+                <!-- Tab: Connection -->
+                <div id="tab-router-connection" class="tab-content-router active"
+                    style="display:block; padding-top:20px;">
+                    <div class="form-grid">
+                        <div class="form-group span-2">
+                            <label>Alias / Nombre *</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-tag field-icon"></i>
+                                <input type="text" id="router-alias" class="form-control"
+                                    placeholder="Ej: Router Principal" required>
+                            </div>
+                        </div>
+                        <div class="form-group span-2">
+                            <label>Dirección IP / Host *</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-globe field-icon"></i>
+                                <input type="text" id="router-host" class="form-control" placeholder="192.168.88.1"
+                                    required>
+                            </div>
+                        </div>
+
+                        <div class="form-group span-2">
+                            <label>Usuario API *</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-user field-icon"></i>
+                                <input type="text" id="router-user" class="form-control" placeholder="admin" required>
+                            </div>
+                        </div>
+                        <div class="form-group span-1">
+                            <label>Password API *</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-key field-icon"></i>
+                                <input type="password" id="router-pass" class="form-control" placeholder="••••••">
+                            </div>
+                        </div>
+                        <div class="form-group span-1">
+                            <label>Puerto API</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-plug field-icon"></i>
+                                <input type="number" id="router-port" class="form-control" value="8728" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group span-full">
+                            <label>Zona / Ubicación</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-map-marker-alt field-icon"></i>
+                                <input type="text" id="router-zone" class="form-control"
+                                    placeholder="Ej: Centro de Datos">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Billing -->
+                <div id="tab-router-billing" class="tab-content-router" style="display:none; padding-top:20px;">
+                    <div class="form-grid">
+                        <div class="form-group span-full">
+                            <label>Día de Facturación</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-calendar-day field-icon"></i>
+                                <input type="number" id="router-billing-day" class="form-control" min="1" max="28"
+                                    value="1" required>
+                            </div>
+                            <span class="form-text-premium">Generación de facturas automática.</span>
+                        </div>
+
+                        <div class="form-group span-full">
+                            <label>Días de Gracia</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-hourglass-half field-icon"></i>
+                                <input type="number" id="router-grace-period" class="form-control" min="0" max="30"
+                                    value="5" required>
+                            </div>
+                            <span class="form-text-premium">Días antes de suspender servicio.</span>
+                        </div>
+
+                        <div class="form-group span-full">
+                            <label>Día de Corte (Sugerido)</label>
+                            <div class="input-icon-wrapper">
+                                <i class="fas fa-cut field-icon"></i>
+                                <input type="number" id="router-cut-day" class="form-control" min="1" max="31"
+                                    value="10" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn-secondary"
+                onclick="document.getElementById('router-form-modal').classList.remove('active')">
+                Cancelar
+            </button>
+            <button type="button" class="btn-primary" onclick="app.modules.routers.saveRouter()">
+                <i class="fas fa-save"></i> Guardar Router
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Payment Promise Modal -->
+<div id="payment-promise-modal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+        <div class="modal-header">
+            <div>
+                <h3>Promesa de Pago</h3>
+                <p id="promise-client-name"
+                    style="margin: 0; font-size: 0.8rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                </p>
+            </div>
+            <button class="close-btn"
+                onclick="document.getElementById('payment-promise-modal').classList.remove('active')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div
+                style="background: rgba(79, 70, 229, 0.05); border: 1px dashed rgba(79, 70, 229, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+                <p style="margin: 0; color: #4338ca; font-size: 0.85rem; font-weight: 600; line-height: 1.5;">
+                    <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
+                    Establezca una fecha límite para evitar la suspensión automática del servicio por facturas vencidas.
+                </p>
+            </div>
+            <form id="payment-promise-form" class="form-grid">
+                <input type="hidden" id="promise-client-id">
+                <div class="form-group span-full">
+                    <label>Fecha Límite de Pago</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-calendar-check field-icon"></i>
+                        <input type="date" id="promise-date-input" class="form-control" required>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" style="margin-top: 0; border-top: 1px solid #f1f5f9; padding-top: 24px;">
+            <button type="button" class="btn-secondary" onclick="app.modules.clients.clearPromise()">
+                <i class="fas fa-trash-alt" style="margin-right: 8px;"></i> Eliminar Promesa
+            </button>
+            <button form="payment-promise-form" type="submit" class="btn-primary">
+                <i class="fas fa-handshake" style="margin-right: 8px;"></i> Guardar Promesa
+            </button>
+        </div>
+    </div>
+</div>
+<!-- Monthly Detail Modal -->
+<div id="month-detail-modal" class="modal">
+    <div class="modal-content" style="max-width: 950px;">
+        <div class="modal-header">
+            <div>
+                <h3 id="month-detail-title">Detalle Mensual</h3>
+                <p id="month-detail-period" class="modal-subtitle-text">CARGANDO PERIODO...</p>
+            </div>
+            <button class="close-btn"
+                onclick="document.getElementById('month-detail-modal').classList.remove('active')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <div class="month-stats-grid">
+                <div class="month-stat-mini">
+                    <span class="label">Recaudado</span>
+                    <span class="value success" id="month-val-collected">$0.00</span>
+                </div>
+                <div class="month-stat-mini">
+                    <span class="label">Facturación Esperada</span>
+                    <span class="value secondary" id="month-val-billed">$0.00</span>
+                </div>
+                <div class="month-stat-mini">
+                    <span class="label">Lo Faltante</span>
+                    <span class="value warning" id="month-val-missing">$0.00</span>
+                </div>
+                <div class="month-stat-mini">
+                    <span class="label">Efectividad</span>
+                    <div class="month-efficiency-bar">
+                        <div class="efficiency-fill" id="month-efficiency-fill" style="width: 0%"></div>
+                        <span class="efficiency-text" id="month-efficiency-text">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="history-table-container compact">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Fecha</th>
+                            <th>Referencia</th>
+                            <th>Monto</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="month-payments-list">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

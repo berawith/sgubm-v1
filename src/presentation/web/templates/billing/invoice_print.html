@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factura_{{ invoice.id }}_{{ client.legal_name }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --primary: #4f46e5;
+            --primary-dark: #3730a3;
+            --secondary: #0ea5e9;
+            --accent: #f59e0b;
+            --dark: #0f172a;
+            --gray-dark: #334155;
+            --gray: #64748b;
+            --gray-light: #94a3b8;
+            --light: #f8fafc;
+            --white: #ffffff;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #e2e8f0;
+            color: var(--dark);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 15mm 18mm;
+            background: white;
+            box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.15);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border-radius: 2px;
+        }
+
+        /* Decorative Background */
+        .page::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle at 100% 0%, rgba(79, 70, 229, 0.08) 0%, rgba(255, 255, 255, 0) 60%);
+            border-radius: 0 0 0 100%;
+            pointer-events: none;
+        }
+
+        .page::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle at 0% 100%, rgba(14, 165, 233, 0.06) 0%, rgba(255, 255, 255, 0) 60%);
+            border-radius: 0 100% 0 0;
+            pointer-events: none;
+        }
+
+        /* Top Accent */
+        .top-accent {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+        }
+
+        /* Watermark */
+        .watermark {
+            position: absolute;
+            top: 55%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 8rem;
+            font-weight: 800;
+            color: rgba(15, 23, 42, 0.02);
+            z-index: 0;
+            pointer-events: none;
+            letter-spacing: 10px;
+            white-space: nowrap;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            z-index: 1;
+            padding-bottom: 25px;
+            border-bottom: 1px dashed var(--border);
+            position: relative;
+        }
+
+        .brand-section {
+            z-index: 1;
+        }
+
+        .brand-section h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.05em;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .brand-section p {
+            margin: 4px 0 0;
+            font-size: 11px;
+            color: var(--gray);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+        }
+
+        .company-details {
+            margin-top: 15px;
+            font-size: 12px;
+            color: var(--gray-dark);
+            line-height: 1.5;
+        }
+
+        .invoice-details {
+            text-align: right;
+            z-index: 1;
+        }
+
+        .invoice-title {
+            font-size: 56px;
+            font-weight: 800;
+            color: var(--light);
+            line-height: 0.8;
+            margin-bottom: 5px;
+            text-shadow: -1px -1px 0 var(--border), 1px -1px 0 var(--border), -1px 1px 0 var(--border), 1px 1px 0 var(--border);
+            opacity: 0.5;
+            letter-spacing: 2px;
+        }
+
+        .invoice-badge-container {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .invoice-label {
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--gray);
+        }
+
+        .invoice-badge {
+            background: var(--dark);
+            color: white;
+            padding: 8px 18px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        /* Two Column Layout for Info */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 30px;
+            margin-bottom: 30px;
+            z-index: 1;
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            position: relative;
+        }
+
+        .info-card.highlight {
+            background: linear-gradient(145deg, #ffffff 0%, var(--light) 100%);
+            border-color: var(--primary-light);
+            border-width: 0;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+
+        .info-card.highlight::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary);
+            border-radius: 12px 0 0 12px;
+        }
+
+        .card-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--gray);
+            font-weight: 700;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .client-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--dark);
+            margin: 0 0 12px 0;
+        }
+
+        .client-detail-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            column-gap: 15px;
+            row-gap: 8px;
+            font-size: 13px;
+        }
+
+        .client-detail-label {
+            color: var(--gray);
+            font-weight: 500;
+        }
+
+        .client-detail-value {
+            color: var(--dark);
+            font-weight: 600;
+        }
+
+        /* Date Grid */
+        .date-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 14px;
+            padding-bottom: 14px;
+            border-bottom: 1px dotted var(--border);
+        }
+
+        .date-row:last-of-type {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .date-label {
+            font-size: 11px;
+            color: var(--gray);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .date-value {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--dark);
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .status-badge {
+            display: block;
+            text-align: center;
+            padding: 10px;
+            border-radius: 10px;
+            font-weight: 800;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 20px;
+        }
+
+        .status-paid {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .status-unpaid {
+            background: #fff7ed;
+            color: #9a3412;
+            border: 1px solid #fed7aa;
+        }
+
+        .status-overdue {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        /* Items Table */
+        .items-section {
+            flex-grow: 1;
+            z-index: 1;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-bottom: 20px;
+        }
+
+        th {
+            text-align: left;
+            padding: 14px 20px;
+            background: var(--light);
+            color: var(--gray-dark);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            letter-spacing: 0.05em;
+        }
+
+        th:first-child {
+            border-radius: 12px 0 0 12px;
+            border-left: 1px solid var(--border);
+        }
+
+        th:last-child {
+            border-radius: 0 12px 12px 0;
+            border-right: 1px solid var(--border);
+            text-align: right;
+        }
+
+        td {
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--border);
+            color: var(--dark);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        td:first-child {
+            font-weight: 600;
+        }
+
+        td:last-child {
+            text-align: right;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Summary Section */
+        .summary-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-top: auto;
+            margin-bottom: 25px;
+            z-index: 1;
+            padding-top: 25px;
+            border-top: 2px solid var(--dark);
+        }
+
+        .instructions {
+            width: 55%;
+            padding-right: 20px;
+        }
+
+        .instructions h4 {
+            margin: 0 0 12px 0;
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            color: var(--dark);
+            letter-spacing: 0.05em;
+        }
+
+        .instruction-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            color: var(--gray-dark);
+            background: var(--light);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .instruction-item i {
+            color: var(--primary);
+            width: 16px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .totals {
+            width: 35%;
+        }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: var(--gray);
+            font-weight: 500;
+        }
+
+        .grand-total {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--dark);
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px dashed var(--border);
+            align-items: flex-end;
+        }
+
+        .currency-code {
+            font-size: 10px;
+            color: var(--gray);
+            margin-top: 4px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            font-size: 10px;
+            color: var(--gray-light);
+            z-index: 1;
+            border-top: 1px solid var(--border);
+            padding-top: 15px;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: var(--gray);
+            font-size: 11px;
+        }
+
+        .footer-links i {
+            color: var(--secondary);
+            margin-right: 6px;
+        }
+
+        /* Print Controls */
+        .no-print-zone {
+            position: fixed;
+            top: 25px;
+            right: 25px;
+            z-index: 9999;
+        }
+
+        .btn-print {
+            background: var(--dark);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: transform 0.2s;
+        }
+
+        .btn-print:hover {
+            transform: translateY(-2px);
+            background: var(--primary);
+        }
+
+        @media print {
+            body {
+                background: none;
+                display: block;
+                padding: 0;
+            }
+
+            .page {
+                box-shadow: none;
+                margin: 0;
+                width: 100%;
+                height: 100%;
+                /* Force height */
+                page-break-after: always;
+                border-radius: 0;
+            }
+
+            .no-print-zone {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="no-print-zone">
+        <button class="btn-print" onclick="window.print()">
+            <i class="fas fa-print"></i> IMPRIMIR FACTURA
+        </button>
+    </div>
+
+    <div class="page">
+        <div class="top-accent"></div>
+        <div class="watermark">SGUBM</div>
+
+        <header>
+            <div class="brand-section">
+                <h1>SGUBM - GESTIÓN ISP</h1>
+                <p>High Performance Internet Infrastructure</p>
+                <div class="company-details">
+                    <div><strong>NIT:</strong> 900.123.456-7</div>
+                    <div style="margin-top: 2px;">Cúcuta, Norte de Santander, Colombia</div>
+                </div>
+            </div>
+            <div class="invoice-details">
+                <div class="invoice-title">INVOICE</div>
+                <div class="invoice-badge-container">
+                    <span class="invoice-label">CORRELATIVO</span>
+                    <div class="invoice-badge">
+                        <span>#</span>
+                        <span>{{ invoice.id }}</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="info-grid">
+            <div class="info-card highlight">
+                <div class="card-label"><i class="fas fa-user-circle"></i> Cliente / Suscriptor</div>
+                <div class="client-name">{{ client.legal_name }}</div>
+
+                <div class="client-detail-grid">
+                    <div class="client-detail-label">Cédula/ID:</div>
+                    <div class="client-detail-value">{{ client.identity_document if client.identity_document else 'No
+                        registrado' }}</div>
+
+                    <div class="client-detail-label">Código:</div>
+                    <div class="client-detail-value">{{ client.subscriber_code }}</div>
+
+                    <div class="client-detail-label">Ubicación:</div>
+                    <div class="client-detail-value">{{ client.address if client.address else 'Dirección no
+                        especificada' }}</div>
+
+                    <div class="client-detail-label">Contacto:</div>
+                    <div class="client-detail-value">{{ client.phone if client.phone else (client.email if client.email
+                        else 'N/A') }}</div>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <div class="card-label"><i class="fas fa-file-invoice-dollar"></i> Detalle de Cobro</div>
+
+                <div class="date-row">
+                    <span class="date-label">Fecha Emisión</span>
+                    <span class="date-value">{{ invoice.issue_date.strftime('%d / %m / %Y') }}</span>
+                </div>
+
+                <div class="date-row">
+                    <span class="date-label">Vencimiento</span>
+                    <span class="date-value" style="color: var(--danger);">{{ invoice.due_date.strftime('%d / %m / %Y')
+                        }}</span>
+                </div>
+
+                <div class="status-badge status-{{ invoice.status }}">
+                    <i class="fas {{ 'fa-check-circle' if invoice.status == 'paid' else ( 'fa-exclamation-triangle' if invoice.status == 'overdue' else 'fa-clock' ) }}"
+                        style="margin-right: 5px;"></i>
+                    {{ 'PAGADA' if invoice.status == 'paid' else ('VENCIDA' if invoice.status == 'overdue' else
+                    'PENDIENTE DE PAGO') }}
+                </div>
+
+                <div style="font-size: 11px; color: var(--gray); margin-top: 15px; line-height: 1.3;">
+                    Esta factura refleja los cargos por el servicio de internet del período actual.
+                </div>
+            </div>
+        </div>
+
+        <div class="items-section">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 70%;">Concepto del Servicio</th>
+                        <th>Valor Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in invoice.items %}
+                    <tr>
+                        <td>
+                            {{ item.description }}
+                        </td>
+                        <td>${{ "{:,.2f}".format(item.amount) }}</td>
+                    </tr>
+                    {% endfor %}
+                    <!-- Optional: Add empty rows here if you want the table to always look fuller -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="summary-section">
+            <div class="instructions">
+                <h4>Instrucciones de Pago</h4>
+                <div class="instruction-item">
+                    <i class="fas fa-university"></i>
+                    <span><strong>Transferencia:</strong> Banco Davivienda Ahorros #000-123456-78</span>
+                </div>
+                <div class="instruction-item">
+                    <i class="fas fa-mobile-alt"></i>
+                    <span><strong>Pago Móvil:</strong> 0412-1234567 | V-12345678</span>
+                </div>
+                <div style="margin-top: 12px; font-size: 11px; color: var(--gray); line-height: 1.4;">
+                    <i class="fas fa-info-circle" style="color: var(--secondary); margin-right: 4px;"></i>
+                    Una vez realizado el pago, favor enviar el comprobante via WhatsApp indicando su código de
+                    suscriptor: <strong>{{ client.subscriber_code }}</strong>
+                </div>
+            </div>
+
+            <div class="totals">
+                <div class="total-row">
+                    <span>Subtotal</span>
+                    <span>${{ "{:,.2f}".format(invoice.total_amount) }}</span>
+                </div>
+                <div class="total-row">
+                    <span>Impuestos (IVA 0%)</span>
+                    <span>$0.00</span>
+                </div>
+                <div class="total-row grand-total">
+                    <span>Monto Total</span>
+                    <div style="text-align: right;">
+                        <div style="color: var(--primary);">${{ "{:,.2f}".format(invoice.total_amount) }}</div>
+                        <div class="currency-code">PESOS COLOMBIANOS (COP)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <div class="footer-links">
+                <div><i class="fas fa-globe"></i> www.sgubm.net</div>
+                <div><i class="fas fa-envelope"></i> soporte@sgubm.net</div>
+                <div><i class="fas fa-phone-alt"></i> +57 321 000 0000</div>
+            </div>
+            <div style="max-width: 90%; margin: 0 auto; opacity: 0.6; font-size: 10px;">
+                Esta factura de servicio es para uso informativo y administrativo del cliente. Los
+                servicios contratados están sujetos a las políticas de uso aceptable de SGUBM. Generado por SGUBM
+                Intelligence Business Manager.
+            </div>
+        </footer>
+    </div>
+</body>
+
+</html>

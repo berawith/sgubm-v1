@@ -1,0 +1,55 @@
+<!-- PAYMENTS LIST VIEW -->
+<div id="payments-list-view" class="view content-view" style="display: none;">
+    <div class="view-header"
+        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+            <h1 class="page-title">Gestión de Pagos</h1>
+            <p class="page-subtitle">Registro y seguimiento de transacciones</p>
+        </div>
+    </div>
+
+    <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
+        <div class="toolbar-group">
+            <div class="filter-item search-container" style="flex-grow: 1;">
+                <div class="input-with-icon">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="payment-search-quick" class="input-premium"
+                        placeholder="Buscar pago por cliente o referencia..."
+                        oninput="app.modules.payments.onSearchInput(this.value)">
+                </div>
+            </div>
+        </div>
+        <div class="toolbar-actions">
+            <button class="btn-secondary btn-icon" onclick="app.modules.payments.loadPayments()" title="Recargar">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="btn-premium btn-icon" onclick="app.modules.payments.showNewPaymentModal()"
+                title="Nuevo Pago">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="payments-dashboard" id="payments-list">
+        <!-- Payments Table -->
+        <div class="table-container-premium glass-panel" style="margin:0; box-shadow:none;">
+            <table class="premium-data-table" style="border-spacing: 0 2px;">
+                <thead>
+                    <tr>
+                        <th>NRO</th>
+                        <th>CLIENTE</th>
+                        <th>FECHA</th>
+                        <th>MONTO</th>
+                        <th>MÉTODO</th>
+                        <th>REFERENCIA</th>
+                        <th>ESTADO</th>
+                        <th style="text-align:right">ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody id="payments-table-body">
+                    <!-- JS Rendered -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

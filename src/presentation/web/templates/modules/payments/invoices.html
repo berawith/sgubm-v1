@@ -1,0 +1,65 @@
+<!-- INVOICES VIEW -->
+<div id="invoices-view" class="view content-view" style="display: none;">
+    <div class="view-header"
+        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+            <h1 class="page-title">Facturas</h1>
+            <p class="page-subtitle">Generación y gestión de facturas</p>
+        </div>
+    </div>
+
+    <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
+        <div class="toolbar-group">
+            <div class="filter-item" style="min-width: 250px;">
+                <label>Buscar Factura</label>
+                <div class="input-with-icon">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="invoice-search" class="input-premium" placeholder="Cliente o Nro..."
+                        oninput="app.modules.payments.loadInvoices()">
+                </div>
+            </div>
+            <div class="filter-item">
+                <label>Mes</label>
+                <input type="month" id="invoice-filter-month" class="input-premium"
+                    onchange="app.modules.payments.loadInvoices()">
+            </div>
+            <div class="filter-item">
+                <label>Estado</label>
+                <select id="invoice-filter-status" class="select-premium"
+                    onchange="app.modules.payments.loadInvoices()">
+                    <option value="">Todos los Estados</option>
+                    <option value="unpaid">Pendientes</option>
+                    <option value="paid">Pagadas</option>
+                    <option value="overdue">Vencidas</option>
+                </select>
+            </div>
+        </div>
+        <div class="toolbar-actions">
+            <button class="btn-secondary btn-icon" onclick="app.modules.payments.loadInvoices()" title="Recargar">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="btn-premium" onclick="app.modules.payments.generateMonthlyInvoices()">
+                <i class="fas fa-magic"></i> Generar Mes
+            </button>
+        </div>
+    </div>
+
+    <div class="table-container-premium glass-panel">
+        <table class="premium-data-table">
+            <thead>
+                <tr>
+                    <th width="80">NRO</th>
+                    <th>CLIENTE / SUSCRIPTOR</th>
+                    <th width="150">EMISIÓN</th>
+                    <th width="150">VENCIMIENTO</th>
+                    <th width="140">TOTAL</th>
+                    <th width="130">ESTADO</th>
+                    <th width="120" style="text-align: right;">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody id="invoices-table-body">
+                <!-- Dynamic Rows -->
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -2,8 +2,8 @@
 Database Manager
 Gestor centralizado de conexión a base de datos
 """
-from sqlalchemy.orm import Session
-from src.infrastructure.database.models import init_db, get_session
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
+from src.infrastructure.database.models import init_db
 from src.infrastructure.database.repositories import RouterRepository, ClientRepository, PaymentRepository
 from src.infrastructure.config.settings import get_config
 
@@ -24,14 +24,15 @@ class DatabaseManager:
             config = get_config()
             database_url = config.database.connection_string
             self._engine = init_db(database_url)
-            self._session = get_session(self._engine)
+            
+            # Crear factory de sesiones y envolverla en scoped_session para hilo/request local
+            session_factory = sessionmaker(bind=self._engine)
+            self._session_factory = scoped_session(session_factory)
     
     @property
     def session(self) -> Session:
-        """Retorna la sesión actual"""
-        if self._session is None:
-            self._session = get_session(self._engine)
-        return self._session
+        """Retorna la sesión actual (scopada por hilo)"""
+        return self._session_factory()
     
     def get_router_repository(self) -> RouterRepository:
         """Retorna repositorio de routers"""
@@ -44,11 +45,27 @@ class DatabaseManager:
     def get_payment_repository(self) -> PaymentRepository:
         """Retorna repositorio de pagos"""
         return PaymentRepository(self.session)
+
+    def get_deleted_payment_repository(self) -> 'DeletedPaymentRepository': # type: ignore
+        """Retorna repositorio de pagos eliminados"""
+        from src.infrastructure.database.repositories import DeletedPaymentRepository
+        return DeletedPaymentRepository(self.session)
+
+    def get_sync_repository(self) -> 'SyncRepository': # type: ignore
+        """Retorna repositorio de sincronización"""
+        from src.infrastructure.database.repositories import SyncRepository
+        return SyncRepository(self.session)
+
+    def get_traffic_repository(self) -> 'TrafficRepository': # type: ignore
+        """Retorna repositorio de historial de tráfico"""
+        from src.infrastructure.database.repositories import TrafficRepository
+        return TrafficRepository(self.session)
+
     
-    def close(self):
-        """Cierra la sesión"""
-        if self._session:
-            self._session.close()
+    def remove_session(self):
+        """Remueve la sesión del hilo actual (importante para Flask)"""
+        if self._session_factory:
+            self._session_factory.remove()
 
 
 # Singleton instance

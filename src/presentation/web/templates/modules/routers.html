@@ -1,0 +1,19 @@
+<!-- Routers View -->
+<div id="routers-view" class="content-view">
+    <div class="view-header">
+        <div class="header-left">
+            <h1 class="page-title">Gestión de Routers</h1>
+            <p class="page-subtitle">Administración de equipos MikroTik</p>
+        </div>
+        <button class="btn-primary" onclick="app.modules.routers.showCreateModal()">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                style="margin-right:8px">
+                <path d="M12 5v14M5 12h14" />
+            </svg>
+            Nuevo Router
+        </button>
+    </div>
+    <div id="routers-grid" class="routers-grid">
+        <!-- Aquí se inyectan los routers vía JS -->
+    </div>
+</div>

@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGUBM - Sistema de Gestión ISP</title>
+    <link rel="stylesheet" href="/static/css/core.css?v=1.0.2">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.0.2">
+    <link rel="stylesheet" href="/static/css/routers.css?v=1.0.2">
+    <link rel="stylesheet" href="/static/css/clients.css?v=1.0.2">
+    <link rel="stylesheet" href="/static/css/toast.css?v=1.0.2">
+    <link rel="stylesheet" href="/static/css/modal.css?v=1.0.2">
+    <link rel="stylesheet" href="/static/css/payments.css?v=1.0.2">
+    <link rel="stylesheet" href="/static/css/plans.css?v=1.0.2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+        <div class="logo">
+            <div class="logo-icon small">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 6v6l4 2" />
+                </svg>
+            </div>
+            <span class="logo-text">SGUBM</span>
+        </div>
+        <button id="mobile-menu-toggle" class="btn-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
+                    </svg>
+                </div>
+                <span class="logo-text">SGUBM</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="/" class="nav-item active" data-view="dashboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg>
+                <span>Dashboard</span>
+            </a>
+
+            <a href="#" class="nav-item" data-view="routers">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="2" width="20" height="8" rx="2" />
+                    <rect x="2" y="14" width="20" height="8" rx="2" />
+                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                </svg>
+                <span>Routers</span>
+            </a>
+
+            <a href="#" class="nav-item" data-view="clients">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+                <span>Clientes</span>
+            </a>
+
+            <a href="#" class="nav-item" data-view="plans">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                    <line x1="12" y1="22.08" x2="12" y2="12" />
+                </svg>
+                <span>Planes</span>
+            </a>
+
+            <a href="#" class="nav-item" data-view="payments">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="5" width="20" height="14" rx="2" />
+                    <line x1="2" y1="10" x2="22" y2="10" />
+                </svg>
+                <span>Pagos</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-profile">
+                <div class="user-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                    </svg>
+                </div>
+                <div class="user-info">
+                    <span class="user-name">Administrador</span>
+                    <span class="user-role">Super Admin</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Dashboard Content -->
+        <div id="dashboard-view" class="content-view active">
+            <div class="view-header">
+                <div class="header-left">
+                    <h1 class="page-title">Dashboard</h1>
+                    <p class="page-subtitle">Visión general del sistema</p>
+                </div>
+                <div class="header-right">
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="m21 21-4.35-4.35" />
+                        </svg>
+                        <input type="text" placeholder="Buscar...">
+                    </div>
+                    <button class="btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                        </svg>
+                        <span class="badge">3</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="2" width="20" height="8" rx="2" />
+                            <rect x="2" y="14" width="20" height="8" rx="2" />
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-label">Servidores Activos</span>
+                        <span class="stat-value" id="stat-servers">0</span>
+                        <span class="stat-trend positive">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                            </svg>
+                            100%
+                        </span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-label">Clientes Activos</span>
+                        <span class="stat-value" id="stat-clients">0</span>
+                        <span class="stat-trend positive">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                            </svg>
+                            +12%
+                        </span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon purple">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="5" width="20" height="14" rx="2" />
+                            <line x1="2" y1="10" x2="22" y2="10" />
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-label">Facturación del Mes</span>
+                        <span class="stat-value" id="stat-revenue">$0</span>
+                        <span class="stat-trend positive">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                            </svg>
+                            +8%
+                        </span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-label">Uptime Promedio</span>
+                        <span class="stat-value" id="stat-uptime">0%</span>
+                        <span class="stat-trend positive">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                            </svg>
+                            99.9%
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <div class="card-header">
+                        <h3>Tráfico de Red</h3>
+                        <select class="time-selector">
+                            <option>Última hora</option>
+                            <option>Últimas 24h</option>
+                            <option>Última semana</option>
+                        </select>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="traffic-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="card-header">
+                        <h3>Estado de Servidores</h3>
+                    </div>
+                    <div class="servers-status">
+                        <div class="status-item">
+                            <div class="status-indicator online"></div>
+                            <span>Online: <strong id="servers-online">0</strong></span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator warning"></div>
+                            <span>Advertencia: <strong id="servers-warning">0</strong></span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator offline"></div>
+                            <span>Offline: <strong id="servers-offline">0</strong></span>
+                        </div>
+                    </div>
+                    <div id="servers-list" class="servers-mini-list">
+                        <!-- Se llena dinámicamente -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="activity-card">
+                <div class="card-header">
+                    <h3>Actividad Reciente</h3>
+                    <button class="btn-text">Ver todo</button>
+                </div>
+                <div id="activity-list" class="activity-list">
+                    <!-- Se llena dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Routers View -->
+        <div id="routers-view" class="content-view">
+            <div class="view-header">
+                <div class="header-left">
+                    <h1 class="page-title">Gestión de Routers</h1>
+                    <p class="page-subtitle">Administración de equipos MikroTik</p>
+                </div>
+                <button class="btn-primary" onclick="app.modules.routers.showCreateModal()">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                        style="margin-right:8px">
+                        <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    Nuevo Router
+                </button>
+            </div>
+            <div id="routers-grid" class="routers-grid">
+                <!-- Aquí se inyectan los routers vía JS -->
+            </div>
+        </div>
+
+        <!-- Clients View -->
+        <div id="clients-view" class="content-view">
+            <div class="view-header">
+                <div class="header-left">
+                    <h1 class="page-title">Gestión de Clientes</h1>
+                    <p class="page-subtitle">Administración de suscriptores y servicios</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-primary" onclick="window.clientModal.showCreate()" style="margin-right: 12px;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                            stroke-width="2" style="margin-right:8px">
+                            <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Nuevo Cliente
+                    </button>
+                    <button class="btn-secondary" onclick="app.modules.clients.showImportModal()">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                            stroke-width="2" style="margin-right:8px">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                        </svg>
+                        Importar desde Router
+                    </button>
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="m21 21-4.35-4.35" />
+                        </svg>
+                        <input type="text" id="client-search" placeholder="Buscar cliente...">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Client Stats Bar -->
+            <div id="client-stats-bar" class="client-stats-bar">
+                <div class="stat-item">
+                    <span>Total Clientes</span>
+                    <strong id="count-total">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Activos</span>
+                    <strong id="count-active">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Suspendidos</span>
+                    <strong id="count-suspended">0</strong>
+                </div>
+                <!-- Separator -->
+                <div class="separator"></div>
+
+                <div class="stat-item">
+                    <span>En Línea (MikroTik)</span>
+                    <strong id="count-online">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Fuera de Línea</span>
+                    <strong id="count-offline">0</strong>
+                </div>
+            </div>
+
+            <div id="clients-grid" class="clients-grid"></div>
+        </div>
+
+        <!-- Import Modal -->
+        <div id="import-clients-modal" class="modal">
+            <div class="modal-content large-modal">
+                <div class="modal-header">
+                    <h3>Importar Clientes desde Router</h3>
+                    <button class="close-btn"
+                        onclick="document.getElementById('import-clients-modal').classList.remove('active')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <!-- Step 1: Select Router -->
+                    <div class="import-step" id="import-step-1">
+                        <div class="form-group">
+                            <label>Seleccionar Router Origen</label>
+                            <select id="import-router-select" class="form-select">
+                                <option value="">Cargando routers...</option>
+                            </select>
+                        </div>
+                        <div class="step-actions">
+                            <button class="btn-primary" onclick="app.modules.clients.scanRouter()">
+                                Escanear Clientes
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Preview & Select -->
+                    <div class="import-step" id="import-step-2" style="display:none;">
+                        <div class="scan-summary">
+                            <p>Se encontraron <strong id="scan-total">0</strong> clientes en el router.
+                            </p>
+                            <p class="text-warning" id="scan-duplicates" style="display:none">
+                                <i class="fas fa-exclamation-triangle"></i> Algunos clientes ya existen
+                                en la base de
+                                datos.
+                            </p>
+                        </div>
+
+                        <div class="table-container preview-table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th width="40"><input type="checkbox" id="select-all-import">
+                                        </th>
+                                        <th>Usuario (PPPoE/Hotspot)</th>
+                                        <th>IP</th>
+                                        <th>Perfil</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="import-preview-body">
+                                    <!-- Rows injected via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="step-actions right-align">
+                            <button class="btn-secondary" onclick="app.modules.clients.resetImport()">Atrás</button>
+                            <button class="btn-primary" onclick="app.modules.clients.executeImport()">
+                                Importar Seleccionados (<span id="selected-count">0</span>)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div id="import-loading" style="display:none;" class="loading-overlay-modal">
+                        <div class="spinner"></div>
+                        <p id="import-loading-text">Conectando al router...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payments View -->
+        <div id="payments-view" class="content-view">
+            <div class="view-header">
+                <div class="header-left">
+                    <h1 class="page-title">Gestión Financiera</h1>
+                    <p class="page-subtitle">Control de ingresos y facturación premium</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-premium" onclick="app.modules.payments.showNewPaymentModal()">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Registrar Pago
+                    </button>
+                    <button class="btn-icon" title="Exportar Reporte">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="payments-dashboard">
+                <!-- Stat Cards -->
+                <div class="financial-stats">
+                    <div class="payment-stat-card">
+                        <div class="payment-stat-icon today">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                <line x1="16" y1="2" x2="16" y2="6"></line>
+                                <line x1="8" y1="2" x2="8" y2="6"></line>
+                                <line x1="3" y1="10" x2="21" y2="10"></line>
+                            </svg>
+                        </div>
+                        <div class="payment-stat-info">
+                            <h4>Hoy</h4>
+                            <div class="payment-stat-value" id="pay-stat-today">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="payment-stat-card">
+                        <div class="payment-stat-icon month">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6">
+                                </path>
+                            </svg>
+                        </div>
+                        <div class="payment-stat-info">
+                            <h4>Este Mes</h4>
+                            <div class="payment-stat-value" id="pay-stat-month">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="payment-stat-card">
+                        <div class="payment-stat-icon pending">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </div>
+                        <div class="payment-stat-info">
+                            <h4>Pendiente</h4>
+                            <div class="payment-stat-value" id="pay-stat-pending">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="payment-stat-card">
+                        <div class="payment-stat-icon total">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                        </div>
+                        <div class="payment-stat-info">
+                            <h4>Recaudación Total</h4>
+                            <div class="payment-stat-value" id="pay-stat-total">$0.00</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Container -->
+                <div class="payments-chart-container">
+                    <div class="card-header">
+                        <h3>Tendencia de Recaudación</h3>
+                    </div>
+                    <div class="revenue-chart-area">
+                        <canvas id="revenue-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- List Container -->
+            <div class="payments-table-container">
+                <div class="table-header">
+                    <h3>Últimos Pagos Registrados</h3>
+                    <div class="table-actions">
+                        <div class="search-box">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="11" cy="11" r="8" />
+                                <path d="m21 21-4.35-4.35" />
+                            </svg>
+                            <input type="text" id="payments-search" placeholder="Buscar pago...">
+                        </div>
+                    </div>
+                </div>
+                <div id="payments-list">
+                    <!-- Dinámico -->
+                </div>
+            </div>
+        </div>
+        <!-- Payment Registration Modal -->
+        <div id="payment-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Registrar Nuevo Pago</h3>
+                    <button class="close-btn"
+                        onclick="document.getElementById('payment-modal').classList.remove('active')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="payment-form">
+                        <!-- Client Search Phase -->
+                        <div id="payment-client-search-step">
+                            <div class="form-group">
+                                <label>Buscar Cliente (por Nombre, IP o Cédula)</label>
+                                <div class="search-input-wrapper">
+                                    <div class="input-with-addon">
+                                        <div class="addon">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                                                stroke="currentColor" stroke-width="2">
+                                                <circle cx="11" cy="11" r="8" />
+                                                <path d="m21 21-4.35-4.35" />
+                                            </svg>
+                                        </div>
+                                        <input type="text" id="payment-client-query" class="form-control"
+                                            placeholder="Nombre, IP, Cédula o Usuario..." autocomplete="off">
+                                    </div>
+                                    <div id="payment-search-results" class="search-results-dropdown"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Selected Client Info (Hidden initially) -->
+                        <div id="selected-client-display" style="display:none;" class="selected-item-card">
+                            <div class="item-info">
+                                <div class="item-main">
+                                    <span id="display-client-name" class="name"></span>
+                                    <span id="display-client-code" class="code"></span>
+                                </div>
+                                <div class="item-sub">
+                                    <span id="display-client-ip"></span> • <span id="display-client-document"></span>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-text btn-sm"
+                                onclick="app.modules.payments.clearSelectedClient()">Cambiar</button>
+                        </div>
+
+                        <div id="payment-details-fields" style="display:none; margin-top:20px;">
+                            <input type="hidden" id="payment-client-id">
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Monto a Pagar ($)</label>
+                                    <input type="number" id="payment-amount" class="form-control" step="0.01" required
+                                        placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Método de Pago</label>
+                                    <select id="payment-method" class="form-control">
+                                        <option value="transfer">Transferencia</option>
+                                        <option value="cash">Efectivo</option>
+                                        <option value="mobile_payment">Pago Móvil</option>
+                                        <option value="others">Otros</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Referencia / Número de Operación</label>
+                                <input type="text" id="payment-reference" class="form-control"
+                                    placeholder="Ej: #123456789">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Notas Adicionales</label>
+                                <textarea id="payment-notes" class="form-control" rows="2"
+                                    placeholder="Opcional..."></textarea>
+                            </div>
+
+                            <div class="modal-actions" style="margin-top:20px;">
+                                <button type="button" class="btn-secondary"
+                                    onclick="document.getElementById('payment-modal').classList.remove('active')">Cancelar</button>
+                                <button type="submit" class="btn-premium">Confirmar Pago</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" src="/static/js/app.js?v=1.0.2"></script>
+</body>
+
+</html>
