@@ -3,7 +3,7 @@ MikroTik Service Adapter
 Implementación concreta de INetworkService para routers MikroTik
 Este módulo es completamente intercambiable - se puede crear CiscoAdapter, UbiquitiAdapter, etc.
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 import logging
 from routeros_api import RouterOsApiPool
 from routeros_api.exceptions import RouterOsApiConnectionError, RouterOsApiCommunicationError
