@@ -5,7 +5,7 @@ Implementaciones de IRepository para acceso a datos
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
-from src.infrastructure.database.models import Router, Client, Payment, RouterStatus, ClientStatus, Invoice, InvoiceItem, WhatsAppMessage, SystemSetting, Expense
+from src.infrastructure.database.models import Router, Client, Payment, RouterStatus, ClientStatus, Invoice, InvoiceItem, WhatsAppMessage, SystemSetting, Expense, ClientTrafficHistory
 from src.domain.services.audit_service import AuditService
 
 
