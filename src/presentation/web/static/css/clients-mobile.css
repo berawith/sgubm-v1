@@ -212,3 +212,23 @@
     background: #f5f3ff;
     color: #7c3aed;
 }
+
+/* Stats Bar Mobile Optimization */
+@media (max-width: 640px) {
+    .client-stats-bar {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px !important;
+        overflow-x: visible !important;
+        padding: 5px !important;
+        height: auto !important;
+    }
+
+    .stat-pill {
+        width: 100%;
+        justify-content: flex-start;
+        padding: 8px 12px !important;
+        border-radius: 12px !important;
+        margin: 0 !important;
+    }
+}

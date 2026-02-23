@@ -589,10 +589,55 @@
     background: #fef2f2;
 }
 
+@media (max-width: 1100px) {
+    #clients-view {
+        padding: 1rem;
+    }
+
+    .view-header {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 1.5rem !important;
+    }
+
+    .header-actions {
+        flex-direction: column;
+        width: 100%;
+        gap: 12px;
+    }
+
+    .premium-search-container {
+        width: 100% !important;
+        margin-left: 0;
+    }
+
+    .header-actions .btn-premium {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
 @media (max-width: 768px) {
     .clients-toolbar {
+        padding: 15px;
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .toolbar-group {
+        width: 100%;
+        gap: 10px;
+    }
+
+    .filter-item {
+        flex: 1;
+        min-width: 100%;
+    }
+
+    .select-premium {
+        width: 100%;
+        height: 44px;
+        /* Better for touch */
     }
 
     .clients-table th:nth-child(3),
@@ -600,7 +645,12 @@
     .clients-table th:nth-child(4),
     .clients-table td:nth-child(4) {
         display: none;
-        /* Hide columns on mobile */
+        /* Hide columns on mobile if table is accidentally visible */
+    }
+
+    .client-stats-bar {
+        padding: 10px 5px;
+        margin-bottom: 15px;
     }
 }
 
