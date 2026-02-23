@@ -70,7 +70,7 @@ export class ClientsModule {
         window.addEventListener('resize', () => {
             const wasMobile = this.isMobile;
             this.isMobile = window.innerWidth < 1024;
-            if (wasMobile !== this.isMobile && this.viewManager.currentSubView === 'clients') {
+            if (wasMobile !== this.isMobile && (this.viewManager.currentSubView === 'clients' || this.viewManager.currentSubView === 'clients-list')) {
                 this.renderClients();
             }
         });
@@ -1537,10 +1537,16 @@ Esta acción es seria y debe usarse con precaución.`;
         }).join('');
 
         if (this.isMobile && cardGrid) {
-            tbody.innerHTML = ''; // Clear table
+            if (tbody) tbody.innerHTML = ''; // Clear table
+            if (tableView) tableView.style.display = 'none';
+            cardGrid.style.display = 'grid';
             cardGrid.innerHTML = html;
         } else if (tbody) {
-            if (cardGrid) cardGrid.innerHTML = ''; // Clear cards
+            if (cardGrid) {
+                cardGrid.innerHTML = ''; // Clear cards
+                cardGrid.style.display = 'none';
+            }
+            if (tableView) tableView.style.display = 'block';
             tbody.innerHTML = html;
         }
     }

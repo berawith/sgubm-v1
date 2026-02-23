@@ -43,14 +43,16 @@ export class PaymentsModule {
         // Escuchar eventos del Payment Modal component
         this.setupModalListeners();
 
-        // Responsive View Tracking
-        this.isMobile = window.innerWidth < 768;
+        // Mobile View Detection
+        this.isMobile = window.innerWidth < 1024;
         window.addEventListener('resize', () => {
             const wasMobile = this.isMobile;
-            this.isMobile = window.innerWidth < 768;
-            if (wasMobile !== this.isMobile && this.viewManager.currentSubView === 'payments-list') {
-                console.log('📱 Payments Module: Responsive breakpoint crossed, re-rendering...');
-                this.renderPayments();
+            this.isMobile = window.innerWidth < 1024;
+            if (wasMobile !== this.isMobile) {
+                console.log(`📱 Responsive Switch: ${wasMobile ? 'Mobile' : 'Desktop'} -> ${this.isMobile ? 'Mobile' : 'Desktop'}`);
+                if (this.viewManager && (this.viewManager.currentSubView === 'payments-list' || this.viewManager.currentSubView === 'list')) {
+                    this.renderPayments();
+                }
             }
         });
     }
@@ -805,15 +807,18 @@ export class PaymentsModule {
     }
 
     async loadPayments() {
+        console.log('🔄 loadPayments() triggered. Current filterState:', this.filterState);
         try {
             const params = new URLSearchParams({ limit: 1000 });
 
             // Prioridad: Fechas manuales > Ciclo
             if (this.filterState.startDate || this.filterState.endDate) {
+                console.log('📅 Using Manual Date Range:', this.filterState.startDate, 'to', this.filterState.endDate);
                 if (this.filterState.startDate) params.append('start_date', this.filterState.startDate);
                 if (this.filterState.endDate) params.append('end_date', this.filterState.endDate);
             }
-            else if (this.filterState.cycle !== 'all') {
+            else if (this.filterState.cycle && this.filterState.cycle !== 'all') {
+                console.log('🔄 Using Cycle Filter:', this.filterState.cycle);
                 const range = this.getCycleRange(this.filterState.cycle);
                 if (range.start) params.append('start_date', range.start);
                 if (range.end) params.append('end_date', range.end);
@@ -822,7 +827,15 @@ export class PaymentsModule {
             if (this.filterState.method) params.append('method', this.filterState.method);
             if (this.filterState.search) params.append('search', this.filterState.search);
 
-            this.payments = await this.api.get(`/api/payments?${params.toString()}`);
+            const url = `/api/payments?${params.toString()}`;
+            console.log(`📡 Fetching payments from: ${url}`);
+
+            const response = await this.api.get(url);
+            console.log('📦 API Response received:', Array.isArray(response) ? `Array(${response.length})` : response);
+
+            this.payments = Array.isArray(response) ? response : (response.data || []);
+            console.log(`✅ ${this.payments.length} payments loaded into state.`);
+
             this.renderPayments();
             await this.loadStatistics(); // Refresh stats too
         } catch (error) {
@@ -1409,39 +1422,52 @@ export class PaymentsModule {
 
         if (!container) return;
 
+        // Ensure display logic is applied
+        this.isMobile = window.innerWidth < 1024;
+
+        if (this.isMobile) {
+            if (tableView) tableView.style.display = 'none';
+            if (cardsGrid) cardsGrid.style.display = 'grid';
+        } else {
+            if (tableView) tableView.style.display = 'block';
+            if (cardsGrid) cardsGrid.style.display = 'none';
+        }
+
         let tbody = document.getElementById('payments-table-body');
-        if (!tbody) {
-            container.innerHTML = `
-    <div class="table-container-premium glass-panel" style="margin:0; box-shadow:none;">
-        <table class="premium-data-table" style="border-spacing: 0 2px;">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>CLIENTE</th>
-                    <th>FECHA</th>
-                    <th>MONTO</th>
-                    <th>MÉTODO</th>
-                    <th>REFERENCIA</th>
-                    <th>ESTADO</th>
-                    <th style="text-align:right">ACCIONES</th>
-                </tr>
-            </thead>
-            <tbody id="payments-table-body"></tbody>
-        </table>
-    </div>
-    `;
+        if (!tbody && tableView) {
+            tableView.innerHTML = `
+                <table class="premium-data-table" style="border-spacing: 0 2px;">
+                    <thead>
+                        <tr>
+                            <th>NRO</th>
+                            <th>CLIENTE</th>
+                            <th>FECHA</th>
+                            <th>MONTO</th>
+                            <th>MÉTODO</th>
+                            <th>REFERENCIA</th>
+                            <th>ESTADO</th>
+                            <th style="text-align:right">ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody id="payments-table-body"></tbody>
+                </table>
+            `;
             tbody = document.getElementById('payments-table-body');
         }
 
         if (this.payments.length === 0) {
-            tbody.innerHTML = `
-    <tr>
-    <td colspan="8" style="text-align:center; padding: 60px; color: #94a3b8;">
-        <i class="fas fa-search-dollar" style="font-size: 2.5rem; opacity:0.1; margin-bottom:15px; display:block;"></i>
-        <p style="font-weight:600; color:#1e293b;">No hay registros</p>
-    </td>
-    </tr>
-    `;
+            const emptyHtml = `
+                <div class="empty-state-premium" style="text-align:center; padding: 60px; color: #94a3b8; grid-column: 1 / -1; width: 100%;">
+                    <i class="fas fa-search-dollar" style="font-size: 2.5rem; opacity:0.1; margin-bottom:15px; display:block;"></i>
+                    <p style="font-weight:600; color:#1e293b;">No hay registros</p>
+                </div>
+            `;
+
+            if (this.isMobile && cardsGrid) {
+                cardsGrid.innerHTML = emptyHtml;
+            } else if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="8">${emptyHtml}</td></tr>`;
+            }
             return;
         }
 
@@ -1461,41 +1487,37 @@ export class PaymentsModule {
             return (valA || '').toString().localeCompare((valB || '').toString()) * dir;
         });
 
-        // Logic to switch between table and cards
-        if (window.innerWidth < 768) {
-            if (tableView) tableView.style.display = 'none';
+        // Logic to render either table or cards
+        if (this.isMobile) {
             if (cardsGrid) {
-                cardsGrid.style.display = 'grid';
                 this.renderPaymentsCards(sorted);
             }
         } else {
-            if (tableView) tableView.style.display = 'block';
-            if (cardsGrid) cardsGrid.style.display = 'none';
+            if (tbody) {
+                tbody.innerHTML = sorted.map((payment, index) => {
+                    const sequentialNumber = index + 1;
 
-            tbody.innerHTML = sorted.map((payment, index) => {
-                const sequentialNumber = index + 1;
+                    const methodMap = {
+                        'cash': 'EFECTIVO',
+                        'transfer': 'TRANSFERENCIA',
+                        'card': 'TARJETA/DIGITAL',
+                        'pago_movil': 'PAGO MÓVIL',
+                        'zelle': 'ZELLE/INTL'
+                    };
+                    const statusMap = {
+                        'paid': 'PAGADO',
+                        'completed': 'PAGADO',
+                        'verified': 'PAGADO',
+                        'verificated': 'PAGADO',
+                        'pending': 'PENDIENTE',
+                        'voided': 'ANULADO'
+                    };
 
-                const methodMap = {
-                    'cash': 'EFECTIVO',
-                    'transfer': 'TRANSFERENCIA',
-                    'card': 'TARJETA/DIGITAL',
-                    'pago_movil': 'PAGO MÓVIL',
-                    'zelle': 'ZELLE/INTL'
-                };
-                const statusMap = {
-                    'paid': 'PAGADO',
-                    'completed': 'PAGADO',
-                    'verified': 'PAGADO',
-                    'verificated': 'PAGADO',
-                    'pending': 'PENDIENTE',
-                    'voided': 'ANULADO'
-                };
+                    const methodName = methodMap[payment.payment_method?.toLowerCase()] || payment.payment_method?.toUpperCase() || 'EFECTIVO';
+                    const statusName = statusMap[payment.status?.toLowerCase()] || payment.status?.toUpperCase() || 'PAGADO';
+                    const statusClass = (payment.status === 'paid' || payment.status === 'completed' || payment.status === 'verified' || payment.status === 'verificated') ? 'success' : 'warning';
 
-                const methodName = methodMap[payment.payment_method?.toLowerCase()] || payment.payment_method?.toUpperCase() || 'EFECTIVO';
-                const statusName = statusMap[payment.status?.toLowerCase()] || payment.status?.toUpperCase() || 'PAGADO';
-                const statusClass = (payment.status === 'paid' || payment.status === 'completed' || payment.status === 'verified' || payment.status === 'verificated') ? 'success' : 'warning';
-
-                return `
+                    return `
                 <tr class="premium-row" style="background: rgba(255,255,255,0.4);">
                     <td>
                         <div class="avatar-mini" style="width:32px; height:32px; font-size:0.8rem; background:linear-gradient(135deg, #1e293b, #0f172a); color:#38bdf8;">#${sequentialNumber}</div>
@@ -1551,12 +1573,10 @@ export class PaymentsModule {
                     </td>
                 </tr>
                 `;
-            }).join('');
+                }).join('');
+            }
         }
     }
-
-
-
 
 
     printReceipt(id) {
