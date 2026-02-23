@@ -321,27 +321,39 @@ class MonitoringManager:
         """Versión optimizada que usa metadata cacheada"""
         results = {}
         try:
-            # 1. Asegurar que los metadatos de los clientes estén en cache (Importante para background snapshots)
-            missing_ids = [cid for cid in client_ids if cid not in self.client_metadata_cache]
-            if missing_ids:
-                from src.infrastructure.database.models import Client
-                db = get_db()
-                missing_clients = db.session.query(Client).filter(Client.id.in_(missing_ids)).all()
-                for c in missing_clients:
-                    self.client_metadata_cache[c.id] = {
-                        'username': c.username,
-                        'ip': c.ip_address,
-                        'router_id': c.router_id,
-                        'last_seen_cache': c.last_seen.isoformat() if c.last_seen else None
-                    }
-                db.remove_session()
+            try:
+                missing_ids = [cid for cid in client_ids if cid not in self.client_metadata_cache]
+                if missing_ids:
+                    from src.infrastructure.database.models import Client
+                    db = get_db()
+                    missing_clients = db.session.query(Client).filter(Client.id.in_(missing_ids)).all()
+                    for c in missing_clients:
+                        self.client_metadata_cache[c.id] = {
+                            'username': c.username,
+                            'ip': c.ip_address,
+                            'router_id': c.router_id,
+                            'last_seen_cache': c.last_seen.isoformat() if c.last_seen else None
+                        }
+                    db.remove_session()
+            except Exception as e:
+                logger.error(f"Error fetching missing metadata in get_router_clients_traffic: {e}")
 
             # 2. Obtener sesiones PPPoE
-            active_sessions = adapter.get_active_pppoe_sessions()
+            try:
+                active_sessions = adapter.get_active_pppoe_sessions()
+            except Exception as e:
+                logger.error(f"Error fetching pppoe sessions: {e}")
+                active_sessions = {}
+                
             active_map_lower = {k.lower(): k for k in active_sessions.keys()}
             
-            # 3. Obtener Tabla ARP - (El adapter ya filtra invalid/disabled, pero DEBEMOS filtrar failed/incomplete)
-            arp_table = adapter.get_arp_table()
+            # 3. Obtener Tabla ARP
+            try:
+                arp_table = adapter.get_arp_table()
+            except Exception as e:
+                logger.error(f"Error fetching ARP table: {e}")
+                arp_table = []
+                
             valid_arp_ips = set()
             for arp in arp_table:
                 # Filtrar estados que indican desconexión aunque la entrada exista
@@ -350,13 +362,23 @@ class MonitoringManager:
                 if arp.get('address') and status != 'failed' and status != 'incomplete':
                     valid_arp_ips.add(arp.get('address'))
             
-            # 4. Obtener DHCP Leases - (El adapter ya filtra status=bound)
-            dhcp_leases = adapter.get_dhcp_leases()
+            # 4. Obtener DHCP Leases
+            try:
+                dhcp_leases = adapter.get_dhcp_leases()
+            except Exception as e:
+                logger.error(f"Error fetching DHCP leases: {e}")
+                dhcp_leases = []
+                
             bound_dhcp_ips = {lease.get('address') for lease in dhcp_leases if lease.get('address')}
             
             logger.debug(f"Monitor {router_id}: Found {len(active_sessions)} PPPoE, {len(valid_arp_ips)} Valid ARP, {len(bound_dhcp_ips)} Bound DHCP")
             
-            queue_stats = adapter._api_connection.get_resource('/queue/simple').get()
+            try:
+                queue_stats = adapter._api_connection.get_resource('/queue/simple').get()
+            except Exception as e:
+                logger.error(f"Error fetching Queue stats: {e}")
+                queue_stats = []
+                
             queue_map = {}
             queue_by_ip = {}
             
@@ -616,12 +638,14 @@ class MonitoringManager:
         try:
             from src.infrastructure.database.models import Client
             
-            db = get_db()
-            session = db.session
-            
-            # Obtener todos los clientes del router una sola vez
-            clients_db = session.query(Client).filter(Client.router_id == router_id).all()
-            client_map = {c.id: c for c in clients_db}
+            try:
+                db = get_db()
+                session = db.session
+                clients_db = session.query(Client).filter(Client.router_id == router_id).all()
+                client_map = {c.id: c for c in clients_db}
+            except Exception as e:
+                logger.error(f"Error accessing DB in update_clients_online_status: {e}")
+                return
 
             client_updates = []
 

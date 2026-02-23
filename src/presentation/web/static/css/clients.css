@@ -538,16 +538,16 @@
 .traffic-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     font-size: 0.8rem;
     font-family: 'JetBrains Mono', monospace;
-    justify-content: space-between;
+    justify-content: flex-start;
 }
 
 .traffic-row span {
     min-width: 65px;
     /* Fixed width for values */
-    text-align: right;
+    text-align: left;
 }
 
 .traffic-up {
