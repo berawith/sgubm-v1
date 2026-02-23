@@ -60,10 +60,17 @@ export class ClientsModule {
         }
 
         // Throttling
-        this.lastTrafficUpdate = 0;
-        this.trafficUpdateInterval = 1000; // 1Hz throttle for UI
-        this.trafficBuffer = {};
         this.isUpdatePending = false;
+
+        // Mobile View Detection
+        this.isMobile = window.innerWidth < 1024;
+        window.addEventListener('resize', () => {
+            const wasMobile = this.isMobile;
+            this.isMobile = window.innerWidth < 1024;
+            if (wasMobile !== this.isMobile && this.viewManager.currentSubView === 'clients') {
+                this.renderClients();
+            }
+        });
 
         console.log('👥 Clients Module initialized');
     }
@@ -1340,18 +1347,14 @@ Esta acción es seria y debe usarse con precaución.`;
     renderClients() {
         console.log('Rendering clients...', this.clients ? this.clients.length : 0);
 
-        // Clear DOM cache when re-rendering the whole table
+        // Clear DOM cache when re-rendering
         this.rowCache.clear();
-        if (this.clients && this.clients.length > 0) {
-            console.log('First client sample:', this.clients[0]);
-        }
-
-        if (!this.clients || this.clients.length === 0) {
-            document.getElementById('clients-table-body').innerHTML = '<tr><td colspan="9" class="no-data">No se encontraron clientes</td></tr>';
-            return;
-        }
 
         const tbody = document.getElementById('clients-table-body');
+        const cardGrid = document.getElementById('clients-cards-grid');
+
+        // Safety check for mobile detection
+        this.isMobile = window.innerWidth < 1024;
 
         // Initialize onlineStatusMap for all clients to avoid undefined if socket hasn't emitted yet
         const onlineMap = this.onlineStatusMap || {};
@@ -1361,7 +1364,7 @@ Esta acción es seria y debe usarse con precaución.`;
             }
         });
 
-        tbody.innerHTML = this.clients.map(client => {
+        const html = this.clients.map(client => {
             if (!client) return '';
             // Logic for status and colors
             const isOnline = onlineMap[client.id] === 'online';
@@ -1381,89 +1384,164 @@ Esta acción es seria y debe usarse con precaución.`;
                 statusColor = 'active';
             }
 
-            return `
-            <tr data-client-id="${client.id}">
-                <td><input type="checkbox" class="client-checkbox" value="${client.id}" onclick="app.modules.clients.updateSelection()"></td>
-                <td style="font-size: 0.75rem; color: #94a3b8; font-weight: 700;">#${client.id}</td>
-                <td>
-                    <div class="client-name-cell">
-                        <div class="client-avatar">${(client.legal_name || '?').charAt(0).toUpperCase()}</div>
-                        <div class="client-info">
-                            <span class="client-real-name">${client.legal_name}</span>
-                            <span class="client-code">${client.subscriber_code || '---'}</span>
-                        </div>
-                    </div>
-                </td>
-                <td>
-                    <div class="ip-display">${client.ip_address || 'Sin IP'}</div>
-                    <span class="credential-text">${client.mac_address || ''}</span>
-                </td>
-                <td>
-                    <div style="font-weight: 600;">${client.router ? client.router.substring(0, 15) : '---'}</div>
-                    <div style="font-size: 0.75rem; color: #64748b;">${client.zone || ''}</div>
-                </td>
-                <td>
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                        ${(client.account_balance || 0) > 0 ?
-                    `<span class="status-badge-table suspended">Pendiente</span>
-                             <div class="debt-amount negative">$${client.account_balance.toLocaleString('es-CO', { minimumFractionDigits: 0 })}</div>` :
-                    `<span class="status-badge-table active">Al día</span>
-                             <div class="debt-amount positive">$${Math.abs(client.account_balance || 0).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</div>`
-                }
-                    </div>
-                </td>
-                <td>
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <span style="font-size: 0.8rem; font-weight: 700;">${this.formatPlanName(client.plan_name)}</span>
-                        <span class="status-badge-table ${statusColor}">${statusLabel}</span>
-                        ${!isOnline && client.last_seen ? `<span class="last-seen-text">${this.formatLastSeen(client.last_seen)}</span>` : ''}
-                    </div>
-                </td>
-                <td>
-                    <div class="traffic-mini">
-                        <div class="traffic-row traffic-up">
-                            <i class="fas fa-upload" style="font-size: 0.6rem;"></i> <span class="val-up">0K</span>
-                        </div>
-                        <div class="traffic-row traffic-down">
-                            <i class="fas fa-download" style="font-size: 0.6rem;"></i> <span class="val-down">0K</span>
-                        </div>
-                    </div>
-                </td>
-                <td style="text-align: right;">
-                    <div class="action-menu" style="justify-content: flex-end;">
-                        <button class="action-btn" onclick="app.modules.clients.showClientHistory(${client.id})" title="Kardex / Pagos">
-                            <i class="fas fa-history"></i>
-                        </button>
+            if (this.isMobile) {
+                // Card View (Mobile)
+                const avatarChar = (client.legal_name || '?').charAt(0).toUpperCase();
+                const balance = client.account_balance || 0;
+                const isPositive = balance <= 0;
+                const balanceText = Math.abs(balance).toLocaleString('es-CO');
 
-                        ${!isDeleted ? `
-                            <button class="action-btn" onclick="app.modules.clients.registerPayment(${client.id})" title="Pagar">
+                return `
+                <div class="client-card-mobile" data-client-id="${client.id}">
+                    <div class="card-mobile-header">
+                        <div class="card-mobile-client-info">
+                            <div class="card-mobile-avatar">${avatarChar}</div>
+                            <div class="card-mobile-name-group">
+                                <span class="card-mobile-name">${client.legal_name}</span>
+                                <span class="card-mobile-code">${client.subscriber_code || '---'}</span>
+                            </div>
+                        </div>
+                        <div class="card-mobile-status">
+                            <span class="status-badge-table ${statusColor}" style="margin: 0;">${statusLabel}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card-mobile-body">
+                        <div class="card-mobile-data-item">
+                            <span class="data-item-label">Conexión</span>
+                            <span class="data-item-value">${client.ip_address || '---'}</span>
+                        </div>
+                        <div class="card-mobile-data-item">
+                            <span class="data-item-label">Plan</span>
+                            <span class="data-item-value">${this.formatPlanName(client.plan_name)}</span>
+                        </div>
+                        <div class="card-mobile-data-item">
+                            <span class="data-item-label">Router</span>
+                            <span class="data-item-value">${client.router || '---'}</span>
+                        </div>
+                        <div class="card-mobile-data-item">
+                            <span class="data-item-label">Balance</span>
+                            <span class="data-item-value ${isPositive ? 'ok' : 'debt'}">$${balanceText}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card-mobile-footer">
+                        <div class="card-mobile-traffic">
+                            <div class="traffic-pill up">
+                                <i class="fas fa-upload"></i> <span class="val-up">0K</span>
+                            </div>
+                            <div class="traffic-pill down">
+                                <i class="fas fa-download"></i> <span class="val-down">0K</span>
+                            </div>
+                        </div>
+                        
+                        <div class="card-mobile-actions">
+                            <button class="mobile-action-btn pay" onclick="app.modules.clients.registerPayment(${client.id})">
                                 <i class="fas fa-dollar-sign"></i>
                             </button>
-                            <button class="action-btn" onclick="app.modules.clients.editClient(${client.id})" title="Editar">
+                            <button class="mobile-action-btn edit" onclick="app.modules.clients.editClient(${client.id})">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            ${isSuspended ?
-                        `<button class="action-btn" style="color: #10b981; border-color: #10b981;" onclick="app.modules.clients.activateClient(${client.id})" title="Activar">
-                                    <i class="fas fa-play"></i>
-                                 </button>` :
-                        `<button class="action-btn" style="color: #f59e0b; border-color: #f59e0b;" onclick="app.modules.clients.suspendClient(${client.id})" title="Suspender">
-                                    <i class="fas fa-pause"></i>
-                                 </button>`
-                    }
-                        ` : `
-                            <button class="action-btn" style="color: #3b82f6; border-color: #3b82f6;" onclick="app.modules.clients.restoreClient(${client.id})" title="Restaurar">
-                                <i class="fas fa-undo"></i>
+                            <button class="mobile-action-btn more" onclick="app.modules.clients.showClientHistory(${client.id})">
+                                <i class="fas fa-ellipsis-h"></i>
                             </button>
-                        `}
-
-                        <button class="action-btn delete" onclick="app.modules.clients.deleteClient(${client.id})" title="Eliminar">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
+                        </div>
                     </div>
-                </td>
-            </tr>
-            `;
+                </div>`;
+            } else {
+                // Table View (Desktop)
+                return `
+                <tr data-client-id="${client.id}">
+                    <td><input type="checkbox" class="client-checkbox" value="${client.id}" onclick="app.modules.clients.updateSelection()"></td>
+                    <td style="font-size: 0.75rem; color: #94a3b8; font-weight: 700;">#${client.id}</td>
+                    <td>
+                        <div class="client-name-cell">
+                            <div class="client-avatar">${(client.legal_name || '?').charAt(0).toUpperCase()}</div>
+                            <div class="client-info">
+                                <span class="client-real-name">${client.legal_name}</span>
+                                <span class="client-code">${client.subscriber_code || '---'}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="ip-display">${client.ip_address || 'Sin IP'}</div>
+                        <span class="credential-text">${client.mac_address || ''}</span>
+                    </td>
+                    <td>
+                        <div style="font-weight: 600;">${client.router ? client.router.substring(0, 15) : '---'}</div>
+                        <div style="font-size: 0.75rem; color: #64748b;">${client.zone || ''}</div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            ${(client.account_balance || 0) > 0 ?
+                        `<span class="status-badge-table suspended">Pendiente</span>
+                                 <div class="debt-amount negative">$${client.account_balance.toLocaleString('es-CO', { minimumFractionDigits: 0 })}</div>` :
+                        `<span class="status-badge-table active">Al día</span>
+                                 <div class="debt-amount positive">$${Math.abs(client.account_balance || 0).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</div>`
+                    }
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <span style="font-size: 0.8rem; font-weight: 700;">${this.formatPlanName(client.plan_name)}</span>
+                            <span class="status-badge-table ${statusColor}">${statusLabel}</span>
+                            ${!isOnline && client.last_seen ? `<span class="last-seen-text">${this.formatLastSeen(client.last_seen)}</span>` : ''}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="traffic-mini">
+                            <div class="traffic-row traffic-up">
+                                <i class="fas fa-upload" style="font-size: 0.6rem;"></i> <span class="val-up">0K</span>
+                            </div>
+                            <div class="traffic-row traffic-down">
+                                <i class="fas fa-download" style="font-size: 0.6rem;"></i> <span class="val-down">0K</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="text-align: right;">
+                        <div class="action-menu" style="justify-content: flex-end;">
+                            <button class="action-btn" onclick="app.modules.clients.showClientHistory(${client.id})" title="Kardex / Pagos">
+                                <i class="fas fa-history"></i>
+                            </button>
+    
+                            ${!isDeleted ? `
+                                <button class="action-btn" onclick="app.modules.clients.registerPayment(${client.id})" title="Pagar">
+                                    <i class="fas fa-dollar-sign"></i>
+                                </button>
+                                <button class="action-btn" onclick="app.modules.clients.editClient(${client.id})" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                ${isSuspended ?
+                            `<button class="action-btn" style="color: #10b981; border-color: #10b981;" onclick="app.modules.clients.activateClient(${client.id})" title="Activar">
+                                        <i class="fas fa-play"></i>
+                                     </button>` :
+                            `<button class="action-btn" style="color: #f59e0b; border-color: #f59e0b;" onclick="app.modules.clients.suspendClient(${client.id})" title="Suspender">
+                                        <i class="fas fa-pause"></i>
+                                     </button>`
+                        }
+                            ` : `
+                                <button class="action-btn" style="color: #3b82f6; border-color: #3b82f6;" onclick="app.modules.clients.restoreClient(${client.id})" title="Restaurar">
+                                    <i class="fas fa-undo"></i>
+                                </button>
+                            `}
+    
+                            <button class="action-btn delete" onclick="app.modules.clients.deleteClient(${client.id})" title="Eliminar">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                `;
+            }
         }).join('');
+
+        if (this.isMobile && cardGrid) {
+            tbody.innerHTML = ''; // Clear table
+            cardGrid.innerHTML = html;
+        } else if (tbody) {
+            if (cardGrid) cardGrid.innerHTML = ''; // Clear cards
+            tbody.innerHTML = html;
+        }
     }
 
     updateStaticStats() {
@@ -1524,7 +1602,7 @@ Esta acción es seria y debe usarse con precaución.`;
 
         if (await this.modalManager.confirm({
             title: 'Generar Facturas Masivas',
-            content: `¿Deseas generar la factura del mes actual para los ${selectedIds.length} clientes seleccionados?`,
+            content: `¿Deseas generar la factura del mes actual para los ${selectedIds.length} clientes seleccionados ? `,
             type: 'info',
             confirmText: 'Sí, Generar Facturas'
         })) {
@@ -1636,10 +1714,10 @@ Esta acción es seria y debe usarse con precaución.`;
         Object.keys(data).forEach(clientId => {
             this.onlineStatusMap[clientId] = data[clientId].status;
 
-            // Get row from cache or DOM
+            // Get element from cache or DOM (works for tr or cards)
             let row = this.rowCache.get(clientId);
             if (!row) {
-                row = document.querySelector(`tr[data-client-id="${clientId}"]`);
+                row = document.querySelector(`[data - client - id= "${clientId}"]`);
                 if (row) this.rowCache.set(clientId, row);
             }
 
@@ -1650,7 +1728,7 @@ Esta acción es seria y debe usarse con precaución.`;
                 // Update Status Badge
                 const badge = row.querySelector('.status-badge-table');
                 if (badge && !badge.classList.contains('suspended')) { // Don't override suspended status
-                    badge.className = `status-badge-table ${isOnline ? 'active' : 'grey'}`;
+                    badge.className = `status - badge - table ${isOnline ? 'active' : 'grey'}`;
                     badge.textContent = isOnline ? 'Online' : 'Offline';
 
                     // Fix "Detected (No Queue)" on the fly if status changes
@@ -1790,7 +1868,7 @@ Esta acción es seria y debe usarse con precaución.`;
             if (this.filterState.search) params.append('search', this.filterState.search);
             if (this.filterState.financialStatus && this.filterState.financialStatus !== 'all') params.append('financial_status', this.filterState.financialStatus);
 
-            window.open(`/api/clients/export?${params.toString()}`, '_blank');
+            window.open(`/ api / clients /export?${params.toString()} `, '_blank');
         } catch (e) {
             console.error('Error exporting clients:', e);
             toast.error('Error al exportar clientes');
@@ -1822,7 +1900,7 @@ Esta acción es seria y debe usarse con precaución.`;
         if (!confirm('¿Suspender este cliente?')) return;
 
         try {
-            await this.api.post(`/api/clients/${clientId}/suspend`, {});
+            await this.api.post(`/ api / clients / ${clientId}/suspend`, {});
             await this.loadClients();
             alert('Cliente suspendido correctamente');
         } catch (error) {

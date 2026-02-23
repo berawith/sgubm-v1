@@ -1,0 +1,214 @@
+/* 
+ * Clients Mobile - Vista de Tarjetas "Ultra-Premium" 
+ * Este archivo define el diseño de tarjetas para dispositivos móviles.
+ */
+
+/* Contenedor principal de tarjetas - Solo visible en móvil */
+.clients-cards-grid {
+    display: none;
+    /* Se activa vía JS/Media Query */
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 4px;
+    margin-top: 8px;
+}
+
+@media (max-width: 1024px) {
+
+    /* Ocultar la tabla y sus wrappers */
+    .table-container-premium.glass-panel {
+        display: none !important;
+    }
+
+    .clients-cards-grid {
+        display: grid !important;
+    }
+}
+
+/* Tarjeta Individual Estilo Glassmorphism */
+.client-card-mobile {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.client-card-mobile:active {
+    transform: scale(0.98);
+    background: rgba(255, 255, 255, 0.85);
+}
+
+/* Cabecera de la Tarjeta */
+.card-mobile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.card-mobile-client-info {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.card-mobile-avatar {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 1.1rem;
+    box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2);
+}
+
+.card-mobile-name-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-mobile-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #1e293b;
+    line-height: 1.2;
+}
+
+.card-mobile-code {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+/* Cuerpo de la Tarjeta (Datos Técnicos) */
+.card-mobile-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.4);
+    padding: 10px;
+    border-radius: 12px;
+}
+
+.card-mobile-data-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.data-item-label {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.data-item-value {
+    font-size: 0.85rem;
+    color: #334155;
+    font-weight: 700;
+}
+
+/* Sección de Tráfico y Balance */
+.card-mobile-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px dashed rgba(0, 0, 0, 0.05);
+    padding-top: 10px;
+}
+
+.card-mobile-traffic {
+    display: flex;
+    gap: 8px;
+}
+
+.traffic-pill {
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 8px;
+}
+
+.traffic-pill.up {
+    color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.traffic-pill.down {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.card-mobile-balance {
+    text-align: right;
+}
+
+.balance-label {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    display: block;
+}
+
+.balance-value {
+    font-size: 0.95rem;
+    font-weight: 800;
+}
+
+.balance-value.debt {
+    color: #ef4444;
+}
+
+.balance-value.ok {
+    color: #10b981;
+}
+
+/* Botones de Acción Móviles */
+.card-mobile-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.mobile-action-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mobile-action-btn.pay {
+    background: #f0fdf4;
+    color: #16a34a;
+}
+
+.mobile-action-btn.edit {
+    background: #f8fafc;
+    color: #64748b;
+}
+
+.mobile-action-btn.more {
+    background: #f5f3ff;
+    color: #7c3aed;
+}
