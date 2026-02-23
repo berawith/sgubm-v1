@@ -164,6 +164,67 @@ export class PlansManagerModule {
         });
 
         this.renderSortIcons('plans-view', this.sortState);
+        this.renderPlansCards(sorted);
+    }
+
+    renderPlansCards(plans) {
+        const grid = document.getElementById('plans-cards-grid');
+        if (!grid) return;
+
+        grid.innerHTML = plans.map(plan => `
+            <div class="plan-card-mobile">
+                <div class="card-mobile-header">
+                    <div class="card-mobile-client-info">
+                        <div class="card-mobile-avatar" style="background: linear-gradient(135deg, #4f46e5, #818cf8);">
+                            <i class="fas fa-layer-group"></i>
+                        </div>
+                        <div class="card-mobile-name-group">
+                            <span class="card-mobile-name">${plan.name}</span>
+                            <span class="card-mobile-code">ID: ${plan.id}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-mobile-body">
+                    <div class="card-mobile-data-item">
+                        <span class="data-item-label">Velocidad</span>
+                        <span class="data-item-value">${this.formatMbps(plan.download_speed)} / ${this.formatMbps(plan.upload_speed)}</span>
+                    </div>
+                    <div class="card-mobile-data-item">
+                        <span class="data-item-label">Servicio</span>
+                        <span class="data-item-value">${plan.service_type.toUpperCase()}</span>
+                    </div>
+                    <div class="card-mobile-data-item">
+                        <span class="data-item-label">Router</span>
+                        <span class="data-item-value">${plan.router_name || 'Global'}</span>
+                    </div>
+                    <div class="card-mobile-data-item">
+                        <span class="data-item-label">Clientes</span>
+                        <span class="data-item-value">${plan.clients_count || 0} Activos</span>
+                    </div>
+                </div>
+
+                <div class="card-mobile-footer">
+                    <div class="card-mobile-balance">
+                        <span class="balance-label">Tarifa Mensual</span>
+                        <span class="balance-value ok">$${plan.monthly_price.toLocaleString()} ${plan.currency}</span>
+                    </div>
+                    <div class="card-mobile-actions">
+                        <button onclick="window.editPlanById(${plan.id})" class="mobile-action-btn edit">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button onclick="window.showPlanClients(${plan.id}, '${plan.name}')" class="mobile-action-btn more">
+                            <i class="fas fa-users"></i>
+                        </button>
+                        <button onclick="window.deletePlan(${plan.id})" 
+                                class="mobile-action-btn delete ${plan.clients_count > 0 ? 'disabled' : ''}"
+                                ${plan.clients_count > 0 ? 'disabled' : ''}>
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
     }
 
     renderSortIcons(viewId, state) {

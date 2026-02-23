@@ -223,6 +223,57 @@
     </div>
 </div>
 
+<style>
+    @media (max-width: 1024px) {
+        .header-modern {
+            flex-direction: column;
+            align-items: flex-start !important;
+            gap: 15px;
+        }
+
+        .header-modern h1 {
+            font-size: 1.5rem !important;
+        }
+
+        .modern-panel>div {
+            flex-direction: column !important;
+            align-items: stretch !important;
+        }
+
+        #metrics-search-input {
+            width: 100% !important;
+        }
+
+        #btn-metrics-search {
+            width: 100%;
+            justify-content: center;
+        }
+
+        #metrics-live-consumption {
+            width: 100%;
+            justify-content: space-around;
+            gap: 10px !important;
+            padding: 12px !important;
+        }
+
+        .form-grid.compact-grid {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 16px !important;
+        }
+
+        .modern-panel {
+            grid-column: span 12 !important;
+        }
+
+        #metrics-dashboard>div:first-child {
+            flex-direction: column;
+            align-items: stretch !important;
+            gap: 20px;
+        }
+    }
+</style>
+
 <!-- Modal Análisis Detallado LHI -->
 <div id="lhi-detail-modal" class="modal">
     <div class="modal-content"

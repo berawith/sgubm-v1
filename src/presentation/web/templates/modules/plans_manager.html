@@ -51,51 +51,54 @@
                 <!-- Dynamic Rows -->
             </tbody>
         </table>
+        <!-- Vista de Tarjetas (Móvil) -->
+        <div id="plans-cards-grid" class="plans-cards-grid">
+            <!-- Rendered by JS -->
+        </div>
     </div>
-</div>
 
-<!-- Plan Clients Modal -->
-<div id="planClientsModal" class="modal">
-    <div class="modal-content" style="max-width: 1000px; width: 90%;">
-        <div class="modal-header">
-            <div>
-                <h3 id="planClientsModalTitle">Clientes del Plan</h3>
-                <p id="planClientsModalSubtitle"
-                    style="margin: 0; font-size: 0.8rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
-                </p>
+    <!-- Plan Clients Modal -->
+    <div id="planClientsModal" class="modal">
+        <div class="modal-content" style="max-width: 1000px; width: 90%;">
+            <div class="modal-header">
+                <div>
+                    <h3 id="planClientsModalTitle">Clientes del Plan</h3>
+                    <p id="planClientsModalSubtitle"
+                        style="margin: 0; font-size: 0.8rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                    </p>
+                </div>
+                <button onclick="window.closePlanClientsModal()" class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
-            <button onclick="window.closePlanClientsModal()" class="close-btn">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="modal-body" style="padding: 0;">
-            <div style="max-height: 65vh; overflow-y: auto;">
-                <table class="data-table" style="margin-top: 0; border: none; box-shadow: none;">
-                    <thead>
-                        <tr>
-                            <th style="padding-left: 20px;" class="sortable"
-                                onclick="window.sortPlanClientsBy('legal_name')">Cliente <i class="fas fa-sort"></i>
-                            </th>
-                            <th class="sortable" onclick="window.sortPlanClientsBy('username')">Usuario <i
-                                    class="fas fa-sort"></i></th>
-                            <th class="sortable" onclick="window.sortPlanClientsBy('ip_address')">IP <i
-                                    class="fas fa-sort"></i></th>
-                            <th class="sortable" onclick="window.sortPlanClientsBy('status')">Estado <i
-                                    class="fas fa-sort"></i></th>
-                        </tr>
-                    </thead>
-                    <tbody id="planClientsTableBody">
-                        <!-- Dynamic Rows -->
-                    </tbody>
-                </table>
+            <div class="modal-body" style="padding: 0;">
+                <div style="max-height: 65vh; overflow-y: auto;">
+                    <table class="data-table" style="margin-top: 0; border: none; box-shadow: none;">
+                        <thead>
+                            <tr>
+                                <th style="padding-left: 20px;" class="sortable"
+                                    onclick="window.sortPlanClientsBy('legal_name')">Cliente <i class="fas fa-sort"></i>
+                                </th>
+                                <th class="sortable" onclick="window.sortPlanClientsBy('username')">Usuario <i
+                                        class="fas fa-sort"></i></th>
+                                <th class="sortable" onclick="window.sortPlanClientsBy('ip_address')">IP <i
+                                        class="fas fa-sort"></i></th>
+                                <th class="sortable" onclick="window.sortPlanClientsBy('status')">Estado <i
+                                        class="fas fa-sort"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody id="planClientsTableBody">
+                            <!-- Dynamic Rows -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="planClientsEmpty" style="display: none; padding: 40px; text-align: center; color: #94a3b8;">
+                    <i class="fas fa-users-slash" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+                    No hay clientes asignados a este plan.
+                </div>
             </div>
-            <div id="planClientsEmpty" style="display: none; padding: 40px; text-align: center; color: #94a3b8;">
-                <i class="fas fa-users-slash" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
-                No hay clientes asignados a este plan.
+            <div class="modal-footer">
+                <button type="button" onclick="window.closePlanClientsModal()" class="btn-secondary">Cerrar</button>
             </div>
-        </div>
-        <div class="modal-footer">
-            <button type="button" onclick="window.closePlanClientsModal()" class="btn-secondary">Cerrar</button>
         </div>
     </div>
-</div>
