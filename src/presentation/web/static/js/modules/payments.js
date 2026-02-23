@@ -42,6 +42,17 @@ export class PaymentsModule {
 
         // Escuchar eventos del Payment Modal component
         this.setupModalListeners();
+
+        // Responsive View Tracking
+        this.isMobile = window.innerWidth < 768;
+        window.addEventListener('resize', () => {
+            const wasMobile = this.isMobile;
+            this.isMobile = window.innerWidth < 768;
+            if (wasMobile !== this.isMobile && this.viewManager.currentSubView === 'payments-list') {
+                console.log('📱 Payments Module: Responsive breakpoint crossed, re-rendering...');
+                this.renderPayments();
+            }
+        });
     }
 
     setupModalListeners() {
