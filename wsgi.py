@@ -1,6 +1,9 @@
 """
 WSGI entry point for production deployment (Gunicorn + eventlet)
 """
+import eventlet
+eventlet.monkey_patch()
+
 from run import create_app
 from src.application.services.automation_manager import AutomationManager
 

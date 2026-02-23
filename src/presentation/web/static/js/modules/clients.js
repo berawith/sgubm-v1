@@ -1665,19 +1665,23 @@ Esta acción es seria y debe usarse con precaución.`;
         if (app.socket && app.socket.connected) {
             const clientIds = dataset.map(c => c.id);
 
-            // Join router room if specific router is selected
+            // Join router room(s)
             if (this.filterState.routerId) {
                 app.socket.emit('join_router', { router_id: this.filterState.routerId });
+            } else if (this.routers && this.routers.length > 0) {
+                // If "All Routers", join rooms for all existing routers to receive their traffic
+                this.routers.forEach(r => {
+                    app.socket.emit('join_router', { router_id: r.id });
+                });
             }
 
             // No matter if router is selected or not, we send client IDs.
-            // Backend will now handle finding the correct routers for these clients.
             app.socket.emit('subscribe_clients', {
                 router_id: this.filterState.routerId || null,
                 client_ids: clientIds
             });
 
-            console.log(`🔌 Suscrito al monitoreo de ${clientIds.length} clientes...`);
+            console.log(`🔌 Suscrito al monitoreo de ${clientIds.length} clientes en ${this.filterState.routerId ? '1 router' : (this.routers ? this.routers.length : 0) + ' routers'}...`);
         }
     }
 
@@ -1688,6 +1692,11 @@ Esta acción es seria y debe usarse con precaución.`;
             if (clientIds.length > 0) {
                 app.socket.emit('unsubscribe_clients', { client_ids: clientIds });
             }
+
+            // Also leave router rooms if needed, but usually viewManager handles this
+            // or we prefer staying in rooms if other modules need them.
+            // For safety, when switching views, the viewManager or the new module
+            // should handle leaving/joining.
         }
     }
 

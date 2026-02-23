@@ -109,15 +109,19 @@ class App {
         if (path.includes('/')) {
             const parts = path.split('/');
             if (parts.length >= 2) {
-                const subView = parts[1];
+                const subViewRaw = parts[1];
+                // Normalizar guiones bajos a guiones para compatibilidad
+                const subView = subViewRaw.replace(/_/g, '-');
+
                 // Lista blanca de sub-vistas soportadas por navegación
                 const knownSubViews = [
-                    'clients', 'clients-import',
-                    'payments-list', 'invoices', 'reports', 'promises', 'automation', 'sync', 'trash', 'expenses'
+                    'clients', 'clients-import', 'clients-trash',
+                    'finance-overview', 'payments-list', 'invoices', 'reports', 'promises', 'automation', 'sync', 'trash', 'expenses'
                 ];
 
                 if (knownSubViews.includes(subView)) {
                     // Navegación profunda a la sub-vista
+                    console.log(`🚀 Initial Deep Link detected: ${subView} (raw: ${subViewRaw})`);
                     this.modules.navigation.navigateToSubView(subView);
                     return;
                 }

@@ -15,22 +15,34 @@ export class ViewManager {
      * @param {string} viewId - ID de la vista sin el sufijo '-view'
      */
     showMainView(viewId) {
+        if (this._isSwitching) return;
+        this._isSwitching = true;
+
         console.log(`👁️ ViewManager: Showing main view -> ${viewId}`);
 
-        // Ocultar TODAS las vistas (principales y sub-vistas)
-        this.hideAllViews();
+        try {
+            // Ocultar todas las vistas
+            this.hideAllViews();
 
-        // Mostrar la vista solicitada
-        const view = document.getElementById(`${viewId}-view`);
-        if (view) {
-            view.classList.add('active');
-            view.style.display = 'block';
-        } else {
-            console.warn(`⚠️ ViewManager: View '${viewId}-view' not found`);
+            // Mostrar la vista solicitada
+            const view = document.getElementById(`${viewId}-view`);
+            if (view) {
+                view.classList.add('active');
+                view.style.setProperty('display', 'block', 'important');
+                view.style.setProperty('visibility', 'visible', 'important');
+                view.style.setProperty('opacity', '1', 'important');
+
+                const computed = window.getComputedStyle(view);
+                console.log(`✅ ViewManager: View '${viewId}-view' is now block. Actual display: ${computed.display}, visibility: ${computed.visibility}`);
+            } else {
+                console.warn(`⚠️ ViewManager: Main view '${viewId}-view' NOT FOUND in DOM`);
+            }
+
+            this.currentView = viewId;
+            this.currentSubView = null;
+        } finally {
+            this._isSwitching = false;
         }
-
-        this.currentView = viewId;
-        this.currentSubView = null;
     }
 
     /**
@@ -38,31 +50,51 @@ export class ViewManager {
      * @param {string} subViewId - ID de la sub-vista sin el sufijo '-view'
      */
     showSubView(subViewId) {
+        if (this._isSwitching) return;
+        this._isSwitching = true;
+
         console.log(`👁️ ViewManager: Showing sub-view -> ${subViewId}`);
 
-        // Ocultar todas las vistas
-        this.hideAllViews();
+        try {
+            // Ocultar todas las vistas
+            this.hideAllViews();
 
-        // Mostrar la sub-vista solicitada
-        const view = document.getElementById(`${subViewId}-view`);
-        if (view) {
-            view.classList.add('active');
-            view.style.display = 'block';
-        } else {
-            console.warn(`⚠️ ViewManager: Sub-view '${subViewId}-view' not found`);
+            // Mostrar la sub-vista solicitada
+            const view = document.getElementById(`${subViewId}-view`);
+            if (view) {
+                view.classList.add('active');
+                view.style.setProperty('display', 'block', 'important');
+                view.style.setProperty('visibility', 'visible', 'important');
+                view.style.setProperty('opacity', '1', 'important');
+
+                const computed = window.getComputedStyle(view);
+                console.log(`✅ ViewManager: Sub-view '${subViewId}-view' is now block. Actual display: ${computed.display}, visibility: ${computed.visibility}`);
+
+                // DIAGNOSTIC: Check if children are visible
+                if (view.children.length === 0) {
+                    console.error(`❌ ViewManager Warning: Sub-view '${subViewId}-view' HAS NO CHILDREN!`);
+                }
+            } else {
+                console.warn(`⚠️ ViewManager: Sub-view '${subViewId}-view' NOT FOUND in DOM`);
+            }
+
+            this.currentSubView = subViewId;
+        } finally {
+            this._isSwitching = false;
         }
-
-        this.currentSubView = subViewId;
     }
 
     /**
      * Oculta todas las vistas (principales y sub-vistas)
      */
     hideAllViews() {
-        document.querySelectorAll('.view, .content-view').forEach(v => {
+        console.log('🙈 ViewManager: Hiding all views...');
+        const views = document.querySelectorAll('.view, .content-view');
+        views.forEach(v => {
             v.classList.remove('active');
-            v.style.display = 'none';
+            v.style.setProperty('display', 'none', 'important');
         });
+        console.log(`   (Successfully hid ${views.length} views)`);
     }
 
     /**

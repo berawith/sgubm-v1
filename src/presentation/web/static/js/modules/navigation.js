@@ -110,35 +110,43 @@ export class NavigationModule {
     }
 
     navigate(view, params = {}) {
+        if (this._currentNavigatingView === view) return;
+        this._currentNavigatingView = view;
+
         console.log(`🧭 Navigating to: ${view}`);
 
-        // Actualizar UI del sidebar
-        document.querySelectorAll('.nav-item').forEach(item => {
-            if (item.dataset.view === view) {
-                item.classList.add('active');
-            } else {
+        try {
+            // Actualizar URL sin recargar
+            const url = view === 'dashboard' ? '/' : `/${view}`;
+            window.history.pushState({ view, params }, '', url);
+
+            // Actualizar UI del sidebar
+            document.querySelectorAll('.nav-item').forEach(item => {
+                if (item.dataset.view === view) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+
+            // Colapsar submenús
+            this.collapseSubmenu('finanzas');
+            this.collapseSubmenu('clientes');
+
+            // Limpiar estado de submenu items
+            document.querySelectorAll('.submenu-item').forEach(item => {
                 item.classList.remove('active');
-            }
-        });
+            });
 
-        // Colapsar submenús
-        this.collapseSubmenu('finanzas');
-        this.collapseSubmenu('clientes');
+            // Publicar evento de navegación (cada módulo manejará su visualización)
+            this.eventBus.publish('navigate', { view, ...params });
 
-        // Limpiar estado de submenu items
-        document.querySelectorAll('.submenu-item').forEach(item => {
-            item.classList.remove('active');
-        });
-
-        // Publicar evento de navegación (cada módulo manejará su visualización)
-        this.eventBus.publish('navigate', { view, ...params });
-
-        // Actualizar URL sin recargar
-        const url = view === 'dashboard' ? '/' : `/${view}`;
-        window.history.pushState({ view, params }, '', url);
-
-        // Actualizar título de la página
-        document.title = `SGUBM - ${view.charAt(0).toUpperCase() + view.slice(1)}`;
+            // Actualizar título de la página
+            document.title = `SGUBM - ${view.charAt(0).toUpperCase() + view.slice(1)}`;
+        } finally {
+            // Reset state to allow future navigations to same view if needed (e.g. refresh)
+            setTimeout(() => { this._currentNavigatingView = null; }, 500);
+        }
     }
 
     /**
@@ -158,129 +166,140 @@ export class NavigationModule {
         this.collapseSubmenu('finanzas');
     }
 
-    navigateToSubView(subView, params = {}) {
-        console.log(`🧭 Navigating to sub-view: ${subView}`);
+    navigateToSubView(subViewRaw, params = {}) {
+        // Normalizar a guiones siempre
+        const subView = subViewRaw.replace(/_/g, '-');
 
-        const parentMenuMap = {
-            'clients': 'clientes',
-            'clients-import': 'clientes',
-            'clients-actions': 'clientes',
-            'clients-trash': 'clientes',
-            'finance-overview': 'finanzas',
-            'payments-list': 'finanzas',
-            'invoices': 'finanzas',
-            'reports': 'finanzas',
-            'promises': 'finanzas',
-            'expenses': 'finanzas',
+        if (this._currentNavigatingSubView === subView) return;
+        this._currentNavigatingSubView = subView;
+
+        try {
+            console.log(`🧭 Navigating to sub-view: ${subView} (original: ${subViewRaw})`);
+
+            const parentMenuMap = {
+                'clients': 'clientes',
+                'clients-import': 'clientes',
+                'clients-actions': 'clientes',
+                'clients-trash': 'clientes',
+                'finance-overview': 'finanzas',
+                'payments-list': 'finanzas',
+                'invoices': 'finanzas',
+                'reports': 'finanzas',
+                'promises': 'finanzas',
+                'expenses': 'finanzas',
 
 
-            'automation': 'finanzas',
-            'sync': 'finanzas',
-            'trash': 'finanzas'
-        };
+                'automation': 'finanzas',
+                'sync': 'finanzas',
+                'trash': 'finanzas'
+            };
 
-        const parentPrefix = parentMenuMap[subView];
-        if (parentPrefix) {
-            const navParent = document.getElementById(`nav-${parentPrefix}`);
-            const submenuParent = document.getElementById(`${parentPrefix}-submenu`);
-            if (navParent && submenuParent) {
-                navParent.classList.add('expanded', 'active');
-                submenuParent.classList.add('expanded');
+            const parentPrefix = parentMenuMap[subView];
+            if (parentPrefix) {
+                const navParent = document.getElementById(`nav-${parentPrefix}`);
+                const submenuParent = document.getElementById(`${parentPrefix}-submenu`);
+                if (navParent && submenuParent) {
+                    navParent.classList.add('expanded', 'active');
+                    submenuParent.classList.add('expanded');
+                }
+
+                // Colapsar el otro menú para mantener limpieza (opcional)
+                const otherPrefix = parentPrefix === 'finanzas' ? 'clientes' : 'finanzas';
+                this.collapseSubmenu(otherPrefix);
             }
 
-            // Colapsar el otro menú para mantener limpieza (opcional)
-            const otherPrefix = parentPrefix === 'finanzas' ? 'clientes' : 'finanzas';
-            this.collapseSubmenu(otherPrefix);
-        }
-
-        // Remover active de items principales
-        document.querySelectorAll('.nav-item:not(.has-submenu)').forEach(item => {
-            item.classList.remove('active');
-        });
-
-        // Actualizar UI del submenu
-        document.querySelectorAll('.submenu-item').forEach(item => {
-            if (item.dataset.view === subView) {
-                item.classList.add('active');
-            } else {
+            // Remover active de items principales
+            document.querySelectorAll('.nav-item:not(.has-submenu)').forEach(item => {
                 item.classList.remove('active');
-            }
-        });
+            });
 
-        // Cargar datos del módulo correspondiente
-        const moduleMap = {
-            'finance-overview': 'payments',
-            'payments-list': 'payments',
-            'invoices': 'payments',
-            'reports': 'payments',
-            'promises': 'payments',
-            'expenses': 'payments',
-            'automation': 'payments',
-            'sync': 'payments',
-            'trash': 'payments',
-            'clients': 'clients',
-            'clients-import': 'clients',
-            'clients-actions': 'clients',
-            'clients-trash': 'clients'
-        };
+            // Actualizar UI del submenu
+            document.querySelectorAll('.submenu-item').forEach(item => {
+                if (item.dataset.view === subView) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
 
-        const loadMethodMap = {
-            'finance-overview': 'loadStatistics',
-            'payments-list': 'loadPayments',
-            'invoices': 'loadInvoices',
-            'reports': 'loadStatistics',
-            'promises': 'loadPromises',
-            'expenses': 'loadExpenses',
-            'automation': 'loadRouters',
-            'trash': 'loadDeletedPayments',
-            'clients': 'load',
-            'clients-import': 'loadClientsImport',
-            'clients-actions': 'loadClientsActions',
-            'clients-trash': 'loadTrash',
-            'sync': 'initSync'
-        };
+            // Cargar datos del módulo correspondiente
+            const moduleMap = {
+                'finance-overview': 'payments',
+                'payments-list': 'payments',
+                'invoices': 'payments',
+                'reports': 'payments',
+                'promises': 'payments',
+                'expenses': 'payments',
+                'automation': 'payments',
+                'sync': 'payments',
+                'trash': 'payments',
+                'clients': 'clients',
+                'clients-import': 'clients',
+                'clients-actions': 'clients',
+                'clients-trash': 'clients'
+            };
 
-        const parentModule = moduleMap[subView];
-        const moduleInstance = window.app && window.app.modules[parentModule];
+            const loadMethodMap = {
+                'finance-overview': 'loadStatistics',
+                'payments-list': 'loadPayments',
+                'invoices': 'loadInvoices',
+                'reports': 'loadStatistics',
+                'promises': 'loadPromises',
+                'expenses': 'loadExpenses',
+                'automation': 'loadRouters',
+                'trash': 'loadDeletedPayments',
+                'clients': 'load',
+                'clients-import': 'loadClientsImport',
+                'clients-actions': 'loadClientsActions',
+                'clients-trash': 'loadTrash',
+                'sync': 'initSync'
+            };
 
-        // NEW: Delegate to module's internal router if supported (e.g. Payments tabs)
-        if (moduleInstance && typeof moduleInstance.handleNavigation === 'function') {
-            console.log(`✨ Delegating navigation to ${parentModule}.handleNavigation('${subView}')`);
-            moduleInstance.handleNavigation(subView);
-        } else {
-            // Legacy/Default behavior
-            this.viewManager.showSubView(subView);
+            const parentModule = moduleMap[subView];
+            const moduleInstance = window.app && window.app.modules[parentModule];
 
-            if (moduleInstance) {
-                const loadMethod = loadMethodMap[subView];
-                if (loadMethod && typeof moduleInstance[loadMethod] === 'function') {
-                    moduleInstance[loadMethod]();
+            // NEW: Delegate to module's internal router if supported (e.g. Payments tabs)
+            if (moduleInstance && typeof moduleInstance.handleNavigation === 'function') {
+                console.log(`✨ Delegating navigation to ${parentModule}.handleNavigation('${subView}')`);
+                moduleInstance.handleNavigation(subView);
+            } else {
+                // Legacy/Default behavior
+                this.viewManager.showSubView(subView);
+
+                if (moduleInstance) {
+                    const loadMethod = loadMethodMap[subView];
+                    if (loadMethod && typeof moduleInstance[loadMethod] === 'function') {
+                        moduleInstance[loadMethod]();
+                    }
                 }
             }
+
+            // Actualizar URL sin recargar
+            const parent = moduleMap[subView];
+            const url = `/${parent}/${subView}`;
+            window.history.pushState({ view: subView, isSubView: true, params }, '', url);
+
+            // Actualizar título de la página
+            const titles = {
+                'finance-overview': 'Resumen Financiero',
+                'payments-list': 'Pagos',
+                'invoices': 'Facturas',
+                'reports': 'Reportes',
+                'promises': 'Promesas',
+                'expenses': 'Gastos y Deducibles',
+
+                'automation': 'Automatización',
+                'sync': 'Sincronización',
+                'trash': 'Papelera',
+                'clients': 'Clientes',
+                'clients-import': 'Importar Clientes',
+                'clients-trash': 'Papelera de Clientes',
+                'whatsapp': 'WhatsApp Agent'
+            };
+            document.title = `SGUBM - ${titles[subView] || subView}`;
+        } finally {
+            // Reset state to allow future navigations
+            setTimeout(() => { this._currentNavigatingSubView = null; }, 500);
         }
-
-        // Actualizar URL sin recargar
-        const parent = moduleMap[subView];
-        const url = `/${parent}/${subView}`;
-        window.history.pushState({ view: subView, isSubView: true, params }, '', url);
-
-        // Actualizar título de la página
-        const titles = {
-            'finance-overview': 'Resumen Financiero',
-            'payments-list': 'Pagos',
-            'invoices': 'Facturas',
-            'reports': 'Reportes',
-            'promises': 'Promesas',
-            'expenses': 'Gastos y Deducibles',
-
-            'automation': 'Automatización',
-            'sync': 'Sincronización',
-            'trash': 'Papelera',
-            'clients': 'Clientes',
-            'clients-import': 'Importar Clientes',
-            'clients-trash': 'Papelera de Clientes',
-            'whatsapp': 'WhatsApp Agent'
-        };
-        document.title = `SGUBM - ${titles[subView] || subView}`;
     }
 }

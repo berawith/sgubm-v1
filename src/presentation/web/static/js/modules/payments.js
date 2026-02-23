@@ -213,41 +213,37 @@ export class PaymentsModule {
     handleNavigation(subView) {
         console.log(`🧭 PaymentsModule handling navigation to: ${subView}`);
 
-        // List of views that are now standalone and should NOT use the legacy tab system
-        const standaloneViews = [
-            'trash',
-            'expenses',
-            'automation',
-            'promises',
+        // Define valid sub-views for this module
+        const validViews = [
+            'finance-overview',
+            'payments-list',
             'invoices',
             'reports',
-            'payments-list',
-            'finance-overview',
+            'promises',
+            'expenses',
+            'automation',
+            'trash',
             'sync'
         ];
 
-        if (standaloneViews.includes(subView)) {
+        if (validViews.includes(subView)) {
+            // 1. Show the view
             if (this.viewManager) {
-                // ViewManager expects the view ID prefix (e.g. 'trash' for 'trash-view')
                 this.viewManager.showSubView(subView);
             }
-            this.triggerViewLoad(subView);
-            return;
+
+            // 2. Trigger data load
+            // Normalize legacy names for data loading
+            let loadKey = subView;
+            if (subView === 'payments-list') loadKey = 'list';
+            if (subView === 'finance-overview') loadKey = 'overview';
+
+            this.triggerViewLoad(loadKey);
+        } else {
+            // Fallback for unknown views
+            console.warn(`⚠️ Unknown sub-view in PaymentsModule: ${subView}`);
+            if (this.viewManager) this.viewManager.showMainView('payments');
         }
-
-        // Fallback for legacy/unknown views -> Show main payments container
-        if (this.viewManager) {
-            this.viewManager.showMainView('payments');
-        }
-
-        // Map subView to internal legacy tab name
-        const map = {
-            'list': 'list', // Fallback
-            'overview': 'list' // Fallback
-        };
-
-        const tabName = map[subView] || 'list';
-        this.switchFinanceTab(tabName);
     }
 
     /**
@@ -1311,8 +1307,95 @@ export class PaymentsModule {
         }
     }
 
+    renderPaymentsCards(payments) {
+        const grid = document.getElementById('payments-cards-grid');
+        if (!grid) return;
+
+        grid.innerHTML = payments.map((payment, index) => {
+            const sequentialNumber = index + 1;
+            const methodMap = {
+                'cash': 'EFECTIVO',
+                'transfer': 'TRANSFERENCIA',
+                'card': 'TARJETA/DIGITAL',
+                'pago_movil': 'PAGO MÓVIL',
+                'zelle': 'ZELLE/INTL'
+            };
+            const statusMap = {
+                'paid': 'PAGADO',
+                'completed': 'PAGADO',
+                'verified': 'PAGADO',
+                'verificated': 'PAGADO',
+                'pending': 'PENDIENTE',
+                'voided': 'ANULADO'
+            };
+
+            const methodName = methodMap[payment.payment_method?.toLowerCase()] || payment.payment_method?.toUpperCase() || 'EFECTIVO';
+            const statusName = statusMap[payment.status?.toLowerCase()] || payment.status?.toUpperCase() || 'PAGADO';
+            const statusClass = (payment.status === 'paid' || payment.status === 'completed' || payment.status === 'verified' || payment.status === 'verificated') ? 'success' : 'warning';
+            const initial = (payment.client_name || 'C').charAt(0).toUpperCase();
+
+            return `
+            <div class="plan-card-mobile payment-card-premium">
+                <div class="card-mobile-header">
+                    <div class="card-mobile-client-info">
+                        <div class="avatar-mini" style="width:40px; height:40px; background:linear-gradient(135deg, #1e293b, #0f172a); color:#38bdf8; display:flex; align-items:center; justify-content:center; border-radius:10px; font-weight:800; font-size:1rem;">#${sequentialNumber}</div>
+                        <div class="card-mobile-name-group">
+                            <span class="card-mobile-name">${payment.client_name || 'Desconocido'}</span>
+                            <span class="card-mobile-code">${payment.subscriber_code || '---'}</span>
+                        </div>
+                    </div>
+                    <span class="premium-status-badge ${statusClass}" style="font-size:0.6rem;">
+                        ${statusName}
+                    </span>
+                </div>
+                
+                <div class="card-mobile-body">
+                    <div class="card-mobile-data-item">
+                        <span class="data-item-label">Monto Pagado</span>
+                        <span class="data-item-value" style="font-weight:800; color:#0f172a; font-size:1.1rem;">$${(payment.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div class="card-mobile-data-item">
+                        <span class="data-item-label">Fecha</span>
+                        <span class="data-item-value">${new Date(payment.payment_date).toLocaleDateString()} ${new Date(payment.payment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div class="card-mobile-data-item">
+                        <span class="data-item-label">Método</span>
+                        <span class="data-item-value" style="text-transform:uppercase; font-size:0.75rem; font-weight:700;">${methodName}</span>
+                    </div>
+                    <div class="card-mobile-data-item">
+                        <span class="data-item-label">Referencia</span>
+                        <span class="data-item-value" style="font-family:'JetBrains Mono';">${payment.reference || '---'}</span>
+                    </div>
+                </div>
+
+                <div class="card-mobile-footer">
+                    <div class="card-mobile-actions" style="width:100%; justify-content: space-around;">
+                        <button onclick="app.modules.payments.printReceipt(${payment.id})" class="mobile-action-btn edit" title="Imprimir">
+                            <i class="fas fa-print"></i>
+                        </button>
+                        <button onclick="app.modules.payments.showEditPaymentModal(${payment.id})" class="mobile-action-btn more" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        ${payment.status !== 'cancelled' ? `
+                        <button onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')" class="mobile-action-btn delete" title="Revertir">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                        ` : ''}
+                        <button onclick="app.modules.payments.voidPayment(${payment.id})" class="mobile-action-btn delete" title="Eliminar">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            `;
+        }).join('');
+    }
+
     renderPayments() {
-        const container = document.getElementById('payments-list');
+        const container = document.getElementById('payments-table-container');
+        const cardsGrid = document.getElementById('payments-cards-grid');
+        const tableView = document.getElementById('payments-table-view');
+
         if (!container) return;
 
         let tbody = document.getElementById('payments-table-body');
@@ -1367,87 +1450,98 @@ export class PaymentsModule {
             return (valA || '').toString().localeCompare((valB || '').toString()) * dir;
         });
 
-        tbody.innerHTML = sorted.map((payment, index) => {
-            const sequentialNumber = index + 1;
+        // Logic to switch between table and cards
+        if (window.innerWidth < 768) {
+            if (tableView) tableView.style.display = 'none';
+            if (cardsGrid) {
+                cardsGrid.style.display = 'grid';
+                this.renderPaymentsCards(sorted);
+            }
+        } else {
+            if (tableView) tableView.style.display = 'block';
+            if (cardsGrid) cardsGrid.style.display = 'none';
 
-            const methodMap = {
-                'cash': 'EFECTIVO',
-                'transfer': 'TRANSFERENCIA',
-                'card': 'TARJETA/DIGITAL',
-                'pago_movil': 'PAGO MÓVIL',
-                'zelle': 'ZELLE/INTL'
-            };
-            const statusMap = {
-                'paid': 'PAGADO',
-                'completed': 'PAGADO',
-                'verified': 'PAGADO',
-                'verificated': 'PAGADO',
-                'pending': 'PENDIENTE',
-                'voided': 'ANULADO'
-            };
+            tbody.innerHTML = sorted.map((payment, index) => {
+                const sequentialNumber = index + 1;
 
-            const methodName = methodMap[payment.payment_method?.toLowerCase()] || payment.payment_method?.toUpperCase() || 'EFECTIVO';
-            const statusName = statusMap[payment.status?.toLowerCase()] || payment.status?.toUpperCase() || 'PAGADO';
-            const statusClass = (payment.status === 'paid' || payment.status === 'completed' || payment.status === 'verified' || payment.status === 'verificated') ? 'success' : 'warning';
+                const methodMap = {
+                    'cash': 'EFECTIVO',
+                    'transfer': 'TRANSFERENCIA',
+                    'card': 'TARJETA/DIGITAL',
+                    'pago_movil': 'PAGO MÓVIL',
+                    'zelle': 'ZELLE/INTL'
+                };
+                const statusMap = {
+                    'paid': 'PAGADO',
+                    'completed': 'PAGADO',
+                    'verified': 'PAGADO',
+                    'verificated': 'PAGADO',
+                    'pending': 'PENDIENTE',
+                    'voided': 'ANULADO'
+                };
 
-            return `
-            <tr class="premium-row" style="background: rgba(255,255,255,0.4);">
-                <td>
-                    <div class="avatar-mini" style="width:32px; height:32px; font-size:0.8rem; background:linear-gradient(135deg, #1e293b, #0f172a); color:#38bdf8;">#${sequentialNumber}</div>
-                </td>
-                <td>
-                    <div style="display:flex; flex-direction:column;">
-                        <span style="font-weight:750; color:#1e293b; font-size:0.85rem;">${payment.client_name || 'Desconocido'}</span>
-                        <span style="font-size:0.7rem; color:#94a3b8; font-weight:600;">${payment.subscriber_code || '---'}</span>
-                    </div>
-                </td>
-                <td>
-                    <div style="display:flex; flex-direction:column;">
-                        <span style="font-weight:700; color:#475569; font-size:0.75rem;">${new Date(payment.payment_date).toLocaleDateString()}</span>
-                        <span style="font-size:0.65rem; color:#94a3b8;">${new Date(payment.payment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                </td>
-                <td>
-                    <div style="display:flex; flex-direction:column; align-items:flex-start;">
-                        <span style="font-weight:800; color:#0f172a; font-size:0.95rem;">$${(payment.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                        <span style="font-size:0.6rem; color:#94a3b8; letter-spacing:0.05em;">COP TRANSACCIÓN</span>
-                    </div>
-                </td>
-                <td>
-                    <span class="id-badge" style="background:white; border:1px solid #e2e8f0; font-size:0.65rem; color:#475569; text-transform:uppercase;">
-                        ${methodName}
-                    </span>
-                </td>
-                <td>
-                    <span style="font-family:'JetBrains Mono'; font-size:0.7rem; color:#64748b;">${payment.reference || '---'}</span>
-                </td>
-                <td>
-                <td>
-                    <span class="premium-status-badge ${statusClass}" style="font-size:0.6rem; padding: 4px 8px;">
-                        <i class="fas ${statusClass === 'success' ? 'fa-check-circle' : 'fa-clock'}" style="font-size:0.7rem;"></i> ${statusName}
-                    </span>
-                </td>
-                <td style="text-align: right;">
-                    <div style="display:flex; gap:6px; justify-content:flex-end;">
-                        <button class="action-btn-mini success" onclick="app.modules.payments.printReceipt(${payment.id})" title="Imprimir">
-                            <i class="fas fa-print"></i>
-                        </button>
-                        <button class="action-btn-mini" onclick="app.modules.payments.showEditPaymentModal(${payment.id})" title="Editar">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        ${payment.status !== 'cancelled' ? `
-                        <button class="action-btn-mini danger" onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')" title="Revertir">
-                            <i class="fas fa-undo"></i>
-                        </button>
-                        ` : ''}
-                        <button class="action-btn-mini danger" onclick="app.modules.payments.voidPayment(${payment.id})" title="Eliminar">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-            `;
-        }).join('');
+                const methodName = methodMap[payment.payment_method?.toLowerCase()] || payment.payment_method?.toUpperCase() || 'EFECTIVO';
+                const statusName = statusMap[payment.status?.toLowerCase()] || payment.status?.toUpperCase() || 'PAGADO';
+                const statusClass = (payment.status === 'paid' || payment.status === 'completed' || payment.status === 'verified' || payment.status === 'verificated') ? 'success' : 'warning';
+
+                return `
+                <tr class="premium-row" style="background: rgba(255,255,255,0.4);">
+                    <td>
+                        <div class="avatar-mini" style="width:32px; height:32px; font-size:0.8rem; background:linear-gradient(135deg, #1e293b, #0f172a); color:#38bdf8;">#${sequentialNumber}</div>
+                    </td>
+                    <td>
+                        <div style="display:flex; flex-direction:column;">
+                            <span style="font-weight:750; color:#1e293b; font-size:0.85rem;">${payment.client_name || 'Desconocido'}</span>
+                            <span style="font-size:0.7rem; color:#94a3b8; font-weight:600;">${payment.subscriber_code || '---'}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display:flex; flex-direction:column;">
+                            <span style="font-weight:700; color:#475569; font-size:0.75rem;">${new Date(payment.payment_date).toLocaleDateString()}</span>
+                            <span style="font-size:0.65rem; color:#94a3b8;">${new Date(payment.payment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+                            <span style="font-weight:800; color:#0f172a; font-size:0.95rem;">$${(payment.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span style="font-size:0.6rem; color:#94a3b8; letter-spacing:0.05em;">COP TRANSACCIÓN</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="id-badge" style="background:white; border:1px solid #e2e8f0; font-size:0.65rem; color:#475569; text-transform:uppercase;">
+                            ${methodName}
+                        </span>
+                    </td>
+                    <td>
+                        <span style="font-family:'JetBrains Mono'; font-size:0.7rem; color:#64748b;">${payment.reference || '---'}</span>
+                    </td>
+                    <td>
+                        <span class="premium-status-badge ${statusClass}" style="font-size:0.6rem; padding: 4px 8px;">
+                            <i class="fas ${statusClass === 'success' ? 'fa-check-circle' : 'fa-clock'}" style="font-size:0.7rem;"></i> ${statusName}
+                        </span>
+                    </td>
+                    <td style="text-align: right;">
+                        <div style="display:flex; gap:6px; justify-content:flex-end;">
+                            <button class="action-btn-mini success" onclick="app.modules.payments.printReceipt(${payment.id})" title="Imprimir">
+                                <i class="fas fa-print"></i>
+                            </button>
+                            <button class="action-btn-mini" onclick="app.modules.payments.showEditPaymentModal(${payment.id})" title="Editar">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            ${payment.status !== 'cancelled' ? `
+                            <button class="action-btn-mini danger" onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')" title="Revertir">
+                                <i class="fas fa-undo"></i>
+                            </button>
+                            ` : ''}
+                            <button class="action-btn-mini danger" onclick="app.modules.payments.voidPayment(${payment.id})" title="Eliminar">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                `;
+            }).join('');
+        }
     }
 
 

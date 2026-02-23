@@ -66,7 +66,20 @@
                 transform: translateX(0) !important;
             }
         }
+
+        /* Critical Logo Constraints to avoid FOUC */
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .logo-icon.small svg {
+            width: 18px;
+            height: 18px;
+        }
     </style>
+
+    <link rel="stylesheet" href="/static/dist/bundle.css?v=2.2.32">
 </head>
 
 <body class="bg-gray-50 text-gray-900 font-sans antialiased">
@@ -74,7 +87,7 @@
     <div class="mobile-header">
         <div class="logo">
             <div class="logo-icon small">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                     <circle cx="12" cy="12" r="10" />
                     <path d="M12 6v6l4 2" />
                 </svg>
@@ -95,7 +108,8 @@
         <div class="sidebar-header">
             <div class="logo">
                 <div class="logo-icon premium-gradient">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18"
+                        height="18">
                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                     </svg>
                 </div>
@@ -314,14 +328,12 @@
         {% include 'modules/payments/trash.html' %}
         {% include 'modules/sync.html' %}
 
-        <!-- Keep original payments.html for modals and shared components -->
-        {% include 'modules/payments.html' %}
+        <!-- Original payments.html removed to avoid duplicate IDs with modular views -->
     </main>
 
     <script src="/static/vendor/js/chart.min.js"></script>
 
-    <script type="module" src="/static/dist/bundle.js?v=2.2.32"></script>
-    <link rel="stylesheet" href="/static/dist/bundle.css?v=2.2.32">
+    <script type="module" src="/static/dist/bundle.js?v=2.2.35"></script>
     <script type="module" src="/static/js/components/sync-dashboard/sync-dashboard.component.js"></script>
 
     {% include 'modules/modals.html' %}

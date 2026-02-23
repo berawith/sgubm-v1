@@ -176,11 +176,17 @@ class MonitoringManager:
                             logger.error(f"Error en Sync Service: {e}")
                     # ---------------------------------------------------------
 
+                    # Pre-fetch interfaces for this cycle to avoid multiple calls
+                    try:
+                        all_ifaces = adapter._api_connection.get_resource('/interface').get()
+                    except:
+                        all_ifaces = []
+
                     # Traer Tráfico de Interfaces (Usando Bulk para mayor velocidad)
                     current_interfaces = list(self.monitored_interfaces.get(router_id, []))
                     traffic_data = {}
                     if current_interfaces:
-                        traffic_data = adapter.get_bulk_traffic(current_interfaces)
+                        traffic_data = adapter.get_bulk_traffic(current_interfaces, all_ifaces=all_ifaces)
                         
                         if traffic_data and self.socketio:
                             self.socketio.emit('interface_traffic', {
@@ -193,12 +199,11 @@ class MonitoringManager:
                     router_monitored_clients = list(self.monitored_clients.get(router_id, []))
                     if router_monitored_clients:
                         logger.debug(f"Monitor {router_id}: Processing traffic for {len(router_monitored_clients)} clients...")
-                        client_traffic = self.get_router_clients_traffic(router_id, router_monitored_clients, adapter)
+                        client_traffic = self.get_router_clients_traffic(router_id, router_monitored_clients, adapter, all_ifaces=all_ifaces)
                         if client_traffic and self.socketio:
-                            logger.debug(f"📤 Emitting client traffic for router {router_id}: {len(client_traffic)} clients")
-                            # Emitir tanto global como al cuarto del router
+                            logger.debug(f"📤 Emitting client traffic for router {router_id}: {len(client_traffic)} clients (Room Only)")
+                            # Emitir SOLO al cuarto del router para evitar saturar clientes que no están viendo este router
                             self.socketio.emit('client_traffic', client_traffic, room=f"router_{router_id}")
-                            self.socketio.emit('client_traffic', client_traffic)
 
                     # DASHBOARD GLOBAL TRAFFIC
                     dashboard_ifaces = self.dashboard_interfaces.get(router_id, [])
@@ -317,8 +322,11 @@ class MonitoringManager:
                 if c_id in self.monitored_clients[router_id]:
                     self.monitored_clients[router_id].remove(c_id)
 
-    def get_router_clients_traffic(self, router_id: int, client_ids: List[int], adapter: MikroTikAdapter) -> Dict[str, Any]:
-        """Versión optimizada que usa metadata cacheada"""
+    def get_router_clients_traffic(self, router_id: int, client_ids: List[int], adapter, all_ifaces: List[Dict] = None):
+        """
+        Obtiene el estado online/offline y el tráfico LIVE de una lista de clientes.
+        Retorna un dict { 'client_id': { status, upload, download, ... } }
+        """
         results = {}
         try:
             try:
@@ -501,8 +509,8 @@ class MonitoringManager:
 
                 if names_to_monitor:
                     # Usar el adapter para monitorear tráfico real de estas "interfaces"
-                    # Nota: monitor-traffic una sola vez es eficiente
-                    real_traffic = adapter.get_bulk_traffic(names_to_monitor)
+                    # MEJORA: Pasamos datos pre-obtenidos para evitar llamadas redundantes a la API
+                    real_traffic = adapter.get_bulk_traffic(names_to_monitor, all_ifaces=all_ifaces, all_queues=queue_stats)
                     for iface_name, traffic in real_traffic.items():
                         cid_str = id_to_name_map.get(iface_name)
                         if cid_str and cid_str in results:

@@ -832,6 +832,224 @@
                 color: #1e293b !important;
             }
         </style>
-        </form>
     </div>
 </div>
+
+<!-- Modal: Configuración de Reporte Premium -->
+<div id="modal-report-config" class="modal glass">
+    <div class="modal-content glass-card"
+        style="max-width: 800px; width: 90%; border-radius: 24px; padding: 0; overflow: hidden; border: 1px solid rgba(255,255,255,0.2);">
+        <div class="modal-header"
+            style="background: linear-gradient(135deg, #4f46e5, #6366f1); padding: 30px; color: white; border: none;">
+            <div>
+                <h3
+                    style="margin: 0; font-size: 1.8rem; font-weight: 800; display: flex; align-items: center; gap: 15px;">
+                    <i class="fas fa-file-invoice-dollar" style="font-size: 2rem; opacity: 0.9;"></i>
+                    Centro de Reportes Premium
+                </h3>
+                <p
+                    style="margin: 5px 0 0 45px; opacity: 0.8; font-size: 0.9rem; font-weight: 500; letter-spacing: 0.5px;">
+                    PERSONALIZA TU EXPORTACIÓN DE DATOS</p>
+            </div>
+            <span class="close" onclick="app.modules.payments.closeReportModal()"
+                style="color: white; opacity: 0.7; font-size: 2rem; cursor:pointer;">&times;</span>
+        </div>
+
+        <div class="modal-body" style="padding: 40px; background: #f8fafc;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                <!-- Columna Izquierda: Parametros -->
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <div class="form-group">
+                        <label
+                            style="font-weight: 700; color: #1e293b; margin-bottom: 10px; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">
+                            <i class="fas fa-list-ul" style="color: #6366f1; margin-right: 8px;"></i> Tipo de
+                            Información
+                        </label>
+                        <select id="report-type" class="form-control"
+                            onchange="app.modules.payments.onReportTypeChange()"
+                            style="height: 50px; border-radius: 12px; font-weight: 600; border: 2px solid #e2e8f0; padding: 0 15px;">
+                            <option value="payments">Pagos Procesados (Histórico)</option>
+                            <option value="debtors">Clientes Morosos (Cartera)</option>
+                            <option value="routers">Análisis Financiero por Router (Gráficas)</option>
+                            <option value="today">Recaudación del Día (Cierre)</option>
+                        </select>
+                    </div>
+
+                    <div id="report-date-range-group" class="form-group">
+                        <label
+                            style="font-weight: 700; color: #1e293b; margin-bottom: 10px; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">
+                            <i class="far fa-calendar-alt" style="color: #6366f1; margin-right: 8px;"></i> Rango de
+                            Fechas
+                        </label>
+                        <div class="date-range-inputs" style="display: flex; gap: 15px;">
+                            <div style="flex: 1;">
+                                <span style="font-size: 0.7rem; color: #64748b; font-weight: 700;">DESDE</span>
+                                <input type="date" id="report-date-start" class="form-control"
+                                    style="height: 45px; border-radius: 10px;">
+                            </div>
+                            <div style="flex: 1;">
+                                <span style="font-size: 0.7rem; color: #64748b; font-weight: 700;">HASTA</span>
+                                <input type="date" id="report-date-end" class="form-control"
+                                    style="height: 45px; border-radius: 10px;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label
+                            style="font-weight: 700; color: #1e293b; margin-bottom: 10px; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">
+                            <i class="fas fa-wallet" style="color: #6366f1; margin-right: 8px;"></i> Filtrar por
+                            Método
+                        </label>
+                        <select id="report-method" class="form-control"
+                            style="height: 50px; border-radius: 12px; font-weight: 600;">
+                            <option value="all">Todos los métodos</option>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="pago_movil">Pago Móvil</option>
+                            <option value="zelle">Zelle</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Columna Derecha: Formatos -->
+                <div
+                    style="background: white; padding: 25px; border-radius: 20px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                    <label
+                        style="font-weight: 700; color: #1e293b; margin-bottom: 20px; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; text-align: center;">
+                        Selecciona Formato Final
+                    </label>
+
+                    <div class="format-selection" style="display: flex; flex-direction: column; gap: 15px;">
+                        <label class="format-option-ultra" style="cursor: pointer;">
+                            <input type="radio" name="report-format" value="csv" checked style="display: none;">
+                            <div class="format-card-premium" onclick="this.previousElementSibling.click()">
+                                <div class="icon-box" style="background: rgba(79, 70, 229, 0.1); color: #4f46e5;">
+                                    <i class="fas fa-file-csv"></i>
+                                </div>
+                                <div class="format-info">
+                                    <div class="format-name">Archivo CSV</div>
+                                    <div class="format-desc">Ideal para importar en otros sistemas o Excel básico.
+                                    </div>
+                                </div>
+                                <div class="check-indicator"><i class="fas fa-check-circle"></i></div>
+                            </div>
+                        </label>
+
+                        <label class="format-option-ultra" style="cursor: pointer;">
+                            <input type="radio" name="report-format" value="pdf" style="display: none;">
+                            <div class="format-card-premium" onclick="this.previousElementSibling.click()">
+                                <div class="icon-box" style="background: rgba(225, 29, 72, 0.1); color: #e11d48;">
+                                    <i class="fas fa-file-pdf"></i>
+                                </div>
+                                <div class="format-info">
+                                    <div class="format-name">Documento PDF</div>
+                                    <div class="format-desc">Diseño premium con logo, ideal para impresión o
+                                        auditoría.</div>
+                                </div>
+                                <div class="check-indicator"><i class="fas fa-check-circle"></i></div>
+                            </div>
+                        </label>
+
+                        <label class="format-option-ultra" style="cursor: pointer;">
+                            <input type="radio" name="report-format" value="excel" style="display: none;">
+                            <div class="format-card-premium" onclick="this.previousElementSibling.click()">
+                                <div class="icon-box" style="background: rgba(22, 163, 74, 0.1); color: #16a34a;">
+                                    <i class="fas fa-file-excel"></i>
+                                </div>
+                                <div class="format-info">
+                                    <div class="format-name">Hoja de Cálculo Excel</div>
+                                    <div class="format-desc">Formateado con colores y filtros, listo para análisis
+                                        pro.</div>
+                                </div>
+                                <div class="check-indicator"><i class="fas fa-check-circle"></i></div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer"
+            style="padding: 25px 40px; background: white; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <div
+                style="display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 0.85rem; font-weight: 500;">
+                <i class="fas fa-shield-alt" style="color: #10b981;"></i> Reporte encriptado y verificado
+            </div>
+            <div style="display: flex; gap: 15px;">
+                <button class="btn-secondary" onclick="app.modules.payments.closeReportModal()"
+                    style="padding: 12px 25px; border-radius: 12px; font-weight: 600;">Cerrar</button>
+                <button class="btn-primary" id="btn-submit-report"
+                    style="background: #4f46e5; color: white !important; padding: 12px 35px; border-radius: 12px; font-weight: 700; box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);">
+                    <i class="fas fa-cloud-download-alt" style="margin-right: 8px;"></i> GENERAR Y DESCARGAR
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .format-card-premium {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 15px;
+        border-radius: 15px;
+        border: 2px solid #f1f5f9;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+    }
+
+    .format-option-ultra input:checked+.format-card-premium {
+        border-color: #4f46e5;
+        background: rgba(79, 70, 229, 0.02);
+        transform: scale(1.02);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    }
+
+    .format-card-premium .icon-box {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+
+    .format-card-premium .format-info {
+        flex-grow: 1;
+    }
+
+    .format-card-premium .format-name {
+        font-weight: 700;
+        color: #1e293b;
+        font-size: 1rem;
+    }
+
+    .format-card-premium .format-desc {
+        font-size: 0.75rem;
+        color: #64748b;
+        margin-top: 2px;
+    }
+
+    .format-card-premium .check-indicator {
+        color: #4f46e5;
+        font-size: 1.2rem;
+        opacity: 0;
+        transform: scale(0.5);
+        transition: 0.2s;
+    }
+
+    .format-option-ultra input:checked+.format-card-premium .check-indicator {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    .format-card-premium:hover {
+        border-color: #cbd5e1;
+        background: #fdfdfd;
+    }
+</style>

@@ -1022,11 +1022,12 @@ class MikroTikAdapter(INetworkService):
             logger.error(f"Error getting active sessions: {e}")
             return {}
 
-    def get_bulk_traffic(self, targets: List[str]) -> Dict[str, Dict[str, int]]:
+    def get_bulk_traffic(self, targets: List[str], all_ifaces: List[Dict] = None, all_queues: List[Dict] = None) -> Dict[str, Dict[str, int]]:
         """
         Obtiene tráfico en tiempo real procesando en ráfagas (chunks).
         Capta tanto Interfaces (PPPoE/Ethernet) usando monitor-traffic,
         como Simple Queues usando el atributo 'rate' que es lo más eficiente.
+        Permite pasar datos pre-obtenidos para evitar llamadas redundantes a la API.
         """
         if not self._is_connected or not targets:
             return {}
@@ -1038,12 +1039,14 @@ class MikroTikAdapter(INetworkService):
             results = {}
             
             # 1. IDENTIFICAR QUÉ ES INTERFAZ Y QUÉ ES COLA
-            # Obtener todas las interfaces y colas una sola vez para mapear
-            resource_iface = self._api_connection.get_resource('/interface')
-            resource_queue = self._api_connection.get_resource('/queue/simple')
+            # Usar datos proporcionados o pedirlos si no existen
+            if all_ifaces is None:
+                resource_iface = self._api_connection.get_resource('/interface')
+                all_ifaces = resource_iface.get()
             
-            all_ifaces = resource_iface.get()
-            all_queues = resource_queue.get()
+            if all_queues is None:
+                resource_queue = self._api_connection.get_resource('/queue/simple')
+                all_queues = resource_queue.get()
             
             # Tablas de búsqueda (lower_case -> exact_name)
             iface_map = {i.get('name').lower(): i.get('name') for i in all_ifaces if i.get('name')}
@@ -1054,6 +1057,7 @@ class MikroTikAdapter(INetworkService):
 
             for target in valid_requested:
                 target_l = target.lower()
+                # Patrones de búsqueda comunes para MikroTik
                 patterns = [target_l, f"<{target_l}>", f"pppoe-{target_l}", f"<pppoe-{target_l}>"]
                 
                 # A. Priorizar Interface (PPPoE activo suele tener interface dinámica)
@@ -1078,10 +1082,11 @@ class MikroTikAdapter(INetworkService):
 
             # 2. PROCESAR INTERFACES CON MONITOR-TRAFFIC (Para datos de ráfaga precisos)
             if interfaces_to_monitor:
-                chunk_size = 40
+                chunk_size = 40 # Límite razonable para la API
                 iface_real_names = [pair[0] for pair in interfaces_to_monitor]
                 name_to_target_map = {pair[0]: pair[1] for pair in interfaces_to_monitor}
                 
+                resource_iface = self._api_connection.get_resource('/interface')
                 for i in range(0, len(iface_real_names), chunk_size):
                     chunk = iface_real_names[i:i + chunk_size]
                     try:
