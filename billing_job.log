@@ -1,6 +1,0 @@
-2026-02-05 09:51:11,418 - src.application.events.event_bus - INFO - Handler subscribed to event: client.created
-2026-02-05 09:51:11,419 - src.application.events.event_bus - INFO - Handler subscribed to event: client.suspended
-2026-02-05 09:51:11,527 - src.application.services.monitoring_manager - INFO - MonitoringManager: SocketIO injected
-2026-02-05 09:51:11,614 - src.application.services.monitoring_manager - INFO - Started monitoring thread for router 1
-2026-02-05 09:51:11,617 - run - INFO - Application started in development mode
-2026-02-05 09:51:11,693 - src.infrastructure.mikrotik.adapter - INFO - Connected to MikroTik router at 12.12.12.1:8738

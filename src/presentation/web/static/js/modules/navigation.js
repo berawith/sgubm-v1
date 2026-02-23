@@ -32,13 +32,29 @@ export class NavigationModule {
 
         // Manejar submenu toggle (Finanzas)
         const navFinanzas = document.getElementById('nav-finanzas');
-        const submenu = document.getElementById('finanzas-submenu');
+        const submenuFinanzas = document.getElementById('finanzas-submenu');
 
-        if (navFinanzas && submenu) {
+        if (navFinanzas && submenuFinanzas) {
             navFinanzas.addEventListener('click', (e) => {
                 e.preventDefault();
                 navFinanzas.classList.toggle('expanded');
-                submenu.classList.toggle('expanded');
+                submenuFinanzas.classList.toggle('expanded');
+                // Colapsar otros submenús si estuviera abierto
+                this.collapseSubmenu('clientes');
+            });
+        }
+
+        // Manejar submenu toggle (Clientes)
+        const navClientes = document.getElementById('nav-clientes');
+        const submenuClientes = document.getElementById('clientes-submenu');
+
+        if (navClientes && submenuClientes) {
+            navClientes.addEventListener('click', (e) => {
+                e.preventDefault();
+                navClientes.classList.toggle('expanded');
+                submenuClientes.classList.toggle('expanded');
+                // Colapsar otros submenús si estuviera abierto
+                this.collapseSubmenu('finanzas');
             });
         }
 
@@ -105,8 +121,9 @@ export class NavigationModule {
             }
         });
 
-        // Colapsar submenú de Finanzas
-        this.collapseFinanzasSubmenu();
+        // Colapsar submenús
+        this.collapseSubmenu('finanzas');
+        this.collapseSubmenu('clientes');
 
         // Limpiar estado de submenu items
         document.querySelectorAll('.submenu-item').forEach(item => {
@@ -125,26 +142,55 @@ export class NavigationModule {
     }
 
     /**
-     * Colapsa el submenú de Finanzas (helper method)
+     * Colapsa un submenú específico
+     * @param {string} prefix - 'finanzas' o 'clientes'
      */
-    collapseFinanzasSubmenu() {
-        const navFinanzas = document.getElementById('nav-finanzas');
-        const submenu = document.getElementById('finanzas-submenu');
-        if (navFinanzas && submenu) {
-            navFinanzas.classList.remove('expanded');
+    collapseSubmenu(prefix) {
+        const nav = document.getElementById(`nav-${prefix}`);
+        const submenu = document.getElementById(`${prefix}-submenu`);
+        if (nav && submenu) {
+            nav.classList.remove('expanded');
             submenu.classList.remove('expanded');
         }
+    }
+
+    collapseFinanzasSubmenu() {
+        this.collapseSubmenu('finanzas');
     }
 
     navigateToSubView(subView, params = {}) {
         console.log(`🧭 Navigating to sub-view: ${subView}`);
 
-        // Asegurar que el menú padre esté expandido
-        const navFinanzas = document.getElementById('nav-finanzas');
-        const submenu = document.getElementById('finanzas-submenu');
-        if (navFinanzas && submenu) {
-            navFinanzas.classList.add('expanded', 'active');
-            submenu.classList.add('expanded');
+        const parentMenuMap = {
+            'clients': 'clientes',
+            'clients-import': 'clientes',
+            'clients-actions': 'clientes',
+            'clients-trash': 'clientes',
+            'finance-overview': 'finanzas',
+            'payments-list': 'finanzas',
+            'invoices': 'finanzas',
+            'reports': 'finanzas',
+            'promises': 'finanzas',
+            'expenses': 'finanzas',
+
+
+            'automation': 'finanzas',
+            'sync': 'finanzas',
+            'trash': 'finanzas'
+        };
+
+        const parentPrefix = parentMenuMap[subView];
+        if (parentPrefix) {
+            const navParent = document.getElementById(`nav-${parentPrefix}`);
+            const submenuParent = document.getElementById(`${parentPrefix}-submenu`);
+            if (navParent && submenuParent) {
+                navParent.classList.add('expanded', 'active');
+                submenuParent.classList.add('expanded');
+            }
+
+            // Colapsar el otro menú para mantener limpieza (opcional)
+            const otherPrefix = parentPrefix === 'finanzas' ? 'clientes' : 'finanzas';
+            this.collapseSubmenu(otherPrefix);
         }
 
         // Remover active de items principales
@@ -161,51 +207,79 @@ export class NavigationModule {
             }
         });
 
-        // DELEGAR visualización a ViewManager
-        this.viewManager.showSubView(subView);
-
         // Cargar datos del módulo correspondiente
         const moduleMap = {
+            'finance-overview': 'payments',
             'payments-list': 'payments',
             'invoices': 'payments',
             'reports': 'payments',
             'promises': 'payments',
-            'batch-payments': 'payments',
+            'expenses': 'payments',
             'automation': 'payments',
-            'trash': 'payments'
+            'sync': 'payments',
+            'trash': 'payments',
+            'clients': 'clients',
+            'clients-import': 'clients',
+            'clients-actions': 'clients',
+            'clients-trash': 'clients'
         };
 
         const loadMethodMap = {
+            'finance-overview': 'loadStatistics',
             'payments-list': 'loadPayments',
             'invoices': 'loadInvoices',
             'reports': 'loadStatistics',
             'promises': 'loadPromises',
-            'batch-payments': 'loadBatchClients',
+            'expenses': 'loadExpenses',
             'automation': 'loadRouters',
-            'trash': 'loadDeletedPayments'
+            'trash': 'loadDeletedPayments',
+            'clients': 'load',
+            'clients-import': 'loadClientsImport',
+            'clients-actions': 'loadClientsActions',
+            'clients-trash': 'loadTrash',
+            'sync': 'initSync'
         };
 
         const parentModule = moduleMap[subView];
-        if (window.app && window.app.modules[parentModule]) {
-            const loadMethod = loadMethodMap[subView];
-            if (loadMethod && typeof window.app.modules[parentModule][loadMethod] === 'function') {
-                window.app.modules[parentModule][loadMethod]();
+        const moduleInstance = window.app && window.app.modules[parentModule];
+
+        // NEW: Delegate to module's internal router if supported (e.g. Payments tabs)
+        if (moduleInstance && typeof moduleInstance.handleNavigation === 'function') {
+            console.log(`✨ Delegating navigation to ${parentModule}.handleNavigation('${subView}')`);
+            moduleInstance.handleNavigation(subView);
+        } else {
+            // Legacy/Default behavior
+            this.viewManager.showSubView(subView);
+
+            if (moduleInstance) {
+                const loadMethod = loadMethodMap[subView];
+                if (loadMethod && typeof moduleInstance[loadMethod] === 'function') {
+                    moduleInstance[loadMethod]();
+                }
             }
         }
 
         // Actualizar URL sin recargar
-        const url = `/finanzas/${subView}`;
+        const parent = moduleMap[subView];
+        const url = `/${parent}/${subView}`;
         window.history.pushState({ view: subView, isSubView: true, params }, '', url);
 
         // Actualizar título de la página
         const titles = {
+            'finance-overview': 'Resumen Financiero',
             'payments-list': 'Pagos',
             'invoices': 'Facturas',
             'reports': 'Reportes',
             'promises': 'Promesas',
-            'batch-payments': 'Gestión Masiva',
+            'expenses': 'Gastos y Deducibles',
+
             'automation': 'Automatización',
-            'trash': 'Papelera'
+            'sync': 'Sincronización',
+            'trash': 'Papelera',
+            'clients': 'Clientes',
+            'clients-import': 'Importar Clientes',
+            'clients-trash': 'Papelera de Clientes',
+            'whatsapp': 'WhatsApp Agent'
         };
         document.title = `SGUBM - ${titles[subView] || subView}`;
     }

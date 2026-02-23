@@ -60,6 +60,9 @@ def create_app() -> Flask:
         from src.infrastructure.database.db_manager import get_db
         get_db().remove_session()
     
+    from src.presentation.api.health_controller import health_bp
+    app.register_blueprint(health_bp)
+    
     return app
 
 
@@ -88,6 +91,9 @@ def _register_blueprints(app: Flask):
     from src.presentation.api.payments_controller import payments_bp
     from src.presentation.api.billing_controller import billing_bp
     from src.presentation.api.plans_controller import plans_bp
+    from src.presentation.api.sync_controller import sync_bp
+    from src.presentation.api.reports_controller import reports_bp
+    from src.presentation.api.whatsapp_controller import whatsapp_bp
     
     # Registrar blueprints
     app.register_blueprint(dashboard_bp)
@@ -96,8 +102,11 @@ def _register_blueprints(app: Flask):
     app.register_blueprint(payments_bp)
     app.register_blueprint(billing_bp)
     app.register_blueprint(plans_bp)
+    app.register_blueprint(sync_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(whatsapp_bp)
     
-    logger.info('✅ Blueprints registered: dashboard, routers, clients, payments')
+    logger.info('✅ Blueprints registered: dashboard, routers, clients, payments, billing, plans, sync, reports, whatsapp')
 
 
 import threading

@@ -1,0 +1,7 @@
+REPORTE DE AUDITORÍA DE IPs DUPLICADAS
+========================================
+
+IP: 172.16.41.108 | Código: CLI-0425 | Nombre: Rigoberto García MT | Router: MI JARDIN
+IP: 172.16.41.108 | Código: CLI-0523 | Nombre: Rigoberto García MT (108) | Router: MI JARDIN
+IP: 172.16.41.93 | Código: CLI-0426 | Nombre: Lisbeth Rincón  | Router: MI JARDIN
+IP: 172.16.41.93 | Código: CLI-0528 | Nombre: Lisbeth Rincón  | Router: MI JARDIN

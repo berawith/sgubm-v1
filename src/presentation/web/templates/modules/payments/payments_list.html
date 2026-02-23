@@ -18,6 +18,28 @@
                         oninput="app.modules.payments.onSearchInput(this.value)">
                 </div>
             </div>
+
+            <div class="date-range-minimalist"
+                style="display: flex !important; flex-direction: row !important; align-items: center; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0 10px; height: 40px; gap: 8px; box-shadow: var(--shadow-sm);">
+                <i class="far fa-calendar-alt" style="color: #94a3b8; font-size: 0.85rem;"></i>
+                <input type="date" id="payment-date-start" class="input-minimal"
+                    onchange="app.modules.payments.onDateFilterChange()"
+                    style="border: none; background: transparent; font-size: 0.85rem; width: 110px; color: #475569; outline: none;">
+                <span style="color: #cbd5e1;">&rarr;</span>
+                <input type="date" id="payment-date-end" class="input-minimal"
+                    onchange="app.modules.payments.onDateFilterChange()"
+                    style="border: none; background: transparent; font-size: 0.85rem; width: 110px; color: #475569; outline: none;">
+            </div>
+
+            <div class="filter-item" style="min-width: 140px;">
+                <select id="payment-cycle-filter" class="input-premium"
+                    onchange="app.modules.payments.onCycleFilterChange(this.value)"
+                    style="height: 40px !important; font-size: 0.85rem !important; padding: 0 12px !important; background-position: right 8px center !important;">
+                    <option value="2026-02" selected>Mes Actual</option>
+                    <option value="2026-01">Anterior</option>
+                    <option value="all">Todo</option>
+                </select>
+            </div>
         </div>
         <div class="toolbar-actions">
             <button class="btn-secondary btn-icon" onclick="app.modules.payments.loadPayments()" title="Recargar">

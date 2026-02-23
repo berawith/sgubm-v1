@@ -1,228 +1,12 @@
-<!-- Clients View -->
-<div id="clients-view" class="content-view">
-    <div class="view-header">
-        <div class="header-left">
-            <h1 class="page-title">Gestión de Clientes</h1>
-            <p class="page-subtitle">Administración de suscriptores y servicios</p>
-        </div>
-        <div class="header-actions">
-            <button class="btn-primary" onclick="window.clientModal.showCreate()" style="margin-right: 12px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                    style="margin-right:8px">
-                    <path d="M12 5v14M5 12h14" />
-                </svg>
-                Nuevo Cliente
-            </button>
-            <button class="btn-secondary" onclick="app.modules.clients.showImportModal()">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                    style="margin-right:8px">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                </svg>
-                Importar desde Router
-            </button>
-            <div class="premium-search-container">
-                <div class="search-glass-wrapper">
-                    <i class="fas fa-search search-icon"></i>
-                    <input type="text" id="client-search" placeholder="Buscar suscriptor por nombre, ID o IP..."
-                        oninput="app.modules.clients.onSearchInput(this.value)">
-                    <button id="clear-search" class="clear-btn"
-                        onclick="document.getElementById('client-search').value=''; app.modules.clients.onSearchInput('')">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+{% include 'modules/clients/list.html' %}
+{% include 'modules/clients/import.html' %}
+{% include 'modules/clients/actions.html' %}
+{% include 'modules/clients/trash.html' %}
 
-    <!-- Toolbar de Filtros Avanzados -->
-    <div class="clients-toolbar glass-panel">
-        <div class="toolbar-group">
-            <div class="filter-item">
-                <label>Router</label>
-                <select id="filter-router" class="select-premium" onchange="app.modules.clients.applyFilters()">
-                    <option value="">Todos los Routers</option>
-                </select>
-            </div>
-            <div class="filter-item">
-                <label>Estado</label>
-                <select id="filter-status" class="select-premium" onchange="app.modules.clients.applyFilters()">
-                    <option value="all">Todos</option>
-                    <option value="active">Activos</option>
-                    <option value="suspended">Suspendidos</option>
-                    <option value="online">En Línea (MikroTik)</option>
-                    <option value="offline">Fuera de Línea</option>
-                    <option value="deleted">Eliminados (Archivo)</option>
-                </select>
-            </div>
-            <div class="filter-item">
-                <label>Plan</label>
-                <select id="filter-plan" class="select-premium" onchange="app.modules.clients.applyFilters()">
-                    <option value="">Todos los Planes</option>
-                </select>
-            </div>
-            <!-- Toolbar now only contains router, status and plan filters -->
-        </div>
-        <div class="toolbar-actions">
-            <button class="btn-secondary btn-icon" onclick="app.modules.clients.loadClients()" title="Recargar">
-                <i class="fas fa-sync-alt"></i>
-            </button>
-            <button class="btn-premium btn-icon" onclick="window.clientModal.showCreate()" title="Nuevo Cliente">
-                <i class="fas fa-plus"></i>
-            </button>
-        </div>
-    </div>
-
-    <!-- Client Stats Bar (Rediseñado) -->
-    <div id="client-stats-bar" class="client-stats-bar compact">
-        <div class="stat-pill total">
-            <i class="fas fa-users"></i>
-            <span id="count-total">0</span> Total
-        </div>
-        <div class="stat-pill online">
-            <i class="fas fa-circle"></i>
-            <span id="count-online">0</span> Online
-        </div>
-        <div class="stat-pill offline">
-            <i class="far fa-circle"></i>
-            <span id="count-offline">0</span> Offline
-        </div>
-        <div class="stat-pill suspended">
-            <i class="fas fa-ban"></i>
-            <span id="count-suspended">0</span> Susp.
-        </div>
-    </div>
-
-    <!-- Tabla de Clientes -->
-    <div class="table-container clients-table-wrapper">
-        <table class="data-table clients-table">
-            <thead>
-                <tr>
-                    <th width="30"><input type="checkbox" id="select-all-clients"
-                            onclick="app.modules.clients.toggleSelectAll(this)"></th>
-                    <th width="40">ID</th>
-                    <th>Cliente</th>
-                    <th>IP / Credenciales</th>
-                    <th>Router / Zona</th>
-                    <th>Estado Pago</th>
-                    <th>Plan / Estado</th>
-                    <th width="110">Consumo (Live)</th>
-                    <th width="130">Acciones</th>
-                </tr>
-            </thead>
-            <tbody id="clients-table-body">
-                <!-- Injected by JS -->
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Pagination (Opcional, estructura base) -->
-    <div class="pagination-bar" id="clients-pagination" style="display:none;">
-        <button class="btn-text" id="prev-page">Anterior</button>
-        <span id="page-info">Página 1</span>
-        <button class="btn-text" id="next-page">Siguiente</button>
-    </div>
-
-    <!-- Floating Bulk Actions Bar -->
-    <div id="bulk-actions-bar" class="bulk-actions-bar">
-        <div class="bulk-info">
-            <span class="selected-count-badge" id="selected-count-label">0</span>
-            <span class="bulk-text">Seleccionados</span>
-        </div>
-        <div class="bulk-actions">
-            <div class="bulk-action-item">
-                <select id="bulk-plan-select" class="select-premium compact">
-                    <option value="">Cambiar Plan a...</option>
-                </select>
-                <button class="btn-primary" onclick="app.modules.clients.applyBulkPlan()">Aplicar</button>
-            </div>
-            <div class="divider"></div>
-            <button class="btn-secondary btn-icon" onclick="app.modules.clients.clearSelection()" title="Deseleccionar">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Import Modal -->
-<div id="import-clients-modal" class="modal">
-    <div class="modal-content large-modal">
-        <div class="modal-header">
-            <div>
-                <h3>Importar Clientes</h3>
-                <p class="modal-subtitle-text">SINCRONIZACIÓN DESDE ROUTER MIKROTIK</p>
-            </div>
-            <button class="close-btn"
-                onclick="document.getElementById('import-clients-modal').classList.remove('active')">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="modal-body">
-            <!-- Step 1: Select Router -->
-            <div class="import-step" id="import-step-1">
-                <div class="form-group">
-                    <label>Seleccionar Router Origen</label>
-                    <select id="import-router-select" class="form-select">
-                        <option value="">Cargando routers...</option>
-                    </select>
-                </div>
-                <div class="step-actions">
-                    <button class="btn-primary" onclick="app.modules.clients.scanRouter()">
-                        <i class="fas fa-search"></i> Escanear Clientes
-                    </button>
-                </div>
-            </div>
-
-            <!-- Step 2: Preview & Select -->
-            <div class="import-step" id="import-step-2" style="display:none;">
-                <div class="scan-summary">
-                    <p>Se encontraron <strong id="scan-total">0</strong> clientes en el router.
-                    </p>
-                    <p class="text-warning" id="scan-duplicates" style="display:none">
-                        <i class="fas fa-exclamation-triangle"></i> Algunos clientes ya existen
-                        en la base de
-                        datos.
-                    </p>
-                </div>
-
-                <div class="step-actions right-align" id="import-toolbar-top"
-                    style="gap: 12px; justify-content: flex-end; margin-bottom: 20px;">
-                    <button class="btn-secondary" onclick="app.modules.clients.resetImport()">Cancelar</button>
-                    <button class="btn-primary" onclick="app.modules.clients.executeImport()">
-                        Importar Seleccionados (<span id="selected-count">0</span>)
-                    </button>
-                </div>
-
-                <div class="table-container preview-table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th width="40"><input type="checkbox" id="select-all-import"></th>
-                                <th>Usuario (PPPoE/Hotspot)</th>
-                                <th>IP</th>
-                                <th>Perfil</th>
-                                <th>Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody id="import-preview-body">
-                            <!-- Rows injected via JS -->
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Loading State -->
-                <div id="import-loading" style="display:none;" class="loading-overlay-modal">
-                    <div class="spinner"></div>
-                    <p id="import-loading-text">Conectando al router...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Delete Confirmation Modal -->
-<div id="delete-client-modal" class="modal">
-    <div class="modal-content" style="max-width: 480px;">
+<div id="delete-client-modal" class="modal glass">
+    <!-- Original delete modal content -->
+    <div class="modal-content premium-card glass"
+        style="max-width: 480px; background: rgba(255,255,255,0.85); border: none;">
         <div class="modal-header"
             style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; border: none;">
             <div>
@@ -237,7 +21,6 @@
                 <i class="fas fa-times"></i>
             </button>
         </div>
-
         <div class="modal-body" style="padding: 30px; background: white;">
             <div style="text-align: center; margin-bottom: 25px;">
                 <p
@@ -247,11 +30,9 @@
                     style="font-size: 1.5rem; color: #0f172a; font-weight: 850; margin: 0; line-height: 1.2;">
                     Cargando...</h4>
             </div>
-
             <div style="display: flex; flex-direction: column; gap: 12px;">
-                <!-- Option 1: System Only -->
                 <button class="btn-secondary" onclick="app.modules.clients.confirmDelete('local')"
-                    style="justify-content: flex-start; padding: 18px; border-radius: 16px; border: 1px solid #e2e8f0; transition: all 0.3s ease; height: auto; background: white; width: 100%;">
+                    style="justify-content: flex-start; padding: 18px; border-radius: 16px; border: 1px solid #e2e8f0; height: auto; background: white; width: 100%;">
                     <div style="display: flex; gap: 15px; align-items: flex-start; text-align: left;">
                         <div
                             style="background: #fff7ed; color: #f59e0b; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
@@ -262,38 +43,27 @@
                                 Sistema (Archivar)</div>
                             <p
                                 style="font-size: 0.85rem; color: #64748b; line-height: 1.4; font-weight: 400; margin: 0;">
-                                Lo quita de la lista principal pero <strong>mantiene su cuenta en el MikroTik</strong>.
-                                Podrás restaurarlo después.
-                            </p>
+                                Lo quita de la lista principal pero mantiene su cuenta en el MikroTik.</p>
                         </div>
                     </div>
                 </button>
-
-                <!-- Option 2: Global -->
                 <button class="btn-danger" onclick="app.modules.clients.confirmDelete('global')"
-                    style="justify-content: flex-start; padding: 18px; border-radius: 16px; background: #fff1f2; border: 1px solid #fecaca; color: #e11d48; transition: all 0.3s ease; height: auto; width: 100%;">
+                    style="justify-content: flex-start; padding: 18px; border-radius: 16px; background: #fff1f2; border: 1px solid #fecaca; color: #e11d48; height: auto; width: 100%;">
                     <div style="display: flex; gap: 15px; align-items: flex-start; text-align: left;">
                         <div
                             style="background: #ffe4e6; color: #e11d48; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                             <i class="fas fa-exclamation-triangle"></i>
                         </div>
                         <div style="flex: 1;">
-                            <div style="font-weight: 800; font-size: 1rem; margin-bottom: 4px; color: #e11d48;">Eliminar
-                                de Todo (Permanente)</div>
+                            <div style="font-weight: 800; font-size: 1rem; margin-bottom: 4px; color: #e11d48;">
+                                Eliminación
+                                Permanente (Sistema)</div>
                             <p
                                 style="font-size: 0.85rem; opacity: 0.9; color: #991b1b; line-height: 1.4; font-weight: 400; margin: 0;">
-                                Elimina al cliente de la base de datos <strong>Y borra su configuración del
-                                    Router</strong>. Acción irreversible.
-                            </p>
+                                Elimina al cliente de la base de datos de forma definitiva.</p>
                         </div>
                     </div>
                 </button>
-            </div>
-
-            <div
-                style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: center; gap: 8px; color: #94a3b8; font-size: 0.8rem; font-weight: 600;">
-                <i class="fas fa-fingerprint"></i>
-                <span>La numeración (ID/Código) no se reorganiza para mantener la integridad histórica.</span>
             </div>
         </div>
     </div>

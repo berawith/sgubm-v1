@@ -1,0 +1,68 @@
+<div class="modal-content large-modal">
+    <div class="modal-header">
+        <div>
+            <h3 id="month-detail-title">Detalle Mensual</h3>
+            <p id="month-detail-period" class="modal-subtitle-text">REPORTE DE RECAUDACIÓN</p>
+        </div>
+        <button type="button" class="close-btn" data-close>
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <div class="modal-body" style="padding: 0;">
+        <!-- Featured Stats Card -->
+        <div class="premium-stats-banner">
+            <div class="month-stat-card success">
+                <span class="stat-label">Recaudado</span>
+                <span class="stat-value" id="month-val-collected">$0.00</span>
+                <div class="stat-icon"><i class="fas fa-wallet"></i></div>
+            </div>
+            <div class="month-stat-card info">
+                <span class="stat-label">Esperado</span>
+                <span class="stat-value" id="month-val-billed">$0.00</span>
+                <div class="stat-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+            </div>
+            <div class="month-stat-card warning">
+                <span class="stat-label">Pendiente</span>
+                <span class="stat-value" id="month-val-missing">$0.00</span>
+                <div class="stat-icon"><i class="fas fa-clock"></i></div>
+            </div>
+            <div class="month-stat-card efficiency">
+                <span class="stat-label">Efectividad</span>
+                <div class="efficiency-container">
+                    <span class="stat-value" id="month-efficiency-text">0%</span>
+                    <div class="efficiency-track">
+                        <div class="efficiency-fill-premium" id="month-efficiency-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="month-content-padding" style="padding: 24px 32px;">
+            <h4 class="premium-section-title">
+                <i class="fas fa-list-ul"></i> Desglose de Pagos Recibidos
+            </h4>
+
+            <div id="month-detail-list-container" class="history-list-premium">
+                <table class="premium-data-table">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Fecha</th>
+                            <th>Referencia</th>
+                            <th>Monto</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="month-payments-list">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-footer" style="background: white; border-top: 1px solid #f1f5f9; margin: 0; padding: 20px 32px;">
+        <button type="button" class="btn-secondary" data-close>Cerrar Detalle</button>
+    </div>
+</div>

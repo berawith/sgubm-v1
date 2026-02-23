@@ -1,0 +1,151 @@
+/* PRINT STYLES - SGUBM Professional Reporting */
+@media print {
+
+    /* Hide non-printable elements */
+    .sidebar,
+    .mobile-header,
+    .view-header button,
+    .glass-panel:not(.printable-report),
+    .btn-primary,
+    .btn-secondary,
+    .no-print,
+    #reports-view>.no-print,
+    .mobile-menu-toggle {
+        display: none !important;
+    }
+
+    /* Reset layout for print */
+    body {
+        background: #fff !important;
+        color: #000 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .main-content {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        box-shadow: none !important;
+    }
+
+    .view {
+        padding: 0 !important;
+        background: transparent !important;
+    }
+
+    /* Selection printing: Hide unselected rows */
+    .premium-row.no-print-row {
+        display: none !important;
+    }
+
+    /* Data Tables Enhancement */
+    table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-top: 20px !important;
+        font-size: 10pt !important;
+    }
+
+    th,
+    td {
+        border: 1px solid #ddd !important;
+        padding: 8px !important;
+        text-align: left !important;
+    }
+
+    th {
+        background-color: #f8fafc !important;
+        color: #1e293b !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        font-size: 8pt !important;
+    }
+
+    /* Professional Header for Reports */
+    .print-header {
+        display: block !important;
+        text-align: center;
+        margin-bottom: 40px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #1e293b;
+    }
+
+    .print-header h1 {
+        margin: 0;
+        font-size: 22pt;
+        font-family: 'Georgia', serif;
+        color: #0f172a;
+        letter-spacing: -0.02em;
+        font-weight: 900;
+    }
+
+    .print-header p {
+        margin: 5px 0;
+        font-size: 11pt;
+        color: #475569;
+        font-weight: 500;
+    }
+
+    #print-report-title {
+        font-size: 14pt;
+        color: #1e293b;
+        font-weight: 700;
+        margin-top: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+
+    /* Table Elegance */
+    table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-top: 20px !important;
+    }
+
+    th {
+        background-color: #f1f5f9 !important;
+        color: #0f172a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        font-size: 9pt !important;
+        border: 1.5px solid #cbd5e1 !important;
+        padding: 10px 8px !important;
+    }
+
+    td {
+        border: 1px solid #e2e8f0 !important;
+        padding: 8px 10px !important;
+        font-size: 10pt !important;
+        color: #1e293b !important;
+    }
+
+    /* Hide unprintable interaction elements */
+    .no-print,
+    th.no-print,
+    td.no-print,
+    input[type="checkbox"] {
+        display: none !important;
+    }
+
+    .premium-status-badge {
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 8pt;
+    }
+
+    /* Page breaks */
+    .page-break {
+        page-break-after: always;
+    }
+
+    /* Hide URLs on links */
+    a:after {
+        content: none !important;
+    }
+}
+
+/* Screen hidden header */
+.print-header {
+    display: none;
+}

@@ -1,0 +1,92 @@
+<!-- Import Clients View -->
+<link rel="stylesheet" href="/static/css/import.css">
+<div id="clients-import-view" class="view content-view">
+    <div class="view-header">
+        <div class="header-left">
+            <h1 class="page-title">Importar Clientes</h1>
+            <p class="page-subtitle">Sincronización desde Router MikroTik / PPPoE / Queues</p>
+        </div>
+    </div>
+
+    <div class="glass-panel" style="padding: 30px;">
+        <!-- Step 1: Select Router -->
+        <div class="import-step" id="import-view-step-1">
+            <div style="max-width: 500px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;">
+                <div class="filter-item">
+                    <label>Seleccionar Router Origen</label>
+                    <select id="import-view-router-select" class="select-premium" style="width: 100%;">
+                        <option value="">Cargando routers...</option>
+                    </select>
+                </div>
+                <div class="filter-item">
+                    <label>Tipo de Búsqueda / Origen</label>
+                    <select id="import-view-scan-type" class="select-premium" style="width: 100%;">
+                        <option value="mixed">Mixto (PPPoE + Colas Simples + DHCP)</option>
+                        <option value="pppoe">Solo PPPoE Secrets</option>
+                        <option value="dhcp_arp_queues">Solo DHCP + ARP + Simple Queues</option>
+                    </select>
+                </div>
+                <button class="btn-premium" onclick="app.modules.clients.scanRouter('view')"
+                    style="width: 100%; justify-content: center;">
+                    <i class="fas fa-radar"></i> Comenzar Escaneo de Red
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Preview & Select -->
+        <div class="import-step" id="import-view-step-2" style="display:none;">
+            <div class="premium-alert" style="margin-bottom: 20px;">
+                <div class="alert-icon">
+                    <i class="fas fa-broadcast-tower"></i>
+                </div>
+                <div class="alert-content">
+                    <h4>Resultados del Escaneo</h4>
+                    <p>Se encontraron <span id="scan-view-total" style="font-weight: 800; color: #4f46e5;">0</span>
+                        clientes en el router.</p>
+                </div>
+                <div class="alert-actions" style="flex-wrap: wrap; gap: 10px;">
+                    <div class="import-mode-selector" style="margin-right: 15px;">
+                        <label
+                            style="font-size: 0.75rem; color: #64748b; font-weight: 700; display: block; margin-bottom: 4px;">Modo
+                            de Regularización</label>
+                        <select id="import-view-mode-select" class="select-premium"
+                            style="padding: 5px 10px; font-size: 0.85rem;">
+                            <option value="standard">Sin Factura Inicial (Solo Crear)</option>
+                            <option value="prorate" selected>Prorratear Mes Actual (Smart)</option>
+                            <option value="full_debt">Cobrar Mes Completo (Deuda Inicial)</option>
+                        </select>
+                    </div>
+                    <button class="btn-secondary" onclick="app.modules.clients.resetImport('view')">Cancelar</button>
+                    <button class="btn-premium" onclick="app.modules.clients.executeImport('view')">
+                        Importar (<span id="selected-view-count">0</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-container-premium glass-panel">
+                <table class="premium-data-table">
+                    <thead>
+                        <tr>
+                            <th width="40"><input type="checkbox" id="select-all-view-import"></th>
+                            <th>Usuario / Nombre</th>
+                            <th>Gestión</th>
+                            <th>IP / MikroTik</th>
+                            <th>Plan / Perfil</th>
+                            <th>Estado Actual</th>
+                        </tr>
+                    </thead>
+                    <tbody id="import-view-preview-body">
+                        <!-- Rows injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="import-view-loading" class="hidden" style="text-align: center; padding: 50px 0;">
+            <div class="spinner" style="margin: 0 auto 20px;"></div>
+            <p id="import-view-loading-text" class="page-title">Conectando al router...</p>
+            <p class="page-subtitle">Esto puede tardar unos segundos...</p>
+        </div>
+    </div>
+</div>

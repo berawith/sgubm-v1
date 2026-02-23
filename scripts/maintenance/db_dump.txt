@@ -1,0 +1,33 @@
+PLANS:
+ID:1 Name:30 Mbps Type:pppoe Remote:None
+ID:2 Name:15M/15M Type:simple_queue Remote:None
+ID:3 Name:PV-3100 Type:pppoe Remote:None
+ID:4 Name:20000000/20000000 Type:simple_queue Remote:None
+ID:5 Name:15000000/15000000 Type:simple_queue Remote:None
+ID:6 Name:PLAN_30Mbps Type:pppoe Remote:None
+ID:7 Name:300000000/300000000 Type:simple_queue Remote:None
+ID:8 Name:10000000/10000000 Type:simple_queue Remote:None
+ID:9 Name:Detected (No Queue) Type:discovered Remote:None
+ID:10 Name:PLAN-BASIC-V10 Type:pppoe Remote:None
+ID:11 Name:30000000/30000000 Type:simple_queue Remote:None
+ID:12 Name:20000000 / 20000000 Type:simple_queue Remote:None
+ID:13 Name:10000000 / 10000000 Type:simple_queue Remote:None
+ID:14 Name:PLAN_10Mbps Type:pppoe Remote:None
+ID:15 Name:SQ Plan Type:simple_queue Remote:None
+ID:16 Name:PLAN_60Mbps Type:pppoe Remote:None
+ID:17 Name:Plan_Playa_Cedro_90K Type:pppoe Remote:None
+
+SEGMENTS:
+ID:1 Name:Red Clientes Fibra CIDR:177.77.69.0/26
+ID:2 Name:Red Clientes Aire CIDR:177.77.70.0/26
+ID:3 Name:Red Clientes 71 CIDR:177.77.71.0/26
+ID:4 Name:Red Clientes 72 CIDR:177.77.72.0/26
+ID:5 Name:Red Clientes 73 CIDR:177.77.73.0/26
+ID:6 Name:Red PPPoE CIDR:172.16.10.0/24
+ID:7 Name:Red Clientes SimpleQueue CIDR:192.168.17.0/24
+ID:8 Name:BANCOS SERVIDOR CIDR:77.16.10.0/24
+ID:9 Name:Gestión Interna GUAYANITO CIDR:172.16.47.0/24
+ID:11 Name:LOS BANCOS PPPoE CIDR:77.16.10.0/24
+ID:12 Name:MI JARDIN AIRE CIDR:172.16.41.0/24
+ID:13 Name:MI JARDIN PPPoE CIDR:10.10.10.0/24
+ID:14 Name:Gestion Interna Playa Cedro CIDR:174.17.10.0/24

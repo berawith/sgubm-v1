@@ -1,9 +1,5 @@
-/**
- * Modal Styles - Premium Design
- * Estilos para modales profesionales con glassmorphism
- */
-
-/* Modal Overlay */
+﻿/** * Modal Styles - Premium Design * Estilos para modales profesionales con glassmorphism */
+/* Modal Overlay - Dynamic Blur & Depth */
 .modal {
     display: none;
     position: fixed;
@@ -11,11 +7,37 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(8px);
+    background: rgba(15, 23, 42, 0.45);
+    /* Slate 900 tint */
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
     z-index: 9999;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Fix: Ensure SweetAlert2 is always on top of system modals */
+.swal2-container {
+    z-index: 1000000 !important;
+}
+
+/* Modal Overlay - Centralized backdrop control */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    z-index: 9998;
+    /* Just below .modal (9999) */
+    display: none;
+    pointer-events: none;
+}
+
+.modal-overlay.active {
+    display: block;
+    pointer-events: all;
 }
 
 .modal.active {
@@ -25,43 +47,38 @@
     opacity: 1;
 }
 
-/* Modal Content */
+/* Modal Content - Ultra-Premium Glassmorphism */
 .modal-content {
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(25px);
-    -webkit-backdrop-filter: blur(25px);
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    box-shadow:
-        0 20px 50px rgba(0, 0, 0, 0.1),
-        0 4px 12px rgba(0, 0, 0, 0.05),
-        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border-radius: 16px;
+    border: 1px solid #f1f5f9;
+    box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.08), 0 4px 12px -6px rgba(0, 0, 0, 0.03);
     max-width: 600px;
     width: 95%;
-    max-height: 95vh;
+    max-height: 92vh;
     display: flex;
     flex-direction: column;
-    transform: scale(0.95);
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform: translateY(20px) scale(0.96);
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    overflow: hidden;
 }
 
 .modal.active .modal-content {
-    transform: scale(1);
+    transform: translateY(0) scale(1);
 }
 
 .modal-content.large-modal {
     max-width: 1300px;
-    width: 95%;
-    height: 88vh;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow:
-        0 40px 100px rgba(0, 0, 0, 0.2),
-        inset 0 0 20px rgba(255, 255, 255, 0.05);
+    height: 85vh;
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 /* Modal Header */
 .modal-header {
-    padding: 24px 28px;
+    padding: 16px 20px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     align-items: center;
@@ -70,12 +87,10 @@
 
 .modal-header h3 {
     margin: 0;
-    font-size: 20px;
-    font-weight: 600;
-    background: linear-gradient(135deg, #00D4FF 0%, #A855F7 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-size: 1.15rem;
+    font-weight: 750;
+    color: #1e293b;
+    letter-spacing: -0.02em;
 }
 
 .modal-subtitle-text {
@@ -96,9 +111,7 @@
     background: rgba(255, 255, 255, 0.5);
     border: 1px solid rgba(0, 0, 0, 0.05);
     border-radius: 14px;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.8),
-        0 4px 10px rgba(0, 0, 0, 0.03);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 10px rgba(0, 0, 0, 0.03);
     backdrop-filter: blur(10px);
     transition: all 0.3s ease;
 }
@@ -149,7 +162,7 @@
 
 /* Modal Body */
 .modal-body {
-    padding: 26px 28px;
+    padding: 16px 20px;
     /* Optimized: gain vertical space, keep side breathing room */
     overflow-y: auto;
     flex: 1;
@@ -176,13 +189,12 @@
 /* Modal Tabs - Minimalist Glass Pills */
 .modal-tabs {
     display: flex;
-    gap: 12px;
-    margin-bottom: 32px;
-    /* Precise margin */
-    padding: 6px;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding: 4px;
     background: rgba(0, 0, 0, 0.03);
     border: 1px solid rgba(0, 0, 0, 0.05);
-    border-radius: 14px;
+    border-radius: 12px;
 }
 
 .tab-btn {
@@ -215,9 +227,7 @@
 .tab-btn.active {
     color: #4f46e5;
     background: #ffffff;
-    box-shadow:
-        0 4px 6px -1px rgba(0, 0, 0, 0.05),
-        0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 .tab-btn.active i {
@@ -256,7 +266,7 @@
 }
 
 .form-grid.compact-grid {
-    gap: 21px 16px;
+    gap: 12px 16px;
     /* Expanded "Sweet Spot" - No Scroll */
 }
 
@@ -341,10 +351,7 @@
     outline: none;
     border-color: #4f46e5;
     background: #ffffff;
-    box-shadow:
-        0 0 0 4px rgba(79, 70, 229, 0.06),
-        0 10px 15px -3px rgba(79, 70, 229, 0.08),
-        0 4px 6px -2px rgba(79, 70, 229, 0.04);
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.06), 0 10px 15px -3px rgba(79, 70, 229, 0.08), 0 4px 6px -2px rgba(79, 70, 229, 0.04);
     transform: translateY(-1px);
 }
 
@@ -394,7 +401,6 @@
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
     border-color: #e2e8f0;
 }
-
 
 .info-card.full-width {
     grid-column: 1 / -1;
@@ -488,7 +494,6 @@
     background: #fef3c7;
     color: #d97706;
 }
-
 
 /* Textarea */
 textarea.form-control {
@@ -660,144 +665,148 @@ select.form-control {
     }
 }
 
-/* ============================================================================
-   Premium Data Tables
-   ============================================================================ */
-.data-table {
+/* ============================================================================   Ultra-Premium Tables & Lists   ============================================================================ */
+.history-list-premium {
+    min-height: 200px;
+    background: rgba(248, 250, 252, 0.5);
+}
+
+.premium-data-table {
     width: 100%;
     border-collapse: separate;
-    border-spacing: 0;
-    margin-top: 20px;
-    font-size: 0.9375rem;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    border-spacing: 0 8px;
+    /* Vertical gap between rows */
+    margin: 0;
 }
 
-.data-table thead th {
-    background: #f8fafc;
-    color: var(--text-muted);
-    font-weight: 700;
-    text-transform: uppercase;
+.premium-data-table thead th {
+    padding: 16px 24px;
     font-size: 0.7rem;
-    letter-spacing: 0.05em;
-    padding: 10px 16px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #64748b;
     text-align: left;
-    border-bottom: 2px solid #e2e8f0;
+    background: transparent;
+    border: none;
 }
 
-.data-table tbody tr {
-    transition: all var(--transition-fast);
-    border-bottom: 1px solid #f1f5f9;
+.premium-row {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.premium-row td {
+    padding: 18px 24px;
+    background: white;
+    border-top: 1px solid rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.premium-row td:first-child {
+    border-left: 1px solid rgba(0, 0, 0, 0.03);
+    border-radius: 16px 0 0 16px;
+}
+
+.premium-row td:last-child {
+    border-right: 1px solid rgba(0, 0, 0, 0.03);
+    border-radius: 0 16px 16px 0;
+}
+
+.premium-row:hover {
+    transform: translateY(-2px) scale(1.005);
+    filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.06));
+}
+
+.premium-row:hover td {
     background: #ffffff;
+    border-color: rgba(79, 70, 229, 0.1);
 }
 
-.data-table tbody tr:last-child {
-    border-bottom: none;
+/* Premium Status Badges - Refined & Glowing */
+.premium-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
-.data-table tbody tr:hover {
-    background-color: #f1f5f9;
+.premium-status-badge.success {
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
-.data-table td {
-    padding: 10px 16px;
-    vertical-align: middle;
-    color: var(--text-primary);
+.premium-status-badge.warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
-/* Specific Cell Content - Improved Legibility */
-.user-info-cell {
+.premium-status-badge.danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.premium-status-badge.secondary {
+    background: rgba(148, 163, 184, 0.1);
+    color: #475569;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* Amount Cells - High Definition */
+.amount-cell-premium {
     display: flex;
     flex-direction: column;
-    gap: 4px;
 }
 
-.user-info-cell strong {
-    font-weight: 800;
-    color: #0f172a;
-    font-size: 0.85rem;
-    letter-spacing: -0.01em;
-}
-
-.user-info-cell small {
-    color: #94a3b8;
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-}
-
-.ip-cell {
+.amount-main {
     font-family: 'JetBrains Mono', monospace;
-    font-weight: 700;
-    color: #4338ca;
-    font-size: 0.9rem;
-}
-
-/* Zebra Striping */
-.data-table tbody tr:nth-child(even) {
-    background-color: #fafbfc;
-}
-
-/* Premium Alert - High Contrast & Vibrancy */
-.premium-alert {
-    background: linear-gradient(135deg, #fffcf5 0%, #fff3e0 100%);
-    border: 1px solid #ffcc80;
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    margin: 20px 0;
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    box-shadow: 0 10px 15px -3px rgba(255, 152, 0, 0.1), 0 4px 6px -2px rgba(255, 152, 0, 0.05);
-}
-
-.premium-alert .alert-icon {
-    font-size: 2.5rem;
-    color: #f59e0b;
-}
-
-.premium-alert .alert-content {
-    flex: 1;
-}
-
-.premium-alert h4 {
-    margin: 0 0 8px 0;
-    color: #92400e;
-    font-size: 1.25rem;
-    font-weight: 850;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    font-weight: 800;
+    font-size: 1.1rem;
     letter-spacing: -0.02em;
+    color: #0f172a;
 }
 
-.premium-alert p {
-    margin: 0;
-    color: #78350f;
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1.6;
+.amount-sub {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
-/* Alert Button - Modern CTA */
-.btn-alert-sync {
-    background: linear-gradient(135deg, #FFC44B, #FF9800) !important;
-    color: #000 !important;
-    border: none !important;
-    padding: 14px 28px !important;
-    border-radius: 12px !important;
-    font-weight: 800 !important;
-    font-size: 0.95rem !important;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 8px 20px rgba(255, 152, 0, 0.25);
+/* Action Buttons Mini */
+.action-btn-mini {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: center;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.action-btn-mini:hover {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    color: #4f46e5;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.action-btn-mini.success:hover {
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.3);
 }
 
 .btn-alert-sync:hover {
@@ -837,8 +846,8 @@ select.form-control {
 .metrics-row {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 32px;
+    gap: 10px;
+    margin-bottom: 18px;
     /* Precise high-end spacing */
 }
 
@@ -846,13 +855,11 @@ select.form-control {
     background: rgba(255, 255, 255, 0.4);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 12px;
-    padding: 10px 14px;
-    /* Significant reduction */
+    border-radius: 10px;
+    padding: 6px 10px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    /* Minimal gap */
+    gap: 1px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
 }
@@ -912,12 +919,11 @@ select.form-control {
 }
 
 .metric-value {
-    font-size: 1.15rem;
-    /* Ultra-compact */
+    font-size: 1rem;
     font-weight: 800;
     color: #0f172a;
     letter-spacing: -0.01em;
-    line-height: 1.1;
+    line-height: 1;
 }
 
 .metric-subtext {
@@ -1151,7 +1157,6 @@ select.form-control {
 }
 
 /* Azul: Mantenimiento */
-
 .health-ring {
     position: relative;
     width: 40px;
@@ -1237,11 +1242,11 @@ select.form-control {
 
 /* Panel de Inteligencia IA */
 .premium-intelligence-panel {
-    margin: 24px 0;
-    padding: 24px;
+    margin: 16px 0;
+    padding: 16px;
     background: rgba(255, 255, 255, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.8);
-    border-radius: 20px;
+    border-radius: 16px;
     box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
     backdrop-filter: blur(4px);
 }
@@ -1250,8 +1255,8 @@ select.form-control {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
-    padding-bottom: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
@@ -1302,14 +1307,14 @@ select.form-control {
 
 .ai-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
 }
 
 .ai-card {
     background: rgba(255, 255, 255, 0.6);
-    padding: 20px;
-    border-radius: 16px;
+    padding: 12px;
+    border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 1);
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
@@ -1332,10 +1337,10 @@ select.form-control {
 }
 
 .ai-value {
-    font-size: 1.4rem;
-    font-weight: 900;
+    font-size: 1rem;
+    font-weight: 850;
     color: #0f172a;
-    margin-bottom: 6px;
+    margin-bottom: 2px;
     line-height: 1;
 }
 
@@ -1349,7 +1354,123 @@ select.form-control {
 }
 
 .ai-trend::before {
-    content: "●";
+    content: "â—";
     font-size: 8px;
     color: #3b82f6;
+}
+
+/* ============================================================================   Refined Dashboard & Metrics (Inside Modals)   ============================================================================ */
+.metrics-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+}
+
+.metric-card {
+    background: white;
+    border-radius: 12px;
+    padding: 12px 16px;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.metric-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.1);
+}
+
+.metric-card .icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: #4f46e5;
+    margin-bottom: 8px;
+    transition: all 0.3s ease;
+}
+
+.metric-card:hover .icon {
+    background: #4f46e5;
+    color: white;
+    transform: rotate(10deg);
+}
+
+.metric-label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    margin-bottom: 2px;
+}
+
+.metric-value {
+    font-size: 1.2rem;
+    font-weight: 850;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+}
+
+.metric-subtext {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #64748b;
+    margin-top: 6px;
+}
+
+/* Modal Tabs - Glass Pills UI */
+.modal-tabs {
+    display: flex;
+    gap: 10px;
+    padding: 6px;
+    background: rgba(241, 245, 249, 0.8);
+    border-radius: 18px;
+    margin-bottom: 2rem;
+    width: fit-content;
+    border: 1px solid #f1f5f9;
+}
+
+.tab-btn {
+    padding: 10px 22px;
+    border-radius: 14px;
+    font-size: 0.85rem;
+    font-weight: 750;
+    color: #64748b;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.tab-btn i {
+    font-size: 0.9rem;
+    opacity: 0.6;
+}
+
+.tab-btn:hover:not(.active) {
+    color: #1e293b;
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.tab-btn.active {
+    background: white;
+    color: #4f46e5;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1);
+}
+
+.tab-btn.active i {
+    opacity: 1;
+    color: #4f46e5;
 }

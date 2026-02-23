@@ -1,0 +1,121 @@
+<div class="modal-content">
+    <div class="modal-header">
+        <div>
+            <h3 id="plan-modal-title">Nuevo Plan</h3>
+            <p
+                style="margin: 0; font-size: 0.8rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                Definición de Tarifas y Velocidad
+            </p>
+        </div>
+        <button type="button" class="close-btn" data-close>
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <form id="plan-form" style="display: contents;">
+        <div class="modal-body">
+            <input type="hidden" id="id">
+
+            <div class="form-grid">
+                <!-- Nombre -->
+                <div class="form-group span-full">
+                    <label for="name">Nombre del Plan</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-file-signature field-icon"></i>
+                        <input type="text" id="name" required class="form-control" placeholder="Ej: Fibra 50 Megas">
+                    </div>
+                </div>
+
+                <!-- Velocidades -->
+                <div class="form-group span-2">
+                    <label for="download_speed">Descarga (Kbps)</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-arrow-down field-icon"></i>
+                        <input type="number" id="download_speed" required class="form-control" placeholder="Ej: 50000">
+                    </div>
+                    <small class="form-text-premium">1 Mb = 1000 Kb</small>
+                </div>
+                <div class="form-group span-2">
+                    <label for="upload_speed">Subida (Kbps)</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-arrow-up field-icon"></i>
+                        <input type="number" id="upload_speed" required class="form-control" placeholder="Ej: 10000">
+                    </div>
+                </div>
+
+                <!-- Precio -->
+                <div class="form-group span-full">
+                    <label for="monthly_price">Precio Mensual</label>
+                    <div class="input-with-addon" style="position: relative;">
+                        <span class="addon"
+                            style="left: 14px; position: absolute; top: 50%; transform: translateY(-50%); color: #94a3b8; font-weight: 600; z-index: 10;">$</span>
+                        <input type="text" id="monthly_price" required class="form-control" inputmode="numeric"
+                            style="padding-left: 30px;" placeholder="Ej: 80,000"
+                            oninput="if(this.closest('.modal')._component && this.closest('.modal')._component.formatCurrencyInput) this.closest('.modal')._component.formatCurrencyInput(this)">
+                        <select id="currency" class="form-control"
+                            style="width: 80px; position: absolute; right: 0; top: 0; padding: 11px 10px; border-left: 1px solid #e2e8f0; border-top-left-radius: 0; border-bottom-left-radius: 0;">
+                            <option value="COP">COP</option>
+                            <option value="USD">USD</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tipo Servicio -->
+                <div class="form-group span-2">
+                    <label for="service_type">Tipo Servicio</label>
+                    <select id="service_type" class="form-control" style="padding-left: 16px;">
+                        <option value="pppoe">PPPoE</option>
+                        <option value="simple_queue">Simple Queue</option>
+                        <option value="hotspot">Hotspot</option>
+                    </select>
+                </div>
+
+                <!-- Perfil MK -->
+                <div class="form-group span-2">
+                    <label for="mikrotik_profile">Perfil MikroTik</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-terminal field-icon"></i>
+                        <input type="text" id="mikrotik_profile" class="form-control" placeholder="Nombre en router">
+                    </div>
+                </div>
+
+                <!-- PPPoE Progresive Fields -->
+                <div id="pppoe-fields-container" class="form-grid span-full"
+                    style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                    <div class="form-group">
+                        <label for="local_address">IP Local (Propagación)</label>
+                        <div class="input-icon-wrapper">
+                            <i class="fas fa-map-marker-alt field-icon"></i>
+                            <input type="text" id="local_address" class="form-control" placeholder="Ej: 10.0.0.1">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="remote_address">Pool Remoto (Propagación)</label>
+                        <div class="input-icon-wrapper">
+                            <i class="fas fa-network-wired field-icon"></i>
+                            <input type="text" id="remote_address" class="form-control" placeholder="Ej: pool_clientes">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Router Asociación -->
+                <div class="form-group span-full">
+                    <label for="router_id">Router / Servidor</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fas fa-server field-icon"></i>
+                        <select id="router_id" class="form-control" style="padding-left: 36px;">
+                            <option value="">Global (Todos los routers)</option>
+                        </select>
+                    </div>
+                    <small class="form-text-premium">Indica a qué servidor pertenece este plan.</small>
+                </div>
+            </div>
+        </div>
+
+    </form>
+
+    <div class="modal-footer" style="background: white; border-top: 1px solid #f1f5f9; margin: 0; padding: 20px 32px;">
+        <button type="button" class="btn-secondary" data-close>Cancelar</button>
+        <button type="submit" form="plan-form" class="btn-primary">Guardar Plan</button>
+    </div>
+</div>

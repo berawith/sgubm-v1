@@ -9,6 +9,13 @@ from sqlalchemy.orm import relationship, sessionmaker
 import enum
 
 Base = declarative_base()
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 class RouterStatus(enum.Enum):
@@ -51,6 +58,11 @@ class Router(Base):
     grace_period = Column(Integer, default=5)  # Días de gracia
     cut_day = Column(Integer, default=10)      # Día de corte (suspensión)
 
+    # Configuración de Gestión (New)
+    management_method = Column(String(50), default='mixed') # pppoe, dhcp, mixed
+    pppoe_ranges = Column(Text) # JSON/String with IP ranges for PPPoE
+    dhcp_ranges = Column(Text)  # JSON/String with IP ranges for DHCP/Simple Queues
+
     
     # Métricas
     uptime = Column(String(50))
@@ -59,8 +71,8 @@ class Router(Base):
     clients_connected = Column(Integer, default=0)
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     last_sync = Column(DateTime)
     last_online_at = Column(DateTime)
     last_billing_date = Column(DateTime) # Fecha del último ciclo de facturación completado
@@ -79,6 +91,8 @@ class Router(Base):
             'id': self.id,
             'alias': self.alias,
             'host_address': self.host_address,
+            'api_username': self.api_username,  # Necesario para editar
+            'api_password': self.api_password,  # Solicitado por usuario para ver/editar
             'api_port': self.api_port,
             'ssh_port': self.ssh_port,
             'zone': self.zone,
@@ -95,7 +109,10 @@ class Router(Base):
             'monitored_interfaces': self.monitored_interfaces,
             'billing_day': self.billing_day,
             'grace_period': self.grace_period,
-            'cut_day': self.cut_day
+            'cut_day': self.cut_day,
+            'management_method': self.management_method,
+            'pppoe_ranges': self.pppoe_ranges,
+            'dhcp_ranges': self.dhcp_ranges
         }
 
 
@@ -124,7 +141,7 @@ class InternetPlan(Base):
     local_address = Column(String(50))  # IP local para el profile
     remote_address = Column(String(50)) # Pool de IPs remotas
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     # Relationships
     clients = relationship('Client', back_populates='internet_plan')
@@ -191,16 +208,21 @@ class Client(Base):
     last_seen = Column(DateTime)
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     last_payment_date = Column(DateTime)
     due_date = Column(DateTime)
     promise_date = Column(DateTime) # Fecha de promesa de pago
+    broken_promises_count = Column(Integer, default=0) # Contador de promesas incumplidas (consecutivas)
     
     # Relationships
     router = relationship('Router', back_populates='clients')
     payments = relationship('Payment', back_populates='client', cascade='all, delete-orphan')
     invoices = relationship('Invoice', back_populates='client', cascade='all, delete-orphan')
+    traffic_history = relationship('ClientTrafficHistory', back_populates='client', cascade='all, delete-orphan')
+    promise_history = relationship('PaymentPromise', back_populates='client', cascade='all, delete-orphan')
+    deleted_payment_records = relationship('DeletedPayment', back_populates='client', cascade='all, delete-orphan')
+    pending_operations = relationship('PendingOperation', back_populates='client', cascade='all, delete-orphan')
     
     def to_dict(self):
         # Manejo robusto de status
@@ -226,16 +248,18 @@ class Client(Base):
             'upload_speed': self.upload_speed,
             'status': status_val,
             'is_online': self.is_online,
-            'last_seen': self.last_seen.isoformat() + 'Z' if self.last_seen else None,
+            'last_seen': self.last_seen.isoformat() if self.last_seen else None,
             'account_balance': self.account_balance,
             'monthly_fee': self.monthly_fee,
             'service_type': self.service_type,
-            'created_at': self.created_at.isoformat() + 'Z' if self.created_at else None,
-            'last_payment_date': self.last_payment_date.isoformat() + 'Z' if self.last_payment_date else None,
-            'due_date': self.due_date.isoformat() + 'Z' if self.due_date else None,
-            'promise_date': self.promise_date.isoformat() + 'Z' if self.promise_date else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_payment_date': self.last_payment_date.isoformat() if self.last_payment_date else None,
+            'due_date': self.due_date.isoformat() if self.due_date else None,
+            'promise_date': self.promise_date.isoformat() if self.promise_date else None,
+            'broken_promises_count': self.broken_promises_count or 0,
             'router': self.router.alias if self.router else None,
-            'zone': self.router.zone if self.router else None
+            'zone': self.router.zone if self.router else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 
@@ -244,17 +268,26 @@ class Payment(Base):
     __tablename__ = 'payments'
     
     id = Column(Integer, primary_key=True)
-    client_id = Column(Integer, ForeignKey('clients.id'), nullable=False)
+    client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
     
     # Información del pago
     amount = Column(Float, nullable=False)
     currency = Column(String(10), default='COP') # COP, USD, VES
     payment_origin = Column(String(20), default='national') # national, international
     is_overpayment = Column(Boolean, default=False)
-    payment_date = Column(DateTime, default=datetime.utcnow)
+    payment_date = Column(DateTime, default=datetime.now)
     payment_method = Column(String(50))  # cash, transfer, card, etc.
     reference = Column(String(100))
     notes = Column(Text)
+    
+    # --- ERP Enterprise Fields ---
+    exchange_rate = Column(Float, default=1.0)
+    base_amount = Column(Float) # Monto en la moneda base del sistema (ej. USD/VES)
+    fx_variance = Column(Float, default=0.0) # Diferencia en cambio (Ganancia/Pérdida en moneda base)
+    tax_amount = Column(Float, default=0.0)
+    tax_details = Column(Text) # JSON string con desglose (IGTF, IVA, etc.)
+    transaction_hash = Column(String(64), index=True) # Integridad de auditoría
+    # ----------------------------
     
     # Estado
     status = Column(String(20), default='paid') # Enum cambiado a String por compatibilidad
@@ -267,8 +300,8 @@ class Payment(Base):
     registered_by = Column(String(100))
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Relationships
     client = relationship('Client', back_populates='payments')
@@ -299,7 +332,13 @@ class Payment(Base):
             'period_start': self.period_start.isoformat() if self.period_start else None,
             'period_end': self.period_end.isoformat() if self.period_end else None,
             'registered_by': self.registered_by,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'exchange_rate': self.exchange_rate,
+            'base_amount': self.base_amount,
+            'fx_variance': self.fx_variance,
+            'tax_amount': self.tax_amount,
+            'tax_details': self.tax_details,
+            'transaction_hash': self.transaction_hash
         }
 
 
@@ -312,7 +351,7 @@ class DeletedPayment(Base):
     
     id = Column(Integer, primary_key=True)
     original_id = Column(Integer) # ID original en la tabla payments
-    client_id = Column(Integer, ForeignKey('clients.id'), nullable=False)
+    client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
     
     amount = Column(Float, nullable=False)
     currency = Column(String(10), default='COP')
@@ -322,12 +361,12 @@ class DeletedPayment(Base):
     notes = Column(Text)
     
     # Metadatos de eliminación
-    deleted_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, default=datetime.now)
     deleted_by = Column(String(100))
     reason = Column(Text)
     
     # Relationship (Sin cascade para no borrar el registro de la papelera)
-    client = relationship('Client')
+    client = relationship('Client', back_populates='deleted_payment_records')
     
     def to_dict(self):
         return {
@@ -357,7 +396,7 @@ class NetworkSegment(Base):
     cidr = Column(String(50), nullable=False)
     router_id = Column(Integer, ForeignKey('routers.id'), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     def to_dict(self):
         return {
@@ -369,29 +408,44 @@ class NetworkSegment(Base):
 
 
 
-class SyncQueue(Base):
-    """Cola de Sincronización (Sentinel)"""
-    __tablename__ = 'sync_queue'
+
+
+
+class PendingOperation(Base):
+    """Modelo de Operación Pendiente - Para sincronización con MikroTik cuando router está offline"""
+    __tablename__ = 'pending_operations'
     
     id = Column(Integer, primary_key=True)
-    router_id = Column(Integer, ForeignKey('routers.id'), nullable=False)
-    client_id = Column(Integer, nullable=True) # Opcional, solo referencia
-    operation = Column(String(50), nullable=False) # 'update', 'create', 'suspend', 'delete'
-    payload = Column(Text, nullable=False) # JSON data
-    status = Column(String(20), default='pending') # pending, retrying, failed, completed
+    operation_type = Column(String(50), nullable=False)  # 'suspend', 'activate', 'restore'
+    client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
+    router_id = Column(Integer, ForeignKey('routers.id', ondelete='CASCADE'), nullable=False)
+    target_status = Column(String(20))  # Estado objetivo del cliente
+    ip_address = Column(String(50))  # IP del cliente
+    operation_data = Column(Text)  # JSON con datos adicionales
+    created_at = Column(DateTime, default=datetime.now)
     attempts = Column(Integer, default=0)
-    last_error = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
+    last_attempt = Column(DateTime)
+    error_message = Column(Text)
+    status = Column(String(20), default='pending')  # 'pending', 'completed', 'failed'
+    
+    # Relaciones
+    client = relationship('Client', back_populates='pending_operations')
+    router = relationship('Router', backref='pending_operations_router') 
+    
     def to_dict(self):
         return {
             'id': self.id,
+            'operation_type': self.operation_type,
+            'client_id': self.client_id,
             'router_id': self.router_id,
-            'operation': self.operation,
-            'status': self.status,
+            'target_status': self.target_status,
+            'ip_address': self.ip_address,
+            'operation_data': self.operation_data,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
             'attempts': self.attempts,
-            'created_at': self.created_at.isoformat()
+            'last_attempt': self.last_attempt.isoformat() if self.last_attempt else None,
+            'error_message': self.error_message,
+            'status': self.status
         }
 
 
@@ -400,8 +454,8 @@ class ClientTrafficHistory(Base):
     __tablename__ = 'client_traffic_history'
     
     id = Column(Integer, primary_key=True)
-    client_id = Column(Integer, ForeignKey('clients.id'), nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
+    timestamp = Column(DateTime, default=datetime.now)
     
     # Velocidad en el momento del snapshot (bps)
     download_bps = Column(Float, default=0.0)
@@ -420,9 +474,10 @@ class ClientTrafficHistory(Base):
     # Nuevas Métricas para el "Golden Signal" Engine
     latency_ms = Column(Integer, default=0) # Latencia promedio (Ping)
     packet_loss_pct = Column(Float, default=0.0) # Pérdida de paquetes (%)
+    jitter_ms = Column(Float, default=0.0) # Varianza de latencia (Estabilidad)
 
     # Relación
-    client = relationship('Client')
+    client = relationship('Client', back_populates='traffic_history')
 
     def to_dict(self):
         return {
@@ -434,7 +489,8 @@ class ClientTrafficHistory(Base):
             'is_online': self.is_online,
             'quality_score': self.quality_score,
             'latency_ms': self.latency_ms,
-            'packet_loss_pct': self.packet_loss_pct
+            'packet_loss_pct': self.packet_loss_pct,
+            'jitter_ms': self.jitter_ms
         }
 
 
@@ -443,18 +499,28 @@ class Invoice(Base):
     __tablename__ = 'invoices'
     
     id = Column(Integer, primary_key=True)
-    client_id = Column(Integer, ForeignKey('clients.id'), nullable=False)
+    client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
     
-    issue_date = Column(DateTime, default=datetime.utcnow) # Fecha de emisión
+    issue_date = Column(DateTime, default=datetime.now) # Fecha de emisión
     due_date = Column(DateTime, nullable=False)            # Fecha de vencimiento
     
     total_amount = Column(Float, default=0.0)
     status = Column(String(20), default='unpaid') # unpaid, paid, overdue, cancelled
     pdf_path = Column(String(255)) # Ruta al archivo PDF generado
     
+    # --- ERP Enterprise Fields ---
+    currency = Column(String(10), default='COP')
+    exchange_rate = Column(Float, default=1.0)
+    subtotal_amount = Column(Float, default=0.0)
+    tax_amount = Column(Float, default=0.0)
+    tax_details = Column(Text) # JSON con desglose
+    is_fiscal = Column(Boolean, default=False) # Si es factura legal SENIAT/DIAN
+    transaction_hash = Column(String(64), index=True)
+    # ----------------------------
+    
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Relationships
     client = relationship('Client', back_populates='invoices')
@@ -470,6 +536,12 @@ class Invoice(Base):
             'total_amount': self.total_amount,
             'status': self.status,
             'pdf_path': self.pdf_path,
+            'currency': self.currency,
+            'exchange_rate': self.exchange_rate,
+            'subtotal': self.subtotal_amount,
+            'tax_amount': self.tax_amount,
+            'tax_details': self.tax_details,
+            'is_fiscal': self.is_fiscal,
             'created_at': self.created_at.isoformat(),
             'items': [item.to_dict() for item in self.items]
         }
@@ -480,7 +552,7 @@ class InvoiceItem(Base):
     __tablename__ = 'invoice_items'
     
     id = Column(Integer, primary_key=True)
-    invoice_id = Column(Integer, ForeignKey('invoices.id'), nullable=False)
+    invoice_id = Column(Integer, ForeignKey('invoices.id', ondelete='CASCADE'), nullable=False)
     
     description = Column(String(200), nullable=False)
     amount = Column(Float, nullable=False)
@@ -504,7 +576,7 @@ class AuditLog(Base):
     __tablename__ = 'audit_logs'
     
     id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.now)
     user_id = Column(Integer) # ID del usuario que realizó la acción
     username = Column(String(100))
     
@@ -534,6 +606,135 @@ class AuditLog(Base):
             'entity_id': self.entity_id,
             'description': self.description,
             'created_at': self.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+
+class PaymentPromise(Base):
+    """Historial de Promesas de Pago y Seguimiento de Cumplimiento"""
+    __tablename__ = 'payment_promises'
+    
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
+    
+    promise_date = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+    
+    # status: 'pending', 'fulfilled', 'broken'
+    status = Column(String(20), default='pending')
+    
+    notes = Column(Text)
+    
+    # Relación
+    client = relationship('Client', back_populates='promise_history')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'client_id': self.client_id,
+            'promise_date': self.promise_date.isoformat(),
+            'created_at': self.created_at.isoformat(),
+            'status': self.status,
+            'notes': self.notes
+        }
+
+
+class Expense(Base):
+    """Modelo de Gasto / Deducible"""
+    __tablename__ = 'expenses'
+    
+    id = Column(Integer, primary_key=True)
+    description = Column(String(200), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default='COP')
+    expense_date = Column(DateTime, default=datetime.now)
+    
+    # Categorización
+    category = Column(String(50)) # 'fixed' (Fijo), 'variable' (Variable/Deducible)
+    is_recurring = Column(Boolean, default=False) # Si es recurrente mensual
+    
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+    created_by = Column(String(100)) # Usuario que registró
+
+    # --- ERP Enterprise Fields ---
+    base_amount = Column(Float)
+    exchange_rate = Column(Float, default=1.0)
+    tax_deductible = Column(Boolean, default=True)
+    tax_details = Column(Text)
+    transaction_hash = Column(String(64), index=True)
+    # ----------------------------
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'description': self.description,
+            'amount': self.amount,
+            'currency': self.currency,
+            'expense_date': self.expense_date.isoformat() if self.expense_date else None,
+            'category': self.category,
+            'is_recurring': self.is_recurring,
+            'notes': self.notes,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_by': self.created_by,
+            'base_amount': self.base_amount,
+            'exchange_rate': self.exchange_rate,
+            'tax_deductible': self.tax_deductible,
+            'tax_details': self.tax_details
+        }
+
+
+class WhatsAppMessage(Base):
+    """Modelo para persistencia de mensajes de WhatsApp"""
+    __tablename__ = 'whatsapp_messages'
+    
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey('clients.id', ondelete='SET NULL'), nullable=True)
+    phone = Column(String(50), nullable=False)
+    
+    message_text = Column(Text, nullable=False)
+    is_outgoing = Column(Boolean, default=False) # True si es enviado por el sistema
+    
+    # Metadatos del agente
+    intent_identified = Column(String(100))
+    ai_response_id = Column(String(100)) # ID de respuesta de Gemini/Meta
+    
+    timestamp = Column(DateTime, default=datetime.now)
+    
+    # Relación
+    client = relationship('Client', backref='whatsapp_history')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'client_id': self.client_id,
+            'client_name': self.client.legal_name if self.client else 'Unknown',
+            'client_cedula': self.client.identity_document if self.client else None,
+            'client_code': self.client.subscriber_code if self.client else None,
+            'phone': self.phone,
+            'message_text': self.message_text,
+            'is_outgoing': self.is_outgoing,
+            'intent': self.intent_identified,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else datetime.now().isoformat()
+        }
+
+
+class SystemSetting(Base):
+    """Modelo para configuración general del sistema"""
+    __tablename__ = 'system_settings'
+    
+    id = Column(Integer, primary_key=True)
+    key = Column(String(100), unique=True, nullable=False)
+    value = Column(Text)
+    description = Column(String(255))
+    category = Column(String(50), default='general')
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def to_dict(self):
+        return {
+            'key': self.key,
+            'value': self.value,
+            'category': self.category,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 

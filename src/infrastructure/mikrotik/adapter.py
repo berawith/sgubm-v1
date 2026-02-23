@@ -422,34 +422,60 @@ class MikroTikAdapter(INetworkService):
     
     def _create_queue_client(self, client_data: Dict[str, Any]) -> Dict[str, Any]:
         """Crea Simple Queue para cliente"""
+        # Reutilizamos la lógica pública
+        name = client_data.get("legal_name") or client_data.get("queue_name") or client_data["username"]
+        target = client_data["target_address"]
+        max_limit = client_data["max_limit"]
+        
+        # Extra params for full client creation
+        burst_limit = client_data.get("burst_limit")
+        burst_threshold = client_data.get("burst_threshold")
+        burst_time = client_data.get("burst_time")
+        
+        success = self.create_simple_queue(name, target, max_limit, burst_limit, burst_threshold, burst_time)
+        
+        return {
+            "success": success,
+            "mikrotik_id": "", # No capturamos el ID en la versión pública simple
+            "method": "simple_queue",
+            "details": {"name": name, "target": target}
+        }
+
+    def create_simple_queue(self, name: str, target: str, max_limit: str, 
+                          burst_limit: str = None, burst_threshold: str = None, burst_time: str = None) -> bool:
+        """
+        Crea una Simple Queue de forma directa.
+        Útil para 'Fix Queue' o gestiones manuales.
+        """
         try:
             queues = self._api_connection.get_resource('/queue/simple')
             
             queue_params = {
-                "name": client_data.get("legal_name") or client_data.get("queue_name") or client_data["username"],
-                "target": client_data["target_address"],
-                "max-limit": client_data["max_limit"],
-                "comment": "" # Clean Winbox: No comments
+                "name": name,
+                "target": target,
+                "max-limit": max_limit,
+                "comment": "" # Clean Winbox
             }
             
-            if "burst_limit" in client_data:
-                queue_params["burst-limit"] = client_data["burst_limit"]
-                queue_params["burst-threshold"] = client_data.get("burst_threshold", "")
-                queue_params["burst-time"] = client_data.get("burst_time", "8s/8s")
+            if burst_limit:
+                queue_params["burst-limit"] = burst_limit
+                queue_params["burst-threshold"] = burst_threshold or ""
+                queue_params["burst-time"] = burst_time or "8s/8s"
             
-            result = queues.add(**queue_params)
-            logger.info(f"Simple Queue created: {client_data['queue_name']}")
+            # Verificar si existe para actualizar o crear
+            existing = queues.get(name=name)
+            if existing:
+                queues.set(id=existing[0]['id'], **queue_params)
+                logger.info(f"Simple Queue updated: {name}")
+            else:
+                queues.add(**queue_params)
+                logger.info(f"Simple Queue created: {name}")
             
-            return {
-                "success": True,
-                "mikrotik_id": result.get("ret", ""),
-                "method": "simple_queue",
-                "details": queue_params
-            }
+            return True
             
         except Exception as e:
-            logger.error(f"Error creating Simple Queue: {str(e)}")
-            raise
+            logger.error(f"Error creating Simple Queue '{name}': {str(e)}")
+            return False
     
     def ensure_cutoff_firewall_rules(self) -> bool:
         """
@@ -525,10 +551,10 @@ class MikroTikAdapter(INetworkService):
             logger.error(f"Error configuring firewall rules in MikroTik [{self._host}]: {e}")
             return False
 
-    def update_client_service(self, current_username: str, client_data: Dict[str, Any]) -> bool:
+    def update_client_service(self, current_username: str, client_data: Dict[str, Any], old_ip: str = None) -> bool:
         """
         Actualiza la configuración del servicio del cliente en el MikroTik.
-        Sincroniza el nombre en el campo 'Name' (sin comentarios adicionales).
+        Sincroniza el nombre en el campo 'Name' y maneja cambios de IP.
         """
         if not self._is_connected:
             return False
@@ -536,7 +562,7 @@ class MikroTikAdapter(INetworkService):
         success = True
         new_username = client_data.get('username')
         legal_name = client_data.get('legal_name')
-        ip_address = client_data.get('ip_address')
+        new_ip = client_data.get('ip_address')
         service_type = client_data.get('service_type', 'pppoe')
         
         # Helper para obtener ID de forma robusta
@@ -548,35 +574,39 @@ class MikroTikAdapter(INetworkService):
             queues = self._api_connection.get_resource('/queue/simple')
             q_target = None
             
-            # Intentar buscar por nombre primero
+            # Intentar buscar por nombre actual
             q_list = queues.get(name=current_username)
             if q_list:
                 q_target = q_list[0]
-            elif ip_address:
-                # FALLBACK: Buscar por IP
+            elif old_ip or new_ip:
+                # FALLBACK: Buscar por IP Vieja o Nueva
                 all_queues = queues.get()
-                clean_ip = ip_address.split('/')[0]
-                q_list_by_ip = [q for q in all_queues if clean_ip in q.get('target', '')]
-                if q_list_by_ip:
-                    q_target = q_list_by_ip[0]
+                search_ips = [ip.split('/')[0] for ip in [old_ip, new_ip] if ip]
+                for q in all_queues:
+                    q_ip = q.get('target', '').split('/')[0]
+                    if q_ip in search_ips:
+                        q_target = q
+                        break
             
             if q_target:
                 target_id = get_id(q_target)
                 if target_id:
                     update_params = {}
                     
-                    # REGLA: Para Simple Queues usamos el nombre real en el campo 'Name'
-                    # No agregamos comentarios.
                     if service_type == 'simple_queue' and legal_name:
                         update_params['name'] = legal_name
-                        update_params['comment'] = "" # Limpiar comentario si existía
                     elif new_username:
                         update_params['name'] = new_username
-                        update_params['comment'] = "" # Limpiar comentario si existía
+                    
+                    if new_ip and new_ip != '0.0.0.0' and new_ip != 'Dinámica':
+                        # MikroTik requiere máscara (/32 usualmente)
+                        update_params['target'] = f"{new_ip}/32" if '/' not in new_ip else new_ip
+                    
+                    update_params['comment'] = "" # Limpiar comentarios
                     
                     if update_params:
                         queues.set(id=target_id, **update_params)
-                        logger.info(f"MikroTik: Simple Queue actualizada (Name: {update_params.get('name')})")
+                        logger.info(f"MikroTik: Simple Queue actualizada para {current_username} -> {new_ip}")
         except Exception as e:
             logger.error(f"Error updating Simple Queue in MikroTik: {e}")
             success = False
@@ -590,21 +620,21 @@ class MikroTikAdapter(INetworkService):
                 s_list = secrets.get(name=current_username)
                 if s_list:
                     s_target = s_list[0]
-                elif ip_address:
+                elif old_ip or new_ip:
                     all_secrets = secrets.get()
-                    s_list_by_ip = [s for s in all_secrets if s.get('remote-address') == ip_address]
-                    if s_list_by_ip:
-                        s_target = s_list_by_ip[0]
+                    search_ips = [old_ip, new_ip]
+                    for s in all_secrets:
+                        if s.get('remote-address') in search_ips:
+                            s_target = s
+                            break
                 
                 if s_target:
                     target_id = get_id(s_target)
                     if target_id:
-                        update_params = {}
-                        if new_username:
-                            update_params['name'] = new_username
-                        
-                        # Limpiar comentarios redundantes
-                        update_params['comment'] = ""
+                        update_params = {'comment': ""}
+                        if new_username: update_params['name'] = new_username
+                        if new_ip and new_ip != '0.0.0.0' and new_ip != 'Dinámica':
+                            update_params['remote-address'] = new_ip
                         
                         if update_params:
                             secrets.set(id=target_id, **update_params)
@@ -613,49 +643,50 @@ class MikroTikAdapter(INetworkService):
                 logger.error(f"Error updating PPPoE Secret in MikroTik: {e}")
                 success = False
 
-        # 3. ACTUALIZAR MAC Y LIMPIAR COMENTARIOS EN DHCP LEASES
-        if ip_address or client_data.get('mac_address'):
+        # 3. ACTUALIZAR DHCP LEASES
+        if new_ip or old_ip or client_data.get('mac_address'):
             try:
                 leases = self._api_connection.get_resource('/ip/dhcp-server/lease')
-                l_list = []
-                if ip_address:
-                    l_list = leases.get(address=ip_address)
+                search_ips = [ip for ip in [old_ip, new_ip] if ip]
+                all_l = leases.get()
+                l_targets = [l for l in all_l if l.get('address') in search_ips]
                 
-                # Si no encontramos por IP, intentamos por MAC vieja (current_mac no la tenemos, pero podemos buscar por el nuevo username en host-name/comment)
-                # O simplemente si tenemos mac_address en client_data, la usamos para buscar si no hay IP.
-                
-                if l_list:
-                    for lease in l_list:
-                        target_id = get_id(lease)
-                        if target_id:
-                            update_l = {'comment': ""}
-                            if client_data.get('mac_address'):
-                                update_l['mac-address'] = client_data.get('mac_address')
-                            leases.set(id=target_id, **update_l)
-                    logger.info(f"MikroTik: DHCP Lease actualizado (IP: {ip_address}, MAC: {client_data.get('mac_address')})")
+                for lease in l_targets:
+                    tid = get_id(lease)
+                    if tid:
+                        upd = {'comment': ""}
+                        if new_ip: upd['address'] = new_ip
+                        if client_data.get('mac_address'): upd['mac-address'] = client_data.get('mac_address')
+                        leases.set(id=tid, **upd)
+                logger.info(f"MikroTik: DHCP Leases actualizados")
             except Exception as e:
-                logger.error(f"Error updating DHCP Lease in MikroTik: {e}")
+                logger.error(f"Error updating DHCP Lease: {e}")
 
-        # 4. LIMPIAR COMENTARIOS EN ADDRESS LISTS
-        if ip_address:
+        # 4. ACTUALIZAR ADDRESS LISTS (Cortes/Suspensión)
+        if old_ip and new_ip and old_ip != new_ip:
             try:
                 addr_lists = self._api_connection.get_resource('/ip/firewall/address-list')
-                a_list = addr_lists.get(address=ip_address)
-                if a_list:
-                    for entry in a_list:
-                        target_id = get_id(entry)
-                        if target_id:
-                            addr_lists.set(id=target_id, comment="")
-                    logger.info(f"MikroTik: Address List entries para IP {ip_address} (comentario limpiado)")
+                clean_old = old_ip.split('/')[0]
+                clean_new = new_ip.split('/')[0]
+                
+                # Buscar todas las entradas con la IP vieja
+                old_entries = addr_lists.get(address=clean_old)
+                for entry in old_entries:
+                    tid = get_id(entry)
+                    if tid:
+                        # Mover a la nueva IP conservando la lista y el comentario (legal_name)
+                        list_name = entry.get('list')
+                        addr_lists.set(id=tid, address=clean_new)
+                        logger.info(f"MikroTik: Movido de {clean_old} a {clean_new} en Address List '{list_name}'")
             except Exception as e:
-                logger.error(f"Error clearing Address List comment in MikroTik: {e}")
+                logger.error(f"Error updating Address Lists: {e}")
 
         return success
     
     def suspend_client_service(self, client_data: Dict[str, Any]) -> bool:
         """
         Suspende el servicio del cliente.
-        Deshabilita el Secret/Queue y lo agrega a la Address List de SUSPENDIDOS.
+        Deshabilita el Secret/Queue, lo agrega a la Address List de BLOQUEADOS y patea la sesión si es PPPoE.
         """
         if not self._is_connected:
             return False
@@ -670,12 +701,23 @@ class MikroTikAdapter(INetworkService):
             return item.get('id') or item.get('.id')
 
         try:
-            logger.info(f"🚫 Suspendiendo servicio MikroTik para {username} (IP: {ip_address}, Tipo: {service_type})")
+            logger.info(f"🚫 Suspendiendo servicio MikroTik para {username} (IP original: {ip_address}, Tipo: {service_type})")
             
             # 0. Asegurar que las reglas de firewall existan
             self.ensure_cutoff_firewall_rules()
 
-            # 1. Deshabilitar Secret/Queue
+            # 1. Obtener IP real si es dinámica o PPPoE para asegurar el bloqueo en Firewall
+            # Esto es CRÍTICO para que el corte sea efectivo
+            real_ip = ip_address
+            active_sessions = {}
+            if service_type == 'pppoe' or not ip_address or ip_address == 'Dinámica' or ip_address == '0.0.0.0':
+                active_sessions = self.get_active_pppoe_sessions()
+                if username in active_sessions:
+                    real_ip = active_sessions[username].get('ip')
+                    if real_ip:
+                         logger.info(f"📍 Detectada IP real activa para {username}: {real_ip}")
+
+            # 2. Deshabilitar Secret/Queue
             if service_type == 'pppoe':
                 resource = self._api_connection.get_resource('/ppp/secret')
             else:
@@ -695,27 +737,54 @@ class MikroTikAdapter(INetworkService):
             else:
                 logger.warning(f"No se encontró {service_type} '{username}' para deshabilitar.")
             
-            # 2. Agregar a Address List para redirección (Corte)
-            if ip_address:
-                clean_target_ip = ip_address.split('/')[0]
+            # 3. Agregar a Address List para redirección (Corte)
+            target_ip_to_block = real_ip or ip_address
+            if target_ip_to_block and target_ip_to_block not in ['Dinámica', '0.0.0.0']:
+                clean_target_ip = target_ip_to_block.split('/')[0]
                 addr_lists = self._api_connection.get_resource('/ip/firewall/address-list')
                 
-                # Verificar si YA EXISTE (robusto buscando por IP directamente)
+                # Verificar si YA EXISTE
                 try:
                     target_entries = addr_lists.get(list='IPS_BLOQUEADAS', address=clean_target_ip)
-                    
                     if not target_entries:
-                        # Agregamos el nombre del cliente como comentario para identificación fácil
                         addr_lists.add(list='IPS_BLOQUEADAS', address=clean_target_ip, comment=legal_name)
                         logger.info(f"MikroTik: IP {clean_target_ip} agregada a lista IPS_BLOQUEADAS")
-                    else:
-                        logger.debug(f"IP {clean_target_ip} ya estaba en la lista IPS_BLOQUEADAS.")
                 except Exception as e_list:
                     logger.error(f"Error al manipular Address List en suspensión: {e_list}")
+            
+            # 4. FORZAR DESCONEXIÓN (KICK) si es PPPoE
+            # Esto obliga al router a cerrar la sesión y al firewall a aplicar la nueva regla IPS_BLOQUEADAS
+            if service_type == 'pppoe':
+                self.kick_ppp_active_session(username)
                 
             return True
         except Exception as e:
             logger.error(f"Error suspendiendo cliente en MikroTik: {e}")
+            return False
+
+    def kick_ppp_active_session(self, username: str) -> bool:
+        """
+        Elimina la sesión activa de un usuario PPPoE para forzar reconexión o corte.
+        """
+        if not self._is_connected or not username:
+            return False
+            
+        try:
+            active_resource = self._api_connection.get_resource('/ppp/active')
+            sessions = active_resource.get(name=username)
+            
+            if sessions:
+                for session in sessions:
+                    session_id = session.get('.id') or session.get('id')
+                    if session_id:
+                        active_resource.remove(id=session_id)
+                        logger.info(f"⚡ PPPoE Session kicked for user: {username}")
+                return True
+            else:
+                logger.debug(f"No active PPPoE session found for {username} to kick.")
+                return False
+        except Exception as e:
+            logger.error(f"Error kicking PPPoE session for {username}: {e}")
             return False
     
     def restore_client_service(self, client_data: Dict[str, Any]) -> bool:
@@ -956,6 +1025,7 @@ class MikroTikAdapter(INetworkService):
     def get_bulk_traffic(self, interfaces: List[str]) -> Dict[str, Dict[str, int]]:
         """
         Obtiene tráfico en tiempo real procesando en ráfagas (chunks) para no saturar la API.
+        Capta tanto Simple Queues como Interfaces (PPPoE/Ethernet).
         """
         if not self._is_connected or not interfaces:
             return {}
@@ -964,66 +1034,219 @@ class MikroTikAdapter(INetworkService):
             valid_requested = [i for i in interfaces if i]
             if not valid_requested: return {}
             
-            # 1. Obtener lista REAL de interfaces rápido
-            all_interfaces_res = self._api_connection.get_resource('/interface')
-            all_ifaces_list = all_interfaces_res.get()
-            existing_names = {i.get('name') for i in all_ifaces_list if i.get('name')}
+            # 1. Obtener lista REAL de interfaces rápido O(N)
+            resource_iface = self._api_connection.get_resource('/interface')
+            all_ifaces = resource_iface.get()
+            
+            # Tabla de búsqueda insensible a mayúsculas: { lower_name: original_name }
+            existing_names_map = {i.get('name').lower(): i.get('name') for i in all_ifaces if i.get('name')}
 
             # 2. Filtrar y mapear interfaces válidas
             final_interfaces = []
             mapping = {} 
             for user in valid_requested:
-                c1, c2 = user, f"<{user}>" # Caso PPPoE común
-                c3 = f"<pppoe-{user}>"
-                c4 = f"pppoe-{user}"
+                user_l = user.lower()
+                # Priorizar coincidencia exacta (Simple Queues suelen usar el username)
+                # Luego probar patrones PPPoE comunes
+                patterns_l = [user_l, f"<{user_l}>", f"pppoe-{user_l}", f"<pppoe-{user_l}>"]
                 
-                target = None
-                if c1 in existing_names: target = c1
-                elif c2 in existing_names: target = c2
-                elif c3 in existing_names: target = c3
-                elif c4 in existing_names: target = c4
+                target_l = next((p for p in patterns_l if p in existing_names_map), None)
                 
-                if target:
-                    final_interfaces.append(target)
-                    mapping[target] = user
+                if target_l:
+                    target_real = existing_names_map[target_l]
+                    final_interfaces.append(target_real)
+                    mapping[target_real] = user
 
             if not final_interfaces:
                 return {}
 
-            # 3. Procesar en CHUNKS de 15 para evitar límites de MikroTik
+            # 3. Procesar en CHUNKS para evitar límites de MikroTik
             results = {}
-            chunk_size = 15
-            resource = self._api_connection.get_resource('/interface')
-
+            chunk_size = 40 
+            
             for i in range(0, len(final_interfaces), chunk_size):
                 chunk = final_interfaces[i:i + chunk_size]
                 iface_str = ",".join(chunk)
                 
                 try:
-                    response = resource.call('monitor-traffic', {
+                    # monitor-traffic es la forma más eficiente de obtener bps instantáneos
+                    # Si falla un chunk, puede ser por una interfaz borrada en el micro-segundo
+                    response = resource_iface.call('monitor-traffic', {
                         'interface': iface_str,
                         'once': 'true'
                     })
                     
+                    if not response:
+                        logger.debug(f"Monitor: No data returned for chunk on interfaces: {iface_str}")
+                        continue
+
                     for item in response:
                         name = item.get('name')
                         if name in mapping:
                             original_user = mapping[name]
-                            results[original_user] = {
-                                'upload': int(item.get('rx-bits-per-second', 0)),
-                                'download': int(item.get('tx-bits-per-second', 0))
-                            }
+                            # Normalizar: rx = upload (entrada al router), tx = download (salida del router)
+                            try:
+                                rx = int(item.get('rx-bits-per-second', 0))
+                                tx = int(item.get('tx-bits-per-second', 0))
+                                
+                                results[original_user] = {
+                                    'upload': rx,
+                                    'download': tx,
+                                    'rx': rx,
+                                    'tx': tx
+                                }
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Error parsing traffic values for {name}: {e}")
                 except Exception as e:
-                    logger.warning(f"Error in traffic chunk {i}: {e}")
+                    logger.warning(f"Error in traffic chunk (Interfaces: {iface_str}): {e}")
                     continue
-            
-            return results
             
             return results
             
         except Exception as e:
             logger.error(f"Error bulk traffic logic: {e}")
             return {}
+
+    def get_bulk_interface_stats(self, usernames: List[str]) -> Dict[str, Dict[str, int]]:
+        """
+        Obtiene contadores acumulados de bytes (tx-byte, rx-byte) desde Simple Queues.
+        Necesario para calcular consumo diario/mensual en los reportes.
+        Retorna: { username: { tx_bytes: int, rx_bytes: int } }
+        """
+        if not self._is_connected or not usernames:
+            return {}
+        
+        try:
+            queue_resource = self._api_connection.get_resource('/queue/simple')
+            all_queues = queue_resource.get()
+            
+            # Crear mapa de queues por nombre (case-insensitive)
+            queue_map = {}
+            for q in all_queues:
+                name = q.get('name', '').lower()
+                queue_map[name] = q
+            
+            results = {}
+            for user in usernames:
+                if not user:
+                    continue
+                user_l = user.lower()
+                
+                # Buscar la queue que corresponde a este usuario
+                q = queue_map.get(user_l)
+                if not q:
+                    # Intentar con patrones alternativos
+                    for pattern in [f"<{user_l}>", f"pppoe-{user_l}", f"<pppoe-{user_l}>"]:
+                        q = queue_map.get(pattern)
+                        if q:
+                            break
+                
+                if q:
+                    # Parsear bytes del campo 'bytes' que viene como "upload/download"
+                    bytes_str = q.get('bytes', '0/0')
+                    try:
+                        parts = bytes_str.split('/')
+                        tx_bytes = int(parts[0]) if len(parts) > 0 else 0
+                        rx_bytes = int(parts[1]) if len(parts) > 1 else 0
+                        
+                        results[user] = {
+                            'tx_bytes': tx_bytes,
+                            'rx_bytes': rx_bytes
+                        }
+                    except (ValueError, IndexError):
+                        results[user] = {'tx_bytes': 0, 'rx_bytes': 0}
+                else:
+                    results[user] = {'tx_bytes': 0, 'rx_bytes': 0}
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error getting bulk interface stats: {e}")
+            return {}
+
+    def ping_bulk(self, targets: List[str], count: int = 3) -> Dict[str, Dict[str, any]]:
+        """
+        Ejecuta pings desde el router MikroTik via la API /tool/ping.
+        Mide latencia, packet loss y jitter para cada IP objetivo.
+        Retorna: { ip: { latency: float, loss: float, jitter: float, status: str } }
+        """
+        if not self._is_connected or not targets:
+            return {}
+        
+        results = {}
+        
+        for target_ip in targets:
+            if not target_ip:
+                continue
+            try:
+                ping_resource = self._api_connection.get_resource('/tool')
+                response = ping_resource.call('ping', {
+                    'address': target_ip,
+                    'count': str(count),
+                    'interval': '200ms'
+                })
+                
+                latencies = []
+                sent = 0
+                received = 0
+                
+                for item in response:
+                    sent_val = item.get('sent')
+                    received_val = item.get('received')
+                    time_val = item.get('time')
+                    
+                    if sent_val is not None:
+                        sent = int(sent_val)
+                    if received_val is not None:
+                        received = int(received_val)
+                    
+                    if time_val is not None:
+                        try:
+                            # MikroTik devuelve tiempo como "12ms" o "1234us"
+                            time_str = str(time_val).replace('ms', '').replace('us', '')
+                            lat_ms = float(time_str)
+                            if 'us' in str(time_val):
+                                lat_ms /= 1000.0
+                            latencies.append(lat_ms)
+                        except (ValueError, TypeError):
+                            pass
+                
+                if latencies:
+                    avg_latency = sum(latencies) / len(latencies)
+                    # Calcular Jitter como desviación estándar
+                    if len(latencies) > 1:
+                        mean = avg_latency
+                        variance = sum((x - mean) ** 2 for x in latencies) / len(latencies)
+                        jitter = variance ** 0.5
+                    else:
+                        jitter = 0.0
+                    
+                    loss_pct = ((sent - received) / sent * 100) if sent > 0 else 100.0
+                    
+                    results[target_ip] = {
+                        'latency': round(avg_latency, 1),
+                        'loss': round(loss_pct, 1),
+                        'jitter': round(jitter, 1),
+                        'status': 'online' if loss_pct < 100 else 'offline'
+                    }
+                else:
+                    results[target_ip] = {
+                        'latency': -1,
+                        'loss': 100.0,
+                        'jitter': 0.0,
+                        'status': 'timeout'
+                    }
+                    
+            except Exception as e:
+                logger.debug(f"Ping failed for {target_ip}: {e}")
+                results[target_ip] = {
+                    'latency': -1,
+                    'loss': 100.0,
+                    'jitter': 0.0,
+                    'status': 'error'
+                }
+        
+        return results
 
     def get_all_last_seen(self) -> Dict[str, str]:
         """
@@ -1122,9 +1345,8 @@ class MikroTikAdapter(INetworkService):
             return {}
             
         results = {}
-        # Limitamos a 50 IPs por lote para no bloquear tanto tiempo
-        # Cada ping toma aprox count * 1s
-        target_ips = ips[:50] 
+        # Limitamos a un lote razonable para un hilo de monitoreo (aprox 500)
+        target_ips = ips[:500] 
         
         try:
             # Usamos un truco: flood ping rápido si es posible, o count bajo
@@ -1148,42 +1370,44 @@ class MikroTikAdapter(INetworkService):
                     
                     # Analizar resultados
                     sent = len(ping_res)
-                    received = len([p for p in ping_res if 'time' in p])
-                    avg_rtt = 0
+                    received_packets = [p for p in ping_res if 'time' in p]
+                    received = len(received_packets)
+                    
+                    latencies = []
                     if received > 0:
-                        total_time_ms = 0
-                        for p in ping_res:
-                            if 'time' not in p: continue
+                        for p in received_packets:
                             t_str = str(p['time'])
-                            
-                            # Robust parsing of MikroTik time strings (e.g. 1ms, 500us, <1ms)
                             try:
-                                # Extract only numeric parts and decimal points
                                 clean_val_str = "".join(c for c in t_str if c.isdigit() or c == '.')
                                 if not clean_val_str: continue
-                                
                                 t_val = float(clean_val_str)
                                 
-                                if 'ms' in t_str:
-                                    pass # already in ms
-                                elif 'us' in t_str:
-                                    t_val = t_val / 1000.0
-                                elif 's' in t_str and 'ms' not in t_str:
-                                    t_val = t_val * 1000.0
+                                if 'ms' in t_str: pass
+                                elif 'us' in t_str: t_val = t_val / 1000.0
+                                elif 's' in t_str and 'ms' not in t_str: t_val = t_val * 1000.0
                                 
-                                total_time_ms += t_val
-                            except (ValueError, TypeError):
-                                continue
+                                latencies.append(t_val)
+                            except: continue
 
-                        avg_rtt = int(total_time_ms / received)
-                    
-                    loss = ((sent - received) / sent) * 100
-                    
-                    results[ip] = {
-                        'latency': avg_rtt,
-                        'loss': loss,
-                        'status': 'online' if received > 0 else 'offline'
-                    }
+                        avg_rtt = sum(latencies) / len(latencies) if latencies else 0
+                        min_rtt = min(latencies) if latencies else 0
+                        max_rtt = max(latencies) if latencies else 0
+                        
+                        # Jitter calculation (Average Deviation)
+                        jitter = 0
+                        if len(latencies) > 1:
+                            jitter = sum(abs(x - avg_rtt) for x in latencies) / len(latencies)
+
+                        results[ip] = {
+                            'latency': round(avg_rtt, 1),
+                            'min_latency': round(min_rtt, 1),
+                            'max_latency': round(max_rtt, 1),
+                            'jitter': round(jitter, 1),
+                            'loss': round(((sent - received) / sent) * 100, 1),
+                            'status': 'online'
+                        }
+                    else:
+                        results[ip] = {'latency': 0, 'loss': 100, 'status': 'offline', 'jitter': 0}
                 except Exception as e:
                     logger.warning(f"Error pinging {ip}: {e}")
                     results[ip] = {'latency': 0, 'loss': 100, 'status': 'error'}
@@ -1247,6 +1471,37 @@ class MikroTikAdapter(INetworkService):
         except Exception as e:
             logger.error(f"Error getting interface traffic for {interface_name}: {e}")
             return {'rx': 0, 'tx': 0}
+
+    def get_batch_interface_traffic(self, interfaces: List[str]) -> Dict[str, Dict[str, int]]:
+        """
+        Obtiene tráfico para múltiples interfaces en una sola consulta.
+        Mucho más eficiente que llamar get_interface_traffic en bucle.
+        """
+        if not self._is_connected or not interfaces:
+            return {}
+            
+        try:
+            # Join interfaces with comma
+            iface_str = ",".join(interfaces)
+            
+            resource = self._api_connection.get_resource('/interface')
+            response = resource.call('monitor-traffic', {
+                'interface': iface_str,
+                'once': 'true'
+            })
+            
+            results = {}
+            for item in response:
+                name = item.get('name')
+                if name:
+                    results[name] = {
+                        'rx': int(item.get('rx-bits-per-second', 0)),
+                        'tx': int(item.get('tx-bits-per-second', 0))
+                    }
+            return results
+        except Exception as e:
+            logger.error(f"Error getting batch traffic: {e}")
+            return {}
     def get_dhcp_leases(self) -> List[Dict[str, str]]:
         """
         Obtiene todos los leases de DHCP que están activos (bound)
@@ -1351,6 +1606,19 @@ class MikroTikAdapter(INetworkService):
             logger.error(f"Error getting Simple Queues: {e}")
             return []
     
+    def get_logs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Obtiene logs recientes del router"""
+        if not self._is_connected:
+            return []
+        try:
+            log_resource = self._api_connection.get_resource('/log')
+            logs = log_resource.get()
+            # Retornar los últimos 'limit' registros
+            return logs[-limit:] if logs else []
+        except Exception as e:
+            logger.error(f"Error getting logs: {e}")
+            return []
+
     def get_all_pppoe_secrets(self) -> List[Dict[str, Any]]:
         """
         Obtiene todos los PPPoE Secrets configurados en el router

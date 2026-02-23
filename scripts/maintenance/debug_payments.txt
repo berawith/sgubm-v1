@@ -1,0 +1,84 @@
+
+--- Report Request at 2026-02-09 02:07:56.769327 ---
+Start: None (Type: <class 'NoneType'>)
+End: None (Type: <class 'NoneType'>)
+
+--- Report Request at 2026-02-09 02:08:18.452542 ---
+Start: None (Type: <class 'NoneType'>)
+End: None (Type: <class 'NoneType'>)
+
+--- Report Request at 2026-02-09 02:08:18.855476 ---
+Start: None (Type: <class 'NoneType'>)
+End: None (Type: <class 'NoneType'>)
+
+--- Report Request at 2026-02-09 02:10:13.044601 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 395 payments
+  Sample: ID=398 Amt=90000.0 Date=2026-02-09 00:25:32.323856 RouterID=5
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments
+
+--- Report Request at 2026-02-09 02:20:27.595658 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 395 payments
+  Sample: ID=398 Amt=90000.0 Date=2026-02-09 00:25:32.323856 RouterID=5
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments
+
+--- Report Request at 2026-02-09 02:25:13.155754 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 395 payments
+  Sample: ID=398 Amt=90000.0 Date=2026-02-09 00:25:32.323856 RouterID=5
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments
+
+--- Report Request at 2026-02-09 02:33:03.625234 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 395 payments
+  Sample: ID=398 Amt=90000.0 Date=2026-02-09 00:25:32.323856 RouterID=5
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments
+
+--- Report Request at 2026-02-09 02:36:21.771625 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 395 payments
+  Sample: ID=398 Amt=90000.0 Date=2026-02-09 00:25:32.323856 RouterID=5
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments
+
+--- Report Request at 2026-02-09 02:40:00.776718 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 395 payments
+  Sample: ID=398 Amt=90000.0 Date=2026-02-09 00:25:32.323856 RouterID=5
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments
+
+--- Report Request at 2026-02-09 02:43:24.341979 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 395 payments
+  Sample: ID=398 Amt=90000.0 Date=2026-02-09 00:25:32.323856 RouterID=5
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments
+
+--- Report Request at 2026-02-09 10:10:01.660608 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 396 payments
+  Sample: ID=399 Amt=90000.0 Date=2026-02-09 10:09:31.355896 RouterID=1
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments
+
+--- Report Request at 2026-02-09 10:33:16.646637 ---
+Start: 2026-02-01 00:00:00 (Type: <class 'datetime.datetime'>)
+End: 2026-02-09 23:59:59 (Type: <class 'datetime.datetime'>)
+Query Range: 2026-02-01 00:00:00 to 2026-02-09 23:59:59 -> Found 399 payments
+  Sample: ID=402 Amt=70000.0 Date=2026-02-09 10:23:40.000788 RouterID=2
+Query Range: 2026-01-01 00:00:00 to 2026-01-31 23:59:59 -> Found 0 payments
+Query Range: 2025-12-01 00:00:00 to 2025-12-31 23:59:59 -> Found 0 payments

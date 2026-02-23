@@ -1,0 +1,82 @@
+<!-- Clients Trash View -->
+<div id="clients-trash-view" class="view content-view">
+    <div class="view-header">
+        <div class="header-left">
+            <h1 class="page-title">Papelera de Clientes</h1>
+            <p class="page-subtitle">Suscriptores eliminados que pueden ser restaurados</p>
+        </div>
+        <div class="header-actions">
+            <div class="premium-search-container">
+                <div class="search-glass-wrapper">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="clients-trash-search" placeholder="Buscar en papelera..."
+                        oninput="app.modules.clients.onTrashSearch(this.value)">
+                    <button class="clear-btn"
+                        onclick="document.getElementById('clients-trash-search').value=''; app.modules.clients.onTrashSearch('')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toolbar Papelera -->
+    <div class="clients-toolbar glass-panel">
+        <div class="toolbar-group">
+            <button class="btn-secondary" onclick="app.modules.clients.confirmEmptyTrash()">
+                <i class="fas fa-trash-restore"></i> Vaciar Papelera
+            </button>
+        </div>
+
+        <div class="toolbar-right">
+            <div id="clients-trash-bulk-actions" class="bulk-actions-group" style="display: none;">
+                <span class="selection-count"><span id="clients-trash-selected-count">0</span> seleccionados</span>
+                <div class="actions-divider"></div>
+                <button class="btn-action restore" onclick="app.modules.clients.bulkRestoreTrash()"
+                    title="Restaurar seleccionados">
+                    <i class="fas fa-undo"></i> Restaurar
+                </button>
+                <button class="btn-action delete" onclick="app.modules.clients.bulkHardDeleteClients()"
+                    title="Eliminar permanentemente">
+                    <i class="fas fa-trash-alt"></i> Borrar
+                </button>
+            </div>
+
+            <div class="stats-group">
+                <div class="stat-pill-premium total">
+                    <div class="pill-icon"><i class="fas fa-archive"></i></div>
+                    <div class="pill-info">
+                        <span class="pill-value" id="clients-trash-count-total">0</span>
+                        <span class="pill-label">Archivados</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-container-premium glass-panel">
+        <table class="premium-data-table trash-table">
+            <thead>
+                <tr>
+                    <th width="40"><input type="checkbox" id="clients-trash-select-all"
+                            onclick="app.modules.clients.toggleSelectAllTrash(this.checked)"></th>
+                    <th width="40" class="sortable" onclick="app.modules.clients.sortTrash('id')">ID <i
+                            class="fas fa-sort sort-icon" id="sort-clients-trash-id"></i></th>
+                    <th class="sortable" onclick="app.modules.clients.sortTrash('legal_name')">Cliente <i
+                            class="fas fa-sort sort-icon" id="sort-clients-trash-legal_name"></i></th>
+                    <th class="sortable" onclick="app.modules.clients.sortTrash('ip_address')">IP / Credenciales <i
+                            class="fas fa-sort sort-icon" id="sort-clients-trash-ip_address"></i></th>
+                    <th class="sortable" onclick="app.modules.clients.sortTrash('router')">Router / Zona <i
+                            class="fas fa-sort sort-icon" id="sort-clients-trash-router"></i></th>
+                    <th class="sortable" onclick="app.modules.clients.sortTrash('updated_at')">Fecha Baja <i
+                            class="fas fa-sort sort-icon" id="sort-clients-trash-updated_at"></i></th>
+                    <th width="150" style="text-align: right;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="clients-trash-table-body">
+                <!-- Injected by JS -->
+            </tbody>
+        </table>
+    </div>
+</div>

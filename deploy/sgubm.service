@@ -1,0 +1,25 @@
+[Unit]
+Description=SGUBM ISP Management System
+After=network.target
+
+[Service]
+Type=simple
+User=sgubm
+Group=sgubm
+WorkingDirectory=/opt/sgubm
+Environment="PATH=/opt/sgubm/venv/bin:/usr/bin"
+ExecStart=/opt/sgubm/venv/bin/gunicorn \
+    --worker-class eventlet \
+    --workers 1 \
+    --bind 127.0.0.1:5000 \
+    --timeout 120 \
+    --keep-alive 65 \
+    --access-logfile /var/log/sgubm/access.log \
+    --error-logfile /var/log/sgubm/error.log \
+    --log-level info \
+    wsgi:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

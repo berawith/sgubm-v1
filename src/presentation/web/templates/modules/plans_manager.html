@@ -32,12 +32,18 @@
         <table class="data-table" style="margin-top: 0; border: none; box-shadow: none;">
             <thead>
                 <tr>
-                    <th style="padding-left: 24px;">Nombre del Plan</th>
-                    <th>Velocidad (Mbps)</th>
-                    <th>Precio Tarifa</th>
-                    <th>Asignado a</th>
-                    <th>Servicio</th>
-                    <th>Clientes</th>
+                    <th style="padding-left: 24px;" class="sortable" onclick="window.sortPlansBy('name')">Nombre del
+                        Plan <i class="fas fa-sort"></i></th>
+                    <th class="sortable" onclick="window.sortPlansBy('download_speed')">Velocidad (Mbps) <i
+                            class="fas fa-sort"></i></th>
+                    <th class="sortable" onclick="window.sortPlansBy('monthly_price')">Precio Tarifa <i
+                            class="fas fa-sort"></i></th>
+                    <th class="sortable" onclick="window.sortPlansBy('router_name')">Asignado a <i
+                            class="fas fa-sort"></i></th>
+                    <th class="sortable" onclick="window.sortPlansBy('service_type')">Servicio <i
+                            class="fas fa-sort"></i></th>
+                    <th class="sortable" onclick="window.sortPlansBy('clients_count')">Clientes <i
+                            class="fas fa-sort"></i></th>
                     <th style="text-align: right; padding-right: 24px;">Acciones</th>
                 </tr>
             </thead>
@@ -67,10 +73,15 @@
                 <table class="data-table" style="margin-top: 0; border: none; box-shadow: none;">
                     <thead>
                         <tr>
-                            <th style="padding-left: 20px;">Cliente</th>
-                            <th>Usuario</th>
-                            <th>IP</th>
-                            <th>Estado</th>
+                            <th style="padding-left: 20px;" class="sortable"
+                                onclick="window.sortPlanClientsBy('legal_name')">Cliente <i class="fas fa-sort"></i>
+                            </th>
+                            <th class="sortable" onclick="window.sortPlanClientsBy('username')">Usuario <i
+                                    class="fas fa-sort"></i></th>
+                            <th class="sortable" onclick="window.sortPlanClientsBy('ip_address')">IP <i
+                                    class="fas fa-sort"></i></th>
+                            <th class="sortable" onclick="window.sortPlanClientsBy('status')">Estado <i
+                                    class="fas fa-sort"></i></th>
                         </tr>
                     </thead>
                     <tbody id="planClientsTableBody">
@@ -86,132 +97,5 @@
         <div class="modal-footer">
             <button type="button" onclick="window.closePlanClientsModal()" class="btn-secondary">Cerrar</button>
         </div>
-    </div>
-</div>
-
-<!-- Plan Modal -->
-<div id="planModal" class="modal">
-    <div class="modal-content" style="max-width: 500px;">
-        <div class="modal-header">
-            <div>
-                <h3 id="modalTitle">Nuevo Plan</h3>
-                <p
-                    style="margin: 0; font-size: 0.8rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
-                    Definición de Tarifas y Velocidad</p>
-            </div>
-            <button onclick="window.closePlanModal()" class="close-btn">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-
-        <form id="planForm" onsubmit="window.handlePlanSubmit(event)">
-            <div class="modal-body">
-                <input type="hidden" id="planId">
-
-                <div class="form-grid">
-                    <!-- Nombre -->
-                    <div class="form-group span-full">
-                        <label for="planName">Nombre del Plan</label>
-                        <div class="input-icon-wrapper">
-                            <i class="fas fa-file-signature field-icon"></i>
-                            <input type="text" id="planName" required class="form-control"
-                                placeholder="Ej: Fibra 50 Megas">
-                        </div>
-                    </div>
-
-                    <!-- Velocidades -->
-                    <div class="form-group span-2">
-                        <label for="planDownload">Descarga (Kbps)</label>
-                        <div class="input-icon-wrapper">
-                            <i class="fas fa-arrow-down field-icon"></i>
-                            <input type="number" id="planDownload" required class="form-control"
-                                placeholder="Ej: 50000">
-                        </div>
-                        <small class="form-text-premium">1 Mb = 1000 Kb</small>
-                    </div>
-                    <div class="form-group span-2">
-                        <label for="planUpload">Subida (Kbps)</label>
-                        <div class="input-icon-wrapper">
-                            <i class="fas fa-arrow-up field-icon"></i>
-                            <input type="number" id="planUpload" required class="form-control" placeholder="Ej: 10000">
-                        </div>
-                    </div>
-
-                    <!-- Precio -->
-                    <div class="form-group span-full">
-                        <label for="planPrice">Precio Mensual</label>
-                        <div class="input-with-addon">
-                            <span class="addon"
-                                style="left: 14px; position: absolute; top: 50%; transform: translateY(-50%); color: #94a3b8; font-weight: 600; z-index: 10;">$</span>
-                            <input type="number" id="planPrice" required step="0.01" class="form-control"
-                                style="padding-left: 30px;" placeholder="Ej: 80000">
-                            <select id="planCurrency" class="form-control"
-                                style="width: 80px; position: absolute; right: 0; padding: 11px 10px; border-left: 1px solid #e2e8f0; border-top-left-radius: 0; border-bottom-left-radius: 0;">
-                                <option>COP</option>
-                                <option>USD</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Tipo Servicio -->
-                    <div class="form-group span-2">
-                        <label for="planType">Tipo Servicio</label>
-                        <select id="planType" class="form-control" style="padding-left: 16px;">
-                            <option value="pppoe">PPPoE</option>
-                            <option value="simple_queue">Simple Queue</option>
-                            <option value="hotspot">Hotspot</option>
-                        </select>
-                    </div>
-
-                    <!-- Perfil MK -->
-                    <div class="form-group span-2">
-                        <label for="planProfile">Perfil MikroTik</label>
-                        <div class="input-icon-wrapper">
-                            <i class="fas fa-terminal field-icon"></i>
-                            <input type="text" id="planProfile" class="form-control" placeholder="Nombre en router">
-                        </div>
-                    </div>
-
-                    <!-- PPPoE Progresive Fields -->
-                    <div id="pppoe-fields" class="form-grid span-full"
-                        style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
-                        <div class="form-group">
-                            <label for="planLocalAddress">IP Local (Propagación)</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-map-marker-alt field-icon"></i>
-                                <input type="text" id="planLocalAddress" class="form-control"
-                                    placeholder="Ej: 10.0.0.1">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="planRemoteAddress">Pool Remoto (Propagación)</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-network-wired field-icon"></i>
-                                <input type="text" id="planRemoteAddress" class="form-control"
-                                    placeholder="Ej: pool_clientes">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Router Asociación -->
-                    <div class="form-group span-full">
-                        <label for="planRouter">Router / Servidor</label>
-                        <div class="input-icon-wrapper">
-                            <i class="fas fa-server field-icon"></i>
-                            <select id="planRouter" class="form-control" style="padding-left: 36px;">
-                                <option value="">Global (Todos los routers)</option>
-                                <!-- Populated by JS -->
-                            </select>
-                        </div>
-                        <small class="form-text-premium">Indica a qué servidor pertenece este plan.</small>
-                    </div>
-                </div>
-            </div>
-
-            <div class="modal-footer">
-                <button type="button" onclick="window.closePlanModal()" class="btn-secondary">Cancelar</button>
-                <button type="submit" class="btn-primary">Guardar Plan</button>
-            </div>
-        </form>
     </div>
 </div>

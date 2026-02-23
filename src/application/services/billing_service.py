@@ -1,10 +1,13 @@
-
 import logging
+import calendar
 from datetime import datetime, timedelta
 from sqlalchemy import extract, and_
 from src.infrastructure.database.db_manager import get_db
-from src.infrastructure.database.models import Client, Invoice, InvoiceItem, InternetPlan
+from src.infrastructure.database.models import Client, Invoice, InvoiceItem, InternetPlan, PaymentPromise
 from src.application.services.audit_service import AuditService
+from src.application.services.mikrotik_operations import safe_suspend_client
+from src.domain.services.tax_engine import TaxEngine
+from src.domain.services.currency_service import CurrencyService
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +22,10 @@ class BillingService:
         """
         logger.info(f"📅 BillingService: Iniciando ciclo {'filtrado' if router_id or client_ids else 'diario'}...")
         
-        # 1. Generar facturas mensuales (es idempotente)
-        self.generate_monthly_invoices(router_id=router_id, client_ids=client_ids, year=year, month=month)
+        # 2. Aplicar Prorrateo Dinámico (Día 16+)
+        self.apply_daily_prorating(router_id=router_id, client_ids=client_ids)
         
-        # 2. Procesar Suspensiones por falta de pago
+        # 3. Procesar Suspensiones por falta de pago
         self.process_suspensions(router_id=router_id, client_ids=client_ids)
         
         return True
@@ -84,10 +87,11 @@ class BillingService:
                         if router:
                             router_configs[client.router_id] = {
                                 'billing_day': router.billing_day or 1,
-                                'grace_period': router.grace_period or 5
+                                'grace_period': router.grace_period or 5,
+                                'cut_day': router.cut_day or 5
                             }
                         else:
-                            router_configs[client.router_id] = {'billing_day': 1, 'grace_period': 5}
+                            router_configs[client.router_id] = {'billing_day': 1, 'grace_period': 5, 'cut_day': 5}
                     
                     config = router_configs[client.router_id]
                     billing_day = config['billing_day']
@@ -100,8 +104,23 @@ class BillingService:
                     except ValueError:
                         issue_date = datetime(target_year, target_month, 1)
                         
-                    # Vencimiento: Día de facturación + periodo de gracia (A las 5:00 PM por defecto)
-                    due_date = issue_date + timedelta(days=grace_period)
+                    # Vencimiento: Usamos cut_day si está definido (ej. del 1 al 5), sino grace_period
+                    cut_day = config.get('cut_day')
+                    if cut_day and cut_day > 0:
+                        try:
+                            due_date = datetime(target_year, target_month, cut_day)
+                            # Si el día de corte es anterior o igual al de cobro, asumimos el mes siguiente
+                            # (A menos que el usuario explícitamente quiera cobrar y cortar el mismo día/mes)
+                            if due_date <= issue_date:
+                                if target_month == 12:
+                                    due_date = datetime(target_year + 1, 1, cut_day)
+                                else:
+                                    due_date = datetime(target_year, target_month + 1, cut_day)
+                        except ValueError:
+                            due_date = issue_date + timedelta(days=grace_period)
+                    else:
+                        due_date = issue_date + timedelta(days=grace_period)
+                        
                     due_date = due_date.replace(hour=17, minute=0, second=0)
                     
                     # Determinar precio
@@ -119,12 +138,28 @@ class BillingService:
                         errors_count += 1
                         continue
                         
+                    # 1.4. Datos ERP (Moneda y Tasa)
+                    settings_repo = db.get_system_setting_repository()
+                    currency_service = CurrencyService(settings_repo)
+                    
+                    currency = settings_repo.get_value('ERP_REPORTING_CURRENCY', 'COP') # Moneda de facturación
+                    base_currency = settings_repo.get_value('ERP_BASE_CURRENCY', 'USD')
+                    
+                    # Tasa en el momento de la facturación
+                    # Esta es la que se usará para Diferencia en Cambio al cobrar
+                    rate = currency_service.get_rate(currency, base_currency)
+                    base_amount = amount * rate
+
                     # Crear Factura
                     new_invoice = Invoice(
                         client_id=client.id,
                         issue_date=issue_date,
                         due_date=due_date,
                         total_amount=amount,
+                        currency=currency,
+                        exchange_rate=rate,
+                        subtotal_amount=amount, # Simplificación: subtotal = total si no hay IVA explícito aquí
+                        base_amount=base_amount,
                         status='unpaid'
                     )
                     session.add(new_invoice)
@@ -138,21 +173,27 @@ class BillingService:
                     )
                     session.add(item)
                     
-                    # --- Nueva Regla: Deuda No Acumulativa (Kardex Style) ---
-                    # Si no hay promesa de pago, el balance se "reinicia" al monto del nuevo mes.
-                    # Esto evita que la deuda se sume para efectos de corte, a menos que se pacte lo contrario.
-                    current_balance = client.account_balance or 0.0
+                    # --- Regla de Deuda: ERP Avanzado (Requerimiento de Prorrateo/Reset) ---
+                    # 1. Resetear cuenta vieja para cortados (suspended)
+                    # 2. Sumar anterior + actual solo si hay promesa de pago activa
+                    
                     has_promise = client.promise_date is not None and client.promise_date >= now
+                    is_suspended = client.status == 'suspended'
                     
                     old_balance = current_balance
-                    if has_promise or current_balance < 0:
-                        # Acumular si hay promesa o si tiene saldo a favor (crédito)
+                    
+                    if has_promise:
+                        # Si tiene promesa, la deuda es acumulativa (Anterior + Nueva)
+                        client.account_balance = current_balance + amount
+                        operation_type = "accumulated_with_promise"
+                    elif is_suspended or config.billing.non_cumulative_debt:
+                        # "Borrón y cuenta nueva": Se ignora deuda anterior, empieza nuevo ciclo
+                        client.account_balance = amount
+                        operation_type = "reset_cycle"
+                    else:
+                        # Caso base (Activos sin deuda configurada como no-acumulativa)
                         client.account_balance = current_balance + amount
                         operation_type = "accumulated"
-                    else:
-                        # Borrón y cuenta nueva: El balance pasa a ser solo el nuevo mes
-                        client.account_balance = amount
-                        operation_type = "reset_non_cumulative"
                     
                     client.due_date = due_date
                     
@@ -191,6 +232,91 @@ class BillingService:
             session.rollback()
             logger.error(f"❌ Error crítico en facturación: {e}")
             raise e
+
+    def apply_daily_prorating(self, router_id=None, client_ids=None, force=False):
+        """
+        Aplica descuentos automáticos (Prorrateo) después del día configurado.
+        'force' permite ignorar la validación de día si se requiere aplicación manual.
+        """
+        db = get_db()
+        session = db.session
+        now = datetime.now()
+        
+        settings_repo = db.get_system_setting_repository()
+        enabled = settings_repo.get_value('PRORATING_ENABLED', 'true').lower() == 'true'
+        start_day = int(settings_repo.get_value('PRORATING_START_DAY', 15))
+        
+        # Si no está forzado, validamos el día de inicio
+        if not force:
+            if not enabled or now.day <= start_day:
+                return 0
+            
+        logger.info(f"⚖️ BillingService: Aplicando Prorrateo Dinámico (Día {now.day}, force={force})...")
+        
+        try:
+            # 1. Obtener facturas impagas del mes actual
+            query = session.query(Invoice).filter(
+                Invoice.status == 'unpaid',
+                extract('year', Invoice.issue_date) == now.year,
+                extract('month', Invoice.issue_date) == now.month
+            )
+            
+            if router_id or client_ids:
+                query = query.join(Client)
+                if router_id:
+                    query = query.filter(Client.router_id == router_id)
+                if client_ids:
+                    query = query.filter(Client.id.in_(client_ids))
+                    
+            unpaid_invoices = query.all()
+            
+            _, days_in_month = calendar.monthrange(now.year, now.month)
+            # Días restantes incluyendo hoy hasta el fin de mes
+            days_remaining = days_in_month - now.day + 1
+            
+            updated_count = 0
+            
+            for inv in unpaid_invoices:
+                client = inv.client
+                if not client: continue
+                
+                # EXCEPCIÓN: Promesa de Pago activa
+                if client.promise_date and client.promise_date >= now:
+                    continue
+                    
+                # Obtener monto original desde el ítem de la factura
+                # (Para evitar degradación si se corre varias veces el mismo día)
+                original_amount = 0.0
+                item = session.query(InvoiceItem).filter(InvoiceItem.invoice_id == inv.id).first()
+                if item:
+                    original_amount = item.amount
+                else:
+                    original_amount = client.monthly_fee or inv.total_amount
+                
+                if original_amount <= 0: continue
+                
+                # Calcular nuevo monto prorrateado (Basado en regla: cuenta desde día 5 en adelante)
+                # Si el mes tiene 30 días, el denominador es 25 (30 - 5)
+                import math
+                denominator = days_in_month - 5
+                new_amount = math.ceil((original_amount * days_remaining) / denominator)
+                
+                # Solo aplicar si el nuevo monto es menor al actual (para evitar subir precios)
+                if new_amount < inv.total_amount:
+                    diff = inv.total_amount - new_amount
+                    inv.total_amount = new_amount
+                    
+                    # El balance del cliente también debe bajar por la diferencia
+                    client.account_balance = (client.account_balance or 0) - diff
+                    updated_count += 1
+            
+            session.commit()
+            if updated_count > 0:
+                logger.info(f"✅ Prorrateo completado: {updated_count} facturas ajustadas.")
+            return updated_count
+        except Exception as e:
+            session.rollback()
+            logger.error(f"❌ Error en prorrateo diario: {e}")
 
     def process_suspensions(self, router_id=None, client_ids=None):
         """
@@ -259,25 +385,36 @@ class BillingService:
                 logger.info(f"🤝 Postponiendo suspensión de {client.legal_name} por PROMESA activa hasta {client.promise_date}")
                 skipped_promise_count += 1
                 continue
+            
+            # Si el cliente tenía una promesa vencida, marcarla como INCUMPLIDA
+            if client.promise_date and client.promise_date < now:
+                broken_promises = session.query(PaymentPromise).filter(
+                    PaymentPromise.client_id == client.id,
+                    PaymentPromise.status == 'pending'
+                ).all()
+                for bp in broken_promises:
+                    bp.status = 'broken'
+                    bp.notes = (bp.notes or "") + f" | Incumplida el {now.strftime('%Y-%m-%d')}"
+                
+                # Incrementar contador de promesas incumplidas consecutivas
+                client.broken_promises_count = (client.broken_promises_count or 0) + 1
+                logger.warning(f"💔 Promesa INCUMPLIDA por {client.legal_name}. Contador: {client.broken_promises_count}")
                 
             logger.warning(f"🚫 Suspendiendo cliente {client.legal_name} por deuda acumulada (${client.account_balance}).")
             
-            # Marcar como suspendido en BD
-            client.status = 'suspended'
-            session.commit()
-            
-            # Ejecutar suspensión en MikroTik
+            # Ejecutar suspensión técnica de forma segura
             if client.router_id:
                 router = db.get_router_repository().get_by_id(client.router_id)
-                if router and router.status == 'online':
-                    adapter = MikroTikAdapter()
-                    try:
-                        if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
-                            adapter.suspend_client_service(client.to_dict())
-                            adapter.disconnect()
-                            suspended_count += 1
-                    except Exception as e:
-                        logger.error(f"Error sincronizando suspensión en MikroTik para {client.legal_name}: {e}")
+                if router:
+                    result = safe_suspend_client(
+                        db=db,
+                        client=client,
+                        router=router,
+                        audit_service=AuditService,
+                        audit_details=f"Suspensión automática por deuda: ${client.account_balance}"
+                    )
+                    if result['status'] in ['success', 'queued']:
+                        suspended_count += 1
 
             # Auditoría de Suspensión
             AuditService.log(
@@ -334,14 +471,42 @@ class BillingService:
         if not client:
             raise ValueError("Cliente no encontrado")
 
+        # --- NUEVO: Aplicar Prorrateo SOLO SI se solicita en la transacción ---
+        # User Feedback: "el monto real no debe variar solo que en el momento de realizar el pago se muestra el descuento"
+        apply_prorating = payment_data.get('apply_prorating', False)
+        
+        if apply_prorating:
+            try:
+                # Forzamos aplicación de prorrateo para este pago específico
+                self.apply_daily_prorating(client_ids=[client.id], force=True)
+                session.refresh(client) # Refrescar para obtener el balance ajustado
+                logger.info(f"🎁 Prorrateo aplicado exitosamente para el pago del cliente {client.id}")
+            except Exception as e:
+                logger.error(f"Error aplicando prorrateo en el pago para cliente {client_id}: {e}")
+
         # VALIDACIÓN: Pagos Incompletos (NUEVO REQUERIMIENTO)
         current_debt = client.account_balance or 0.0
-        is_partial = amount < current_debt
+        is_partial = (amount + 0.01) < current_debt # Margen de error para redondeo
         authorized = payment_data.get('authorized', False)
+        allow_duplicate = payment_data.get('allow_duplicate', False)
 
         if is_partial and not authorized:
             # Lanzamos error específico para que el frontend pida autorización
             raise ValueError(f"PARTIAL_PAYMENT_REQUIRED|Monto ${amount} es menor a la deuda ${current_debt}. ¿Es un abono parcial o error de tipeo?")
+
+        # VALIDACIÓN INTELIGENTE: Detectar Pagos Duplicados (Mismo cliente, mismo monto, últimos 10 min)
+        if not allow_duplicate:
+            ten_minutes_ago = datetime.now() - timedelta(minutes=10)
+            recent_duplicate = session.query(Payment).filter(
+                Payment.client_id == client.id,
+                Payment.amount == amount,
+                Payment.payment_date >= ten_minutes_ago
+            ).first()
+
+            if recent_duplicate:
+                # Formatear hora para mostrar al usuario
+                dup_time = recent_duplicate.payment_date.strftime("%I:%M %p")
+                raise ValueError(f"DUPLICATE_PAYMENT|Se detectó un pago idéntico de ${amount} registrado hoy a las {dup_time}. ¿Desea registrarlo de nuevo?")
 
         # VALIDACIÓN: Problema 3 - Evitar pagos duplicados si no hay deuda
         unpaid_invoices = session.query(Invoice).filter(
@@ -354,44 +519,146 @@ class BillingService:
                 raise ValueError("El cliente ya está al día. No tiene saldo pendiente ni facturas por pagar.")
 
         # 1. Crear el pago
+        payment_date = payment_data.get('payment_date')
+        if isinstance(payment_date, str):
+            try:
+                # Handle ISO format or just date
+                payment_date = datetime.fromisoformat(payment_date.replace('Z', '+00:00'))
+            except:
+                try:
+                    payment_date = datetime.strptime(payment_date.split(' ')[0], '%Y-%m-%d')
+                except:
+                    payment_date = datetime.now()
+        elif not payment_date:
+            payment_date = datetime.now()
+
+        # 1. Calcular Impuestos y Conversión de Moneda (ERP Logic)
+        currency = payment_data.get('currency', 'COP')
+        country = 'VEN' if currency.upper() in ['VES', 'USD'] else 'COL' # Heurística inicial
+        
+        tax_results = TaxEngine.calculate_taxes(amount, country, payment_data.get('payment_method', 'cash'), currency)
+        
+        # Obtener CurrencyService (necesita repo de settings)
+        currency_service = CurrencyService(db.get_system_setting_repository())
+        base_amount = currency_service.get_base_amount(amount, currency)
+        exchange_rate = currency_service.get_rate(currency, db.get_system_setting_repository().get_value('ERP_BASE_CURRENCY', 'USD'))
+
         new_payment = Payment(
             client_id=client.id,
             amount=amount,
-            payment_date=datetime.now(),
+            currency=currency,
+            base_amount=base_amount,
+            exchange_rate=exchange_rate,
+            tax_amount=tax_results['total_tax'],
+            tax_details=TaxEngine.format_tax_details(tax_results),
+            payment_date=payment_date,
             payment_method=payment_data.get('payment_method', 'cash'),
             reference=payment_data.get('reference', ''),
             notes=payment_data.get('notes', ''),
             status='verified'
         )
+        
+        # Calcular Hash de Integridad Final antes de persistir
+        from src.domain.services.audit_service import AuditService as DomainAudit
+        new_payment.transaction_hash = DomainAudit.calculate_transaction_hash('payment', new_payment.to_dict())
+        
         session.add(new_payment)
         
-        # 2. Actualizar balance
+        # 2. Actualizar balance y limpiar promesa
         client.account_balance = (client.account_balance or 0) - amount
         client.last_payment_date = new_payment.payment_date
         
-        # 3. Actualizar facturas (FIFO)
+        # Marcar promesas como CUMPLIDAS o INCUMPLIDAS según la fecha
+        now = datetime.now()
+        pending_promises = session.query(PaymentPromise).filter(
+            PaymentPromise.client_id == client.id,
+            PaymentPromise.status == 'pending'
+        ).all()
+        for pp in pending_promises:
+            if now <= pp.promise_date:
+                pp.status = 'fulfilled'
+                pp.notes = (pp.notes or "") + f" | Pagada a tiempo el {now.strftime('%Y-%m-%d')}"
+                # Resetear contador si cumple la promesa
+                client.broken_promises_count = 0
+            else:
+                pp.status = 'broken'
+                pp.notes = (pp.notes or "") + f" | Pagada FUERA DE PLAZO el {now.strftime('%Y-%m-%d')}"
+                # Incrementar contador si paga fuera de plazo (era una promesa fallida)
+                client.broken_promises_count = (client.broken_promises_count or 0) + 1
+        
+        client.promise_date = None  # Al pagar se extinguen los datos de la promesa actual
+        
+        # 3. Actualizar facturas (FIFO) e Identificar Diferencia en Cambio (FX Variance)
         invoices = session.query(Invoice).filter(
             Invoice.client_id == client.id,
             Invoice.status == 'unpaid'
         ).order_by(Invoice.issue_date).all()
         
         remaining = amount
+        total_fx_variance = 0.0
+        
         for inv in invoices:
             if remaining <= 0: break
+            
+            # Cantidad a aplicar a esta factura
+            applied_amount = min(remaining, inv.total_amount)
+            
+            # Cálculo de Diferencia en Cambio (En moneda base, usualmente USD)
+            # Comparamos cuánto valía ese monto al facturar vs cuánto vale al pagar
+            historical_rate = inv.exchange_rate or 1.0 # Tasa al momento de la factura
+            current_rate = new_payment.exchange_rate or 1.0 # Tasa al momento del pago
+            
+            # Monto en USD al facturar vs Monto en USD al cobrar
+            historical_base = applied_amount * historical_rate
+            current_base = applied_amount * current_rate
+            
+            # La varianza es la ganancia o pérdida por fluctuación
+            # Variancia = (Valor Actual - Valor Histórico)
+            invoice_variance = current_base - historical_base
+            total_fx_variance += invoice_variance
+            
             if remaining >= inv.total_amount:
                 inv.status = 'paid'
                 remaining -= inv.total_amount
             else:
-                # Pago parcial: No marcamos como paid, pero el balance general del cliente ya bajó.
-                # Futura mejora: tracking de amount_paid en Invoice.
+                # Pago parcial
+                remaining = 0
                 break
                 
-        session.commit()
+        new_payment.fx_variance = total_fx_variance
+                
+        # session.commit() <-- REMOVED: Atomicity handled at controller level
         
-        # 4. Reactivación Automática
-        if client.status == 'suspended' and (client.account_balance or 0) <= 0:
-            BatchService()._restore_client(client)
-            logger.info(f"🚀 Cliente {client.username} reactivado automáticamente tras pago.")
+        # 4. Reactivación Automática o Condicional
+        # Si el usuario explícitamente marcó 'activate_service' en el modal, se honra esa decisión.
+        # Si no se pasó el flag, se mantiene el comportamiento por defecto (activar si saldo <= 0).
+        should_activate = payment_data.get('activate_service')
+        
+        # Lógica de decisión:
+        # A. Si viene explícito True -> ACTIVAR
+        # B. Si viene explícito False -> NO ACTIVAR
+        # C. Si es None (no vino) -> ACTIVAR solo si deuda <= 0 (comportamiento legacy/auto)
+        
+        if should_activate is True:
+             BatchService()._restore_client(client, commit=False)
+             logger.info(f"🚀 Cliente {client.username} reactivado por solicitud explícita en pago.")
+             AuditService.log(
+                operation='client_reactivated',
+                category='client',
+                entity_type='client',
+                entity_id=client.id,
+                description="Reactivación manual solicitada al registrar pago",
+                previous_state={'status': client.status},
+                new_state={'status': 'active'},
+                commit=False # Added commit=False
+             )
+        elif should_activate is False:
+            logger.info(f"⚠️ Cliente {client.username} NO reactivado (activate_service=False explícito).")
+        
+        elif client.status == 'suspended' and (client.account_balance or 0) <= 0:
+            # Caso C: Automático por deuda saldada
+            BatchService()._restore_client(client, commit=False)
+            logger.info(f"🚀 Cliente {client.username} reactivado automáticamente tras pago (Deuda saldada).")
             
             # Auditoría de Reactivación
             AuditService.log(
@@ -401,7 +668,8 @@ class BillingService:
                 entity_id=client.id,
                 description="Reactivación automática tras pago total",
                 previous_state={'status': 'suspended'},
-                new_state={'status': 'active'}
+                new_state={'status': 'active'},
+                commit=False # Added commit=False
             )
             
         # Auditoría de Pago
@@ -411,7 +679,103 @@ class BillingService:
             client_id=client.id,
             description=f"Pago registrado vía {payment_data.get('payment_method', 'cash')}. Ref: {payment_data.get('reference', 'N/A')}",
             entity_id=new_payment.id,
-            entity_type='payment'
+            entity_type='payment',
+            commit=False # Added commit=False
         )
 
         return new_payment
+
+    def revert_payment(self, payment_id, reason="Reversión por incumplimiento"):
+        """
+        Revierte un pago realizado:
+        1. Archiva el pago en la papelera.
+        2. Restaura el balance del cliente.
+        3. Revierte el estatus de las facturas (Reverse FIFO).
+        4. Suspende al cliente en sistema y MikroTik.
+        """
+        from src.infrastructure.database.models import Payment, DeletedPayment
+        
+        db = get_db()
+        session = db.session
+        
+        payment = session.query(Payment).get(payment_id)
+        if not payment:
+            raise ValueError("Pago no encontrado")
+            
+        client = session.query(Client).get(payment.client_id)
+        if not client:
+            raise ValueError("Cliente asociado al pago no encontrado")
+
+        amount_to_revert = payment.amount
+        
+        try:
+            # 1. Archivar en papelera
+            deleted_payment = DeletedPayment(
+                original_id=payment.id,
+                client_id=client.id,
+                amount=payment.amount,
+                currency=payment.currency,
+                payment_date=payment.payment_date,
+                payment_method=payment.payment_method,
+                reference=payment.reference,
+                notes=payment.notes,
+                deleted_by='admin',
+                reason=reason
+            )
+            session.add(deleted_payment)
+            
+            # 2. Restaurar balance del cliente
+            old_balance = client.account_balance or 0.0
+            client.account_balance = old_balance + amount_to_revert
+            
+            # 3. Revertir facturas (Reverse FIFO: de la más reciente a la más antigua)
+            # Buscamos facturas pagadas
+            paid_invoices = session.query(Invoice).filter(
+                Invoice.client_id == client.id,
+                Invoice.status == 'paid'
+            ).order_by(Invoice.issue_date.desc()).all()
+            
+            remaining = amount_to_revert
+            for inv in paid_invoices:
+                if remaining <= 0: break
+                # Revertimos el estatus a unpaid
+                # Nota: Una factura pudo haber sido pagada parcialmente por múltiples pagos,
+                # pero aquí simplificamos revirtiendo el estatus si el monto calza o supera.
+                inv.status = 'unpaid'
+                remaining -= inv.total_amount
+            
+            # 4. Cambiar estatus a suspendido (Requerimiento explícito)
+            previous_status = client.status
+            client.status = 'suspended'
+            
+            # 5. Auditoría de Reversión
+            AuditService.log(
+                operation='payment_reverted',
+                category='accounting',
+                entity_type='payment',
+                entity_id=payment.id,
+                description=f"Pago de ${amount_to_revert} REVERTIDO. Cliente: {client.legal_name}. Motivo: {reason}",
+                previous_state={'balance': old_balance, 'status': previous_status},
+                new_state={'balance': client.account_balance, 'status': 'suspended'}
+            )
+            
+            # 6. Eliminar el pago original
+            session.delete(payment)
+            session.commit()
+            
+            # 7. Ejecutar suspensión en MikroTik (Safe Suspend)
+            router = db.get_router_repository().get_by_id(client.router_id)
+            if router:
+                safe_suspend_client(
+                    db=db,
+                    client=client,
+                    router=router,
+                    audit_service=AuditService,
+                    audit_details=f"Suspensión por reversión de pago: {reason}"
+                )
+            
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"❌ Error al revertir pago {payment_id}: {e}")
+            raise e

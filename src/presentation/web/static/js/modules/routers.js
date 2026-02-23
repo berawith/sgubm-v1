@@ -2,10 +2,11 @@
  * Routers Module - Gestión de Routers MikroTik
  */
 export class RoutersModule {
-    constructor(api, eventBus, viewManager) {
+    constructor(api, eventBus, viewManager, modalManager = null) {
         this.api = api;
         this.eventBus = eventBus;
         this.viewManager = viewManager;
+        this.modalManager = modalManager;
         this.routers = [];
 
         console.log('🌐 Routers Module initialized');
@@ -242,33 +243,35 @@ export class RoutersModule {
 
             if (discoveryResult.success) {
                 // Si requiere confirmación, mostrar diálogo
+                // Si requiere confirmación, abrir Smart Import Modal
                 if (discoveryResult.requires_confirmation) {
-                    const currentQueues = discoveryResult.current_queues || 0;
                     const candidatesToAdd = discoveryResult.candidates_to_add || 0;
 
-                    const userConfirmed = confirm(
-                        `Resultados del análisis:\n\n` +
-                        `• Clientes actuales en Simple Queues: ${currentQueues}\n` +
-                        `• Nuevos clientes detectados para agregar: ${candidatesToAdd}\n\n` +
-                        `¿Desea agregar los ${candidatesToAdd} clientes nuevos?`
-                    );
+                    // Guardar ID y datos para el proceso de confirmación
+                    this.pendingSyncRouterId = routerId;
+                    this.pendingSyncCandidates = candidatesToAdd;
 
-                    if (userConfirmed) {
-                        // Paso 2: Provisionar con confirmación
-                        console.log('User confirmed, provisioning', routerId);
-                        const provisionResult = await this.api.post(`/api/routers/${routerId}/sync`, { confirm: true });
-
-                        if (provisionResult.success) {
-                            alert(`Sincronización exitosa.\n\nSe han auto-provisionado ${provisionResult.details.provisioned} clientes nuevos.`);
-                            await this.loadRouters();
-                        } else {
-                            alert(`Error en aprovisionamiento: ${provisionResult.message}`);
-                        }
-                    } else {
-                        // Usuario canceló
-                        alert('Sincronización cancelada. No se agregaron clientes nuevos.');
-                        await this.loadRouters();
+                    // Actualizar UI del Modal
+                    const summaryText = document.getElementById('import-summary-text');
+                    if (summaryText) {
+                        summaryText.innerHTML = `Se han detectado <strong style="color: #0f172a;">${candidatesToAdd} clientes nuevos</strong>.`;
                     }
+
+                    // Cargar planes
+                    this.loadPlansForImport();
+
+                    // Abrir Modal
+                    if (this.modalManager) {
+                        this.modalManager.open('import-clients-modal');
+                    } else {
+                        // Fallback por si acaso
+                        document.getElementById('import-clients-modal').classList.add('active');
+                    }
+
+                    // Resetear formulario
+                    document.getElementById('import-clients-form').reset();
+                    this.selectImportStrategy('clean'); // Default
+
                 } else {
                     // No hay candidatos para aprovisionar
                     alert('Sincronización completada. No se encontraron clientes nuevos para auto-provisionar.');
@@ -302,6 +305,7 @@ export class RoutersModule {
         modal.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         if (tabName === 'connection') document.getElementById('tab-btn-r-conn').classList.add('active');
         if (tabName === 'billing') document.getElementById('tab-btn-r-bill').classList.add('active');
+        if (tabName === 'management') document.getElementById('tab-btn-r-mgmt').classList.add('active');
 
         // Content
         modal.querySelectorAll('.tab-content-router').forEach(c => c.style.display = 'none');
@@ -309,48 +313,277 @@ export class RoutersModule {
     }
 
     showCreateModal() {
-        const modal = document.getElementById('router-form-modal');
-        if (!modal) return;
-
-        document.getElementById('router-modal-title').textContent = 'Nuevo Router';
-        document.getElementById('router-id').value = '';
-        document.getElementById('router-form').reset();
-
-        // Defaults
-        document.getElementById('router-port').value = '8728';
-        document.getElementById('router-billing-day').value = '1';
-        document.getElementById('router-grace-period').value = '5';
-        document.getElementById('router-cut-day').value = '10';
-
-        this.switchTab('connection');
-        modal.classList.add('active');
+        if (this.modalManager) {
+            this.modalManager.open('router');
+        } else {
+            this.showNewRouterModal();
+        }
     }
 
     showEditModal(routerId) {
         const router = this.routers.find(r => r.id === routerId);
         if (!router) return;
 
+        if (this.modalManager) {
+            this.modalManager.open('router', { router });
+        } else {
+            this.showEditRouter(router);
+        }
+    }
+
+    async showEditRouter(router) {
         const modal = document.getElementById('router-form-modal');
         if (!modal) return;
 
-        document.getElementById('router-modal-title').textContent = 'Editar Router';
-        document.getElementById('router-id').value = router.id;
-
-        // Connection Info
+        document.getElementById('router-id').value = router.id || '';
         document.getElementById('router-alias').value = router.alias || '';
         document.getElementById('router-host').value = router.host_address || '';
         document.getElementById('router-user').value = router.api_username || '';
         document.getElementById('router-pass').value = router.api_password || '';
         document.getElementById('router-port').value = router.api_port || 8728;
         document.getElementById('router-zone').value = router.zone || '';
-
-        // Billing Info
         document.getElementById('router-billing-day').value = router.billing_day || 1;
         document.getElementById('router-grace-period').value = router.grace_period || 5;
         document.getElementById('router-cut-day').value = router.cut_day || 10;
 
+        // Gestión
+        document.getElementById('router-mgmt-method').value = router.management_method || 'mixed';
+        document.getElementById('router-pppoe-ranges').value = router.pppoe_ranges || '';
+        document.getElementById('router-dhcp-ranges').value = router.dhcp_ranges || '';
+
+        const titleEl = document.getElementById('router-modal-title');
+        if (titleEl) titleEl.textContent = 'Configurar Router';
+
+        this.switchTab('connection');
+
+        // Cargar Planes asociados
+        this.loadRouterPlans(router.id);
+
+        // Mostrar el modal directamente
+        modal.classList.add('active');
+    }
+
+    showNewRouterModal() {
+        const modal = document.getElementById('router-form-modal');
+        if (!modal) return;
+
+        document.getElementById('router-id').value = '';
+        document.getElementById('router-alias').value = '';
+        document.getElementById('router-host').value = '';
+        document.getElementById('router-user').value = '';
+        document.getElementById('router-pass').value = '';
+        document.getElementById('router-port').value = 8728;
+        document.getElementById('router-zone').value = '';
+        document.getElementById('router-billing-day').value = 1;
+        document.getElementById('router-grace-period').value = 5;
+        document.getElementById('router-cut-day').value = 10;
+
+        // Gestión Reset
+        document.getElementById('router-mgmt-method').value = 'mixed';
+        document.getElementById('router-pppoe-ranges').value = '';
+        document.getElementById('router-dhcp-ranges').value = '';
+        document.getElementById('router-plans-container').innerHTML = '<p style="text-align:center; margin: 10px 0; font-style:italic;">Guarde el router primero para gestionar sus planes.</p>';
+
+        const titleEl = document.getElementById('router-modal-title');
+        if (titleEl) titleEl.textContent = 'Nuevo Router';
+
         this.switchTab('connection');
         modal.classList.add('active');
+    }
+
+    async loadRouterPlans(routerId) {
+        const container = document.getElementById('router-plans-container');
+        if (!container) return;
+
+        container.innerHTML = '<div class="spinner-mini" style="margin: 10px auto;"></div>';
+
+        try {
+            // Fetch plans filtered by router (Assuming API supports filtering, or fetch all and filter client-side)
+            // Since we don't have a specific endpoint yet, we'll fetch all and filter in JS for now or ask backend
+            // Let's assume we can fetch all plans first. Ideally backend should support /api/routers/:id/plans
+            // For now, let's use the generic /api/plans and filter.
+            const allPlans = await this.api.get('/api/plans');
+            const routerPlans = allPlans.filter(p => p.router_id == routerId);
+
+            if (routerPlans.length === 0) {
+                container.innerHTML = '<p style="text-align:center; margin: 10px 0; font-style:italic;">No hay planes asociados a este router.</p>';
+                return;
+            }
+
+            let html = '<ul style="list-style:none; padding:0; margin:0;">';
+            routerPlans.forEach(plan => {
+                html += `
+                <li style="display:flex; justify-content:space-between; align-items:center; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+                    <div>
+                        <strong style="color:#0f172a;">${plan.name}</strong>
+                        <span style="font-size:0.75rem; color:#64748b; margin-left: 8px;">${plan.download_speed / 1000}M / ${plan.upload_speed / 1000}M</span>
+                    </div>
+                    <div>
+                         <span class="badge" style="font-size:0.7em; background:#e0f2fe; color:#0369a1;">${plan.service_type || 'N/A'}</span>
+                    </div>
+                </li>`;
+            });
+            html += '</ul>';
+            container.innerHTML = html;
+
+        } catch (e) {
+            console.error('Error loading plans for router:', e);
+            if (container) container.innerHTML = '<p style="color:red; text-align:center;">Error cargando planes.</p>';
+        }
+    }
+
+    // --- Smart Import Logic ---
+
+    async loadPlansForImport() {
+        const select = document.getElementById('import-default-plan');
+        if (!select) return;
+
+        select.innerHTML = '<option value="">Cargando planes...</option>';
+
+        try {
+            const plans = await this.api.get('/api/plans');
+            let html = '<option value="">Detectar Automáticamente (Recomendado)</option>';
+            plans.forEach(p => {
+                html += `<option value="${p.id}">${p.name} (${(p.download_speed / 1000).toFixed(0)}M)</option>`;
+            });
+            select.innerHTML = html;
+        } catch (e) {
+            console.error('Error loading plans:', e);
+            select.innerHTML = '<option value="">Error cargando planes</option>';
+        }
+    }
+
+    selectImportStrategy(strategy) {
+        // Visual Update for Segmented Control (New Compact UI)
+        document.querySelectorAll('.switch-option').forEach(opt => opt.classList.remove('active'));
+        // Also support legacy if referenced elsewhere (unlikely but safe)
+        document.querySelectorAll('.radio-card-premium').forEach(card => card.classList.remove('selected'));
+
+        const cleanOption = document.querySelector('label[onclick*="selectImportStrategy(\'clean\')"]');
+        const debtOption = document.querySelector('label[onclick*="selectImportStrategy(\'debt\')"]');
+
+        const cleanOptions = document.getElementById('clean-options');
+        const debtOptions = document.getElementById('debt-options');
+
+        if (strategy === 'clean') {
+            if (cleanOption) {
+                cleanOption.classList.add('active'); // New UI
+                cleanOption.classList.add('selected'); // Legacy UI fallback
+            }
+            const cleanInput = document.querySelector('input[value="clean"]');
+            if (cleanInput) cleanInput.checked = true;
+
+            if (cleanOptions) cleanOptions.style.display = 'block';
+            if (debtOptions) debtOptions.style.display = 'none';
+        } else {
+            if (debtOption) {
+                debtOption.classList.add('active'); // New UI
+                debtOption.classList.add('selected'); // Legacy UI fallback
+            }
+            const debtInput = document.querySelector('input[value="debt"]');
+            if (debtInput) debtInput.checked = true;
+
+            if (cleanOptions) cleanOptions.style.display = 'none';
+            if (debtOptions) debtOptions.style.display = 'block';
+        }
+    }
+
+    updateCleanOptionHint(selectElement) {
+        const hintElement = document.getElementById('clean-option-hint');
+        if (!hintElement) return;
+
+        const hints = {
+            'prorate': 'Se cobrará solo los días restantes del mes actual. La factura se generará al corte.',
+            'full': 'Se cobrará el valor total del plan inmediatamente. Factura generada al instante.',
+            'grace': 'El cliente disfrutará del servicio sin costo hasta el próximo ciclo de facturación.'
+        };
+
+        // Update text
+        hintElement.textContent = hints[selectElement.value] || 'El cliente iniciará sin deuda vencida en el sistema.';
+
+        // Add subtle highlight effect
+        hintElement.style.color = '#4f46e5';
+        setTimeout(() => hintElement.style.color = '', 300);
+    }
+
+    async confirmImport() {
+        if (!this.pendingSyncRouterId) return;
+
+        const routerId = this.pendingSyncRouterId;
+        const btn = document.querySelector('#import-clients-modal .btn-premium');
+        if (btn) {
+            btn.innerHTML = '<div class="spinner-mini"></div> Importando...';
+            btn.disabled = true;
+        }
+
+        // Collect Options
+        const strategy = document.querySelector('input[name="import_strategy"]:checked').value;
+        const options = {
+            confirm: true,
+            import_strategy: strategy,
+            default_plan_id: document.getElementById('import-default-plan').value || null
+        };
+
+        if (strategy === 'clean') {
+            options.clean_type = document.getElementById('import-clean-type').value; // prorate, full, grace
+        } else {
+            const debtAmount = document.getElementById('import-initial-debt').value;
+            if (!debtAmount) {
+                alert('Por favor ingrese un monto de deuda válido.');
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-file-import" style="margin-right: 8px;"></i> Importar Clientes';
+                    btn.disabled = false;
+                }
+                return;
+            }
+            options.initial_debt = this.parseCurrencyValue(debtAmount);
+        }
+
+        try {
+            console.log('Confirming import with options:', options);
+            const provisionResult = await this.api.post(`/api/routers/${routerId}/sync`, options);
+
+            if (provisionResult.success) {
+                // Close modal
+                if (this.modalManager) {
+                    this.modalManager.closeAll(); // Or specifically close import modal
+                } else {
+                    document.getElementById('import-clients-modal').classList.remove('active');
+                }
+
+                alert(`✅ Importación Exitosa\n\nSe han registrado ${provisionResult.details.provisioned} clientes nuevos bajo el esquema seleccionado.`);
+                await this.loadRouters();
+            } else {
+                alert(`Error en importación: ${provisionResult.message}`);
+            }
+        } catch (error) {
+            console.error('Import error:', error);
+            alert('Error al procesar la importación: ' + (error.message || 'Error desconocido'));
+        } finally {
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-file-import" style="margin-right: 8px;"></i> Importar Clientes';
+                btn.disabled = false;
+            }
+            this.pendingSyncRouterId = null;
+        }
+    }
+
+    createPlanForRouter() {
+        const routerId = document.getElementById('router-id').value;
+        if (!routerId) {
+            alert('Debe guardar el router antes de crear planes asociados.');
+            return;
+        }
+        // Llamar al modulo de planes
+        if (app.modules.plans && app.modules.plans.openPlanModal) {
+            // Close current modal temporarily or keep it open? Modals stack might be tricky.
+            // Usually we might want to close router modal.
+            // document.getElementById('router-form-modal').classList.remove('active'); 
+            // Reuse openPlanModal signature if modified to accept routerID
+            // I need to modify PlansManagerModule.openPlanModal to accept a pre-filled router ID or handled via plan object.
+            // Let's pass a partial plan object
+            app.modules.plans.openPlanModal({ router_id: routerId });
+        }
     }
 
     async saveRouter() {
@@ -364,7 +597,12 @@ export class RoutersModule {
             zone: document.getElementById('router-zone').value,
             billing_day: parseInt(document.getElementById('router-billing-day').value || 1),
             grace_period: parseInt(document.getElementById('router-grace-period').value || 5),
-            cut_day: parseInt(document.getElementById('router-cut-day').value || 10)
+            cut_day: parseInt(document.getElementById('router-cut-day').value || 10),
+
+            // Gestión
+            management_method: document.getElementById('router-mgmt-method').value,
+            pppoe_ranges: document.getElementById('router-pppoe-ranges').value,
+            dhcp_ranges: document.getElementById('router-dhcp-ranges').value
         };
 
         if (!data.alias || !data.host_address || !data.api_username) {
@@ -376,9 +614,6 @@ export class RoutersModule {
             if (id) {
                 // Update
                 await this.api.put(`/api/routers/${id}`, data);
-                // Also update billing specifically if needed, but PUT /api/routers/:id usually updates all fields in a standard CRUD.
-                // Assuming create_router / update_router in backend handle all these fields.
-                // Our backend controller `routers_controller.py` uses `router_repo.update(id, data)`, so if the model has these columns (which it does), it works.
                 alert('Router actualizado correctamente');
             } else {
                 // Create
@@ -386,12 +621,40 @@ export class RoutersModule {
                 alert('Router creado correctamente');
             }
 
-            document.getElementById('router-form-modal').classList.remove('active');
+            if (this.modalManager) {
+                this.modalManager.close('router');
+            } else {
+                document.getElementById('router-form-modal').classList.remove('active');
+            }
+
             await this.loadRouters();
 
         } catch (error) {
             console.error('Error saving router:', error);
             alert('Error al guardar el router: ' + error.message);
         }
+    }
+
+    /**
+     * Formats an input value with thousands separators while typing
+     */
+    formatCurrencyInput(input) {
+        if (!input) return;
+        let value = input.value.replace(/[^\d.]/g, '');
+        const parts = value.split('.');
+        if (parts.length > 2) value = parts[0] + '.' + parts.slice(1).join('');
+        if (value === '') { input.value = ''; return; }
+        let integerPart = parts[0];
+        let decimalPart = parts.length > 1 ? '.' + parts[1].substring(0, 2) : '';
+        integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        input.value = integerPart + decimalPart;
+    }
+
+    /**
+     * Parses a formatted currency string back to a float
+     */
+    parseCurrencyValue(value) {
+        if (typeof value !== 'string') return parseFloat(value) || 0;
+        return parseFloat(value.replace(/,/g, '')) || 0;
     }
 }

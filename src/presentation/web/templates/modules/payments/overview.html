@@ -1,0 +1,248 @@
+<div id="finance-overview-view" class="view content-view" style="display: none;">
+    <div class="view-header">
+        <div class="header-left">
+            <h1 class="page-title">Resumen Financiero</h1>
+            <p class="page-subtitle">Métricas generales de recaudación y estado de cartera</p>
+        </div>
+        <div class="header-right">
+            <div class="financial-clock-premium">
+                <div id="live-time" class="clock-time">00:00:00</div>
+                <div id="live-date" class="clock-date">Cargando fecha...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pestañas Principales (Sub-navegación interna) -->
+    <div class="finance-tabs-premium"
+        style="display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; position: relative; z-index: 10;">
+        <button class="finance-tab-btn active"
+            onclick="if(window.app) window.app.modules.payments.switchOverviewTab('ingresos')" id="tab-btn-ingresos">
+            <i class="fas fa-hand-holding-usd"></i> Ingresos
+        </button>
+        <button class="finance-tab-btn"
+            onclick="if(window.app) window.app.modules.payments.switchOverviewTab('egresos')" id="tab-btn-egresos">
+            <i class="fas fa-file-invoice-dollar"></i> Egresos & Gastos
+        </button>
+        <button class="finance-tab-btn"
+            onclick="if(window.app) window.app.modules.payments.switchOverviewTab('perdidas')" id="tab-btn-perdidas">
+            <i class="fas fa-exclamation-triangle"></i> Pérdidas & Ajustes
+        </button>
+    </div>
+
+    <!-- Tab 1: Ingresos -->
+    <div id="finance-tab-ingresos" class="finance-tab-content active">
+        <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <div class="stat-card-premium" style="border-left-color: #6366f1;">
+                <div class="stat-label">Recaudación Hoy</div>
+                <div id="pay-stat-today-main" class="stat-value">$0.00</div>
+                <div class="stat-sub">Ingresos del día</div>
+            </div>
+            <div class="stat-card-premium" style="border-left-color: #ec4899;">
+                <div class="stat-label">Este Mes</div>
+                <div id="pay-stat-month-main" class="stat-value">$0.00</div>
+                <div class="stat-sub">Acumulado mensual</div>
+            </div>
+            <div class="stat-card-premium" style="border-left-color: #8b5cf6;">
+                <div class="stat-label">Dif. en Cambio</div>
+                <div id="pay-stat-fx-main" class="stat-value">$0.00</div>
+                <div class="stat-sub">Balance cambiario</div>
+            </div>
+            <div class="stat-card-premium" style="border-left-color: #f43f5e;">
+                <div class="stat-label">Pérdidas</div>
+                <div id="pay-stat-loss-main" class="stat-value" style="color: #dc2626;">$0.00</div>
+                <div class="stat-sub">Teórico vs Real</div>
+            </div>
+            <div class="stat-card-premium" style="border-left-color: #f59e0b;">
+                <div class="stat-label">Por Cobrar</div>
+                <div id="pay-stat-pending-main" class="stat-value">$0.00</div>
+                <div class="stat-sub">Cartera pendiente</div>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px;">
+            <div class="glass-panel" style="padding: 24px; border-radius: 16px;">
+                <h3 style="margin-bottom: 20px; font-size: 1.1rem; font-weight: 800; color: #1e293b;">
+                    <i class="fas fa-wallet" style="color: #6366f1; margin-right: 10px;"></i>Métodos de Pago
+                </h3>
+                <div id="method-breakdown-main" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="padding: 20px; text-align: center; color: #94a3b8;">Cargando...</div>
+                </div>
+            </div>
+            <div class="glass-panel" style="padding: 24px; border-radius: 16px;">
+                <h3 style="margin-bottom: 20px; font-size: 1.1rem; font-weight: 800; color: #1e293b;">
+                    <i class="fas fa-chart-line" style="color: #6366f1; margin-right: 10px;"></i>Tendencia Mensual
+                </h3>
+                <div style="height: 300px; position: relative;">
+                    <canvas id="revenue-chart-main"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2: Egresos -->
+    <div id="finance-tab-egresos" class="finance-tab-content">
+        <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <div class="stat-card-premium" style="border-left-color: #f43f5e;">
+                <div class="stat-label">Total Gastos</div>
+                <div id="pay-stat-expenses-main" class="stat-value" style="color: #e11d48;">$0.00</div>
+                <div class="stat-sub">Egresos registrados</div>
+            </div>
+            <div class="stat-card-premium" style="border-left-color: #10b981;">
+                <div class="stat-label">Utilidad Neta</div>
+                <div id="pay-stat-net-main" class="stat-value" style="color: #059669;">$0.00</div>
+                <div class="stat-sub">Caja operacional</div>
+            </div>
+        </div>
+
+        <div class="glass-panel" style="padding: 24px; border-radius: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b;">Detalle de Gastos</h3>
+                <button class="btn-primary" onclick="if(window.app) window.app.modules.payments.showNewExpenseModal()">
+                    <i class="fas fa-plus"></i> Nuevo Gasto
+                </button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="premium-data-table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Descripción</th>
+                            <th>Categoría</th>
+                            <th style="text-align: right;">Monto</th>
+                            <th style="text-align: right;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenses-summary-table-body">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8;">No hay gastos
+                                registrados</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 3: Perdidas -->
+    <div id="finance-tab-perdidas" class="finance-tab-content">
+        <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <div class="stat-card-premium" style="border-left-color: #ef4444;">
+                <div class="stat-label">Pérdida FX</div>
+                <div id="loss-stat-fx" class="stat-value">$0.00</div>
+                <div class="stat-sub">Variación cambiaria</div>
+            </div>
+            <div class="stat-card-premium" style="border-left-color: #f59e0b;">
+                <div class="stat-label">Descuentos Mora</div>
+                <div id="loss-stat-prorating" class="stat-value">$0.00</div>
+                <div class="stat-sub">Prorrateo aplicado</div>
+            </div>
+            <div class="stat-card-premium" style="border-left-color: #64748b;">
+                <div class="stat-label">Cartera Castigada</div>
+                <div id="loss-stat-bad-debt" class="stat-value">$0.00</div>
+                <div class="stat-sub">Impagos/Retiros</div>
+            </div>
+        </div>
+
+        <div class="glass-panel" style="padding: 24px; border-radius: 16px;">
+            <h3 style="margin-bottom: 20px; font-size: 1.1rem; font-weight: 800; color: #1e293b;">
+                <i class="fas fa-search-dollar" style="color: #64748b; margin-right: 10px;"></i>Análisis de Fugas
+            </h3>
+            <div style="overflow-x: auto;">
+                <table class="premium-data-table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>Concepto / Cliente</th>
+                            <th>Categoría</th>
+                            <th>Fecha</th>
+                            <th style="text-align: right;">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody id="losses-table-body">
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 20px; color: #94a3b8;">No hay fugas
+                                detectadas</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    #finance-overview-view .finance-tab-content {
+        display: none;
+        animation: tabFadeIn 0.3s ease;
+    }
+
+    #finance-overview-view .finance-tab-content.active {
+        display: block !important;
+    }
+
+    #finance-overview-view .stat-card-premium {
+        background: #ffffff;
+        padding: 12px 16px;
+        border-radius: 12px;
+        border-left: 4px solid #cbd5e1;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s;
+    }
+
+    #finance-overview-view .stat-card-premium:hover {
+        transform: translateY(-2px);
+    }
+
+    #finance-overview-view .stat-label {
+        font-size: 0.65rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 4px;
+    }
+
+    #finance-overview-view .stat-value {
+        font-size: 1.25rem;
+        font-weight: 950;
+        color: #1e293b;
+    }
+
+    #finance-overview-view .stat-sub {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        margin-top: 2px;
+    }
+
+    #finance-overview-view .finance-tab-btn {
+        padding: 8px 16px;
+        border: none;
+        background: transparent;
+        color: #64748b;
+        font-weight: 700;
+        cursor: pointer;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: 0.2s;
+    }
+
+    #finance-overview-view .finance-tab-btn.active {
+        background: #f1f5f9;
+        color: #4f46e5;
+    }
+
+    @keyframes tabFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(5px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

@@ -11,6 +11,9 @@ SGUBM-V1/
 ├── 📁 config/                      # Configuración
 │   └── .env.example                # Variables de entorno
 │
+├── 📁 scripts/                     # Scripts de utilidad
+│   └── 📁 maintenance/             # Scripts de mantenimiento, auditoría y diagnóstico
+│
 └── 📁 src/                         # Código fuente
     │
     ├── 📁 core/                    # NÚCLEO DEL SISTEMA (Sin dependencias)
@@ -105,13 +108,13 @@ python run.py
 
 ## 🔜 Próximos Módulos
 
-- ⬜ **Database Repositories**: Persistencia SQL
-- ⬜ **API Controllers**: Endpoints REST
-- ⬜ **Authentication**: JWT + RBAC
-- ⬜ **Frontend**: UI moderna
-- ⬜ **Billing Engine**: Motor de facturación
-- ⬜ **Report Generator**: Reportes PDF/Excel
-- ⬜ **Notification Service**: Email/SMS/WhatsApp
+- ✅ **Database Repositories**: Persistencia SQL
+- ✅ **API Controllers**: Endpoints REST
+- ✅ **Authentication**: JWT + RBAC
+- ✅ **Frontend**: UI moderna
+- ✅ **Billing Engine**: Motor de facturación
+- ✅ **Report Generator**: Reportes PDF/Excel
+- ✅ **Notification Service**: Email/SMS/WhatsApp
 
 ## 📈 Escalabilidad
 

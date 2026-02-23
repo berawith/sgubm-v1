@@ -9,6 +9,18 @@ logger = logging.getLogger(__name__)
 
 class AuditService:
     @staticmethod
+    def log_action(action_type: str, entity_type: str, entity_id: int, details: str, commit: bool = True):
+        """Wrapper for older log_action calls"""
+        return AuditService.log(
+            operation=action_type,
+            category=entity_type,
+            entity_type=entity_type, 
+            entity_id=entity_id,
+            description=details,
+            commit=commit
+        )
+
+    @staticmethod
     def log(
         operation: str,
         category: str = 'system',
@@ -19,7 +31,8 @@ class AuditService:
         new_state: Any = None,
         user_id: Optional[int] = None,
         username: Optional[str] = None,
-        ip_address: Optional[str] = None
+        ip_address: Optional[str] = None,
+        commit: bool = True
     ):
         """
         Registra un evento en el sistema de Kardex (AuditLog).
@@ -43,19 +56,25 @@ class AuditService:
                 user_id=user_id,
                 username=username,
                 ip_address=ip_address,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now()
             )
             
             session.add(log_entry)
-            session.commit()
-            logger.info(f"📝 Audit: {operation} on {entity_type}:{entity_id} - {description}")
+            if commit:
+                session.commit()
+                logger.info(f"📝 Audit (COMMITTED): {operation} on {entity_type}:{entity_id} - {description}")
+            else:
+                logger.info(f"📝 Audit (PENDING): {operation} on {entity_type}:{entity_id} - {description}")
             return True
         except Exception as e:
             logger.error(f"❌ Error al registrar log de auditoría: {e}")
+            if commit:
+                try: session.rollback()
+                except: pass
             return False
 
     @staticmethod
-    def log_accounting(operation: str, amount: float, client_id: int, description: str, **kwargs):
+    def log_accounting(operation: str, amount: float, client_id: int, description: str, commit: bool = True, **kwargs):
         """Helper para eventos contables"""
         # Permitir que kwargs sobrescriba el entity_id y entity_type por defecto (paciente/cliente)
         log_data = {
@@ -63,7 +82,8 @@ class AuditService:
             'operation': operation,
             'entity_type': 'client',
             'entity_id': client_id,
-            'description': f"{description} (Monto: {amount})"
+            'description': f"{description} (Monto: {amount})",
+            'commit': commit
         }
         log_data.update(kwargs)
         

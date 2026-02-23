@@ -123,6 +123,10 @@ class SystemEvents:
     NODE_OFFLINE = "node.offline"
     NODE_CONFIG_CHANGED = "node.config_changed"
     
+    # Eventos de WhatsApp
+    WHATSAPP_MESSAGE_RECEIVED = "whatsapp.message_received"
+    WHATSAPP_MESSAGE_SENT = "whatsapp.message_sent"
+    
     # Eventos de Sistema
     SYSTEM_ERROR = "system.error"
     SYSTEM_WARNING = "system.warning"

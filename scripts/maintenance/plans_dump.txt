@@ -1,0 +1,17 @@
+ID:1 Name:30 Mbps Type:pppoe Local:None Remote:None
+ID:2 Name:15M/15M Type:simple_queue Local:None Remote:None
+ID:3 Name:PV-3100 Type:pppoe Local:None Remote:None
+ID:4 Name:20000000/20000000 Type:simple_queue Local:None Remote:None
+ID:5 Name:15000000/15000000 Type:simple_queue Local:None Remote:None
+ID:6 Name:PLAN_30Mbps Type:pppoe Local:None Remote:None
+ID:7 Name:300000000/300000000 Type:simple_queue Local:None Remote:None
+ID:8 Name:10000000/10000000 Type:simple_queue Local:None Remote:None
+ID:9 Name:Detected (No Queue) Type:discovered Local:None Remote:None
+ID:10 Name:PLAN-BASIC-V10 Type:pppoe Local:None Remote:None
+ID:11 Name:30000000/30000000 Type:simple_queue Local:None Remote:None
+ID:12 Name:20000000 / 20000000 Type:simple_queue Local:None Remote:None
+ID:13 Name:10000000 / 10000000 Type:simple_queue Local:None Remote:None
+ID:14 Name:PLAN_10Mbps Type:pppoe Local:None Remote:None
+ID:15 Name:SQ Plan Type:simple_queue Local:None Remote:None
+ID:16 Name:PLAN_60Mbps Type:pppoe Local:None Remote:None
+ID:17 Name:Plan_Playa_Cedro_90K Type:pppoe Local:None Remote:None

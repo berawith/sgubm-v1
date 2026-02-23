@@ -6,11 +6,12 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from src.infrastructure.database.db_manager import get_db
-from src.infrastructure.database.models import NetworkSegment, InternetPlan
+from src.infrastructure.database.models import Client, Payment, Invoice, Router, PaymentPromise, NetworkSegment, InternetPlan
 from src.infrastructure.mikrotik.adapter import MikroTikAdapter
+from src.application.services.sync_service import SyncService
 from src.application.services.audit_service import AuditService
-from ipaddress import ip_address, ip_network
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -105,11 +106,20 @@ def create_client():
                 logger.warning(f"Error parsing {date_field}: {e}")
                 del data[date_field]
 
+    # VALIDACIÓN DE IP ÚNICA POR ROUTER
+    ip_addr = data.get('ip_address')
+    target_router_id = data.get('router_id')
+
+    if ip_addr and ip_addr != 'N/A' and ip_addr != '' and target_router_id:
+        existing = client_repo.get_all()
+        # Verificar duplicados en EL MISMO ROUTER, excluyendo 'deleted'
+        dupes = [c for c in existing if c.ip_address == ip_addr and c.router_id == int(target_router_id) and c.status != 'deleted']
+        if dupes:
+            return jsonify({'error': f'La IP {ip_addr} ya está asignada en este router al cliente {dupes[0].legal_name}'}), 400
+
     try:
         client = client_repo.create(data)
         
-        # Intentar crear en MikroTik si el router está online (Best Effort)
-        # Esto faltaba en la implementación original
         try:
             if client.router_id:
                 router = db.get_router_repository().get_by_id(client.router_id)
@@ -119,14 +129,17 @@ def create_client():
                         adapter.create_client_service(client.to_dict())
                         adapter.disconnect()
                 else:
-                    # Encolar en Sentinel si no se pudo crear directo
-                    sync_repo = db.get_sync_repository()
-                    sync_repo.add_task(
-                        router_id=client.router_id,
+                    # Encolar en Sentinel usando el servicio centralizado
+                    sync_service = SyncService(db)
+                    sync_service.queue_operation(
+                        operation_type='create',
                         client_id=client.id,
-                        operation='create', # Nota: Sentinel necesita implementar 'create'
-                        payload={'data': client.to_dict()}
+                        router_id=client.router_id,
+                        ip_address=client.ip_address,
+                        target_status='active',
+                        operation_data=json.dumps(client.to_dict())
                     )
+                    logger.warning(f"Router offline. Tarea de CREACIÓN encolada para Cliente {client.id}")
         except Exception as e:
             logger.error(f"Error provisioning client on MikroTik (queued): {e}")
 
@@ -160,6 +173,7 @@ def update_client(client_id):
         return jsonify({'error': 'Cliente no encontrado'}), 404
         
     old_username = old_client.username
+    old_ip = old_client.ip_address
     router_id = old_client.router_id
     
     # Plan Synchronization (on update)
@@ -191,6 +205,19 @@ def update_client(client_id):
                 logger.warning(f"Error parsing {date_field}: {e}")
                 del data[date_field] # Evitar error de tipo en el repo si el formato es inválido
 
+    # VALIDACIÓN DE IP ÚNICA EN UPDATE (POR ROUTER)
+    new_ip = data.get('ip_address')
+    # Usar el router_id del payload si viene, si no el del cliente actual
+    target_router_id = data.get('router_id', old_client.router_id)
+    
+    if new_ip and new_ip != 'N/A' and new_ip != '':
+        # Solo validar si cambió la IP o cambió el Router
+        if new_ip != old_ip or target_router_id != old_client.router_id:
+            existing = client_repo.get_all()
+            dupes = [c for c in existing if c.ip_address == new_ip and c.router_id == int(target_router_id) and c.id != client_id and c.status != 'deleted']
+            if dupes:
+                 return jsonify({'error': f'La IP {new_ip} ya está en uso en este router por {dupes[0].legal_name}'}), 400
+
     try:
         # Actualizar en Base de Datos
         updated_client = client_repo.update(client_id, data)
@@ -207,21 +234,27 @@ def update_client(client_id):
                     try:
                         if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port, timeout=3):
                             sync_data = updated_client.to_dict()
-                            sync_success = adapter.update_client_service(old_username, sync_data)
+                            sync_success = adapter.update_client_service(old_username, sync_data, old_ip=old_ip)
                             adapter.disconnect()
                     except Exception as e:
                         logger.error(f"Direct sync failed: {e}")
                 
-                # 2. Si falló o estaba offline, al SENTINEL (Cola)
+                # 2. Si falló o estaba offline, al SENTINEL usando SyncService
                 if not sync_success:
-                    sync_repo = db.get_sync_repository()
-                    sync_repo.add_task(
-                        router_id=router.id,
+                    sync_service = SyncService(db)
+                    sync_service.queue_operation(
+                        operation_type='update',
                         client_id=client_id,
-                        operation='update',
-                        payload={'old_username': old_username, 'data': updated_client.to_dict()}
+                        router_id=router.id,
+                        ip_address=updated_client.ip_address,
+                        target_status=updated_client.status,
+                        operation_data=json.dumps({
+                            'old_username': old_username, 
+                            'old_ip': old_ip, 
+                            **updated_client.to_dict()
+                        })
                     )
-                    logger.warning(f"Router offline/error. Tarea de sincronización encolada para Cliente {client_id}")
+                    logger.warning(f"Router offline/error. Tarea de ACTUALIZACIÓN encolada para Cliente {client_id}")
 
         logger.info(f"Cliente actualizado: {updated_client.legal_name}")
         
@@ -282,43 +315,9 @@ def delete_client(client_id):
         return jsonify({'message': 'Cliente archivado correctamente'}), 200
 
     else:
-        # Global / Hard Delete
-        # 1. Eliminar de Mikrotik si tiene servicio activo
-        if client.router_id:
-            router = router_repo.get_by_id(client.router_id)
-            if router and router.status == 'online':
-                adapter = MikroTikAdapter()
-                try:
-                    if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
-                        # Intentamos eliminar Queue y Secret
-                        # adapter.remove_client no existe explícitamente en lo que vi, 
-                        # pero adapter.remove_simple_queue y remove_ppp_secret sí deberían existir o lo hacemos manual.
-                        # Revisando adapter... asumiremos remove_client_service o llamadas directas.
-                        
-                        # Fallback a métodos específicos si remove_client general no existe
-                        # En implementaciones previas se usaba remove_simple_queue / remove_ppp_secret
-                        # Usaremos remove_client_service si existe (patrón común) o llamadas individuales.
-                        
-                        # Verificamos si existe método unificado, si no, individual:
-                        if hasattr(adapter, 'remove_client_service'):
-                            adapter.remove_client_service(client.to_dict())
-                        else:
-                            # Intento manual basico
-                            if client.service_type == 'pppoe':
-                                adapter.remove_ppp_secret(client.username)
-                            if client.username: # Siempre intentar borrar cola por si acaso
-                                adapter.remove_simple_queue(client.username)
-                                
-                        adapter.disconnect()
-                except Exception as e:
-                    logger.error(f"Error eliminando de Mikrotik (pero se borrará de BD): {e}")
-
-        # 2. Eliminar de BD
-        success = client_repo.delete(client_id)
-        if not success:
-             return jsonify({'error': 'Error al eliminar de BD'}), 500
-             
-        # Auditoría de eliminación permanente
+        # Global / Hard Delete (SISTEMA SOLAMENTE - Mantenido por petición de usuario)
+        
+        # Auditoría de eliminación permanente (ANTES de borrar para tener acceso a los datos)
         AuditService.log(
             operation='client_deleted_permanent',
             category='client',
@@ -327,14 +326,95 @@ def delete_client(client_id):
             description=f"Cliente eliminado permanentemente: {client.legal_name} ({client.username})",
             previous_state=client.to_dict()
         )
+
+        # 2. Eliminar de BD
+        success = client_repo.delete(client_id)
+        if not success:
+             return jsonify({'error': 'Error al eliminar de BD'}), 500
         
         logger.info(f"Cliente {client_id} eliminado permanentemente (Global).")
         return jsonify({'message': 'Cliente eliminado correctamente'}), 200
 
 
+@clients_bp.route('/bulk-restore', methods=['POST'])
+def bulk_restore_clients():
+    """Restaura múltiples clientes archivados"""
+    data = request.json
+    ids = data.get('ids', [])
+    if not ids:
+        return jsonify({'error': 'No se proporcionaron IDs'}), 400
+        
+    db = get_db()
+    client_repo = db.get_client_repository()
+    
+    restored = 0
+    for cid in ids:
+        if client_repo.update(cid, {'status': 'active'}):
+            restored += 1
+            AuditService.log(
+                operation='client_restored',
+                category='client',
+                entity_type='client',
+                entity_id=cid,
+                description=f"Cliente {cid} restaurado masivamente."
+            )
+            
+    return jsonify({'message': f'{restored} clientes restaurados correctamente', 'count': restored}), 200
+
+
+@clients_bp.route('/bulk-delete', methods=['POST'])
+def bulk_delete_clients():
+    """Elimina permanentemente múltiples clientes (SOLO SISTEMA)"""
+    data = request.json
+    ids = data.get('ids', [])
+    if not ids:
+        return jsonify({'error': 'No se proporcionaron IDs'}), 400
+        
+    db = get_db()
+    client_repo = db.get_client_repository()
+    
+    deleted = 0
+    for cid in ids:
+        # Petición de usuario: SOLO SISTEMA
+        if client_repo.delete(cid):
+            deleted += 1
+            AuditService.log(
+                operation='client_deleted_permanent',
+                category='client',
+                entity_type='client',
+                entity_id=cid,
+                description=f"Cliente {cid} eliminado permanentemente (Masivo, Solo Sistema)."
+            )
+            
+    return jsonify({'message': f'{deleted} clientes eliminados correctamente', 'count': deleted}), 200
+
+
+@clients_bp.route('/empty-trash', methods=['POST'])
+def empty_trash():
+    """Vacía la papelera por completo (SOLO SISTEMA)"""
+    db = get_db()
+    client_repo = db.get_client_repository()
+    
+    # Obtener todos los eliminados
+    deleted_clients = client_repo.get_filtered(status='deleted')
+    count = 0
+    for c in deleted_clients:
+        if client_repo.delete(c.id):
+            count += 1
+            
+    AuditService.log(
+        operation='trash_emptied',
+        category='client',
+        entity_type='client',
+        description=f"Papelera vaciada completamente: {count} clientes eliminados (Solo Sistema)."
+    )
+            
+    return jsonify({'message': f'Papelera vaciada: {count} clientes eliminados', 'count': count}), 200
 @clients_bp.route('/<int:client_id>/suspend', methods=['POST'])
 def suspend_client(client_id):
-    """Suspende un cliente"""
+    """Suspende un cliente con manejo inteligente de MikroTik"""
+    from src.application.services.mikrotik_operations import safe_suspend_client
+    
     db = get_db()
     router_repo = db.get_router_repository()
     client_repo = db.get_client_repository()
@@ -343,145 +423,142 @@ def suspend_client(client_id):
     if not client:
         return jsonify({'error': 'Cliente no encontrado'}), 404
     
-    # 1. Actualizar en BD
-    client = client_repo.suspend(client_id)
+    if not client.router_id:
+        return jsonify({'error': 'Cliente sin router asignado'}), 400
     
-    # 2. Sincronizar con MikroTik (Address List de Corte)
-    if client.router_id:
-        router = router_repo.get_by_id(client.router_id)
-        if router and router.status == 'online':
-            adapter = MikroTikAdapter()
-            try:
-                if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
-                    adapter.suspend_client_service(client.to_dict())
-                    adapter.disconnect()
-            except Exception as e:
-                logger.error(f"Error syncing suspension with MikroTik: {e}")
-
-    # Auditoría
-    AuditService.log(
-        operation='client_suspended_manual',
-        category='client',
-        entity_type='client',
-        entity_id=client_id,
-        description=f"Suspensión manual de cliente: {client.legal_name}",
-        previous_state={'status': 'active'},
-        new_state={'status': 'suspended'}
+    router = router_repo.get_by_id(client.router_id)
+    if not router:
+        return jsonify({'error': 'Router no encontrado'}), 404
+    
+    # Usar función segura con validación y manejo de offline
+    result = safe_suspend_client(
+        db=db,
+        client=client,
+        router=router,
+        audit_service=AuditService,
+        audit_details=f'Suspensión manual - Cliente: {client.legal_name}'
     )
-
-    logger.info(f"Cliente suspendido: {client.legal_name}")
-    return jsonify(client.to_dict())
+    
+    logger.info(f"📋 suspend_client result: {result}")
+    
+    return jsonify({
+        'success': True,
+        'client': client.to_dict(),
+        'sync_status': result['status'],
+        'message': result['message'],
+        'already_blocked': result.get('already_blocked', False)
+    })
 
 
 @clients_bp.route('/<int:client_id>/promise', methods=['POST'])
 def register_promise(client_id):
-    """Registra una promesa de pago (pospone suspensión) y reactiva servicio si estaba cortado"""
+    """Registra una promesa de pago y reactiva servicio de forma segura"""
+    from src.application.services.mikrotik_operations import safe_activate_client
     data = request.json
     db = get_db()
     client_repo = db.get_client_repository()
     router_repo = db.get_router_repository()
     
     promise_date_str = data.get('promise_date')
-    
-    # Obtener el cliente actual
     client = client_repo.get_by_id(client_id)
     if not client:
         return jsonify({'error': 'Cliente no encontrado'}), 404
     
     if not promise_date_str:
-        # Si no se envía fecha, se limpia la promesa
-        updated_client = client_repo.update(client_id, {'promise_date': None})
-        logger.info(f"Promesa de pago eliminada para {updated_client.legal_name}")
-        return jsonify(updated_client.to_dict())
+        client.promise_date = None
+        client_repo.update(client)
+        return jsonify(client.to_dict())
     
     try:
-        # Formato esperado: 'YYYY-MM-DD'
-        promise_date = datetime.strptime(promise_date_str, '%Y-%m-%d')
-        # Ajustar a final del día (23:59:59)
-        promise_date = promise_date.replace(hour=23, minute=59, second=59)
+        promise_date = datetime.strptime(promise_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        client.promise_date = promise_date
+        client_repo.update(client)
         
-        # Actualizar fecha de promesa
-        updates = {'promise_date': promise_date}
-        
-        # LÓGICA DE REACTIVACIÓN AUTOMÁTICA
-        restored = False
-        if client.status == 'suspended':
-            updates['status'] = 'active'
-            restored = True
-            
-        updated_client = client_repo.update(client_id, updates)
-        
-        # Sincronizar con MikroTik si hubo restauración
-        if restored and updated_client.router_id:
-            router = router_repo.get_by_id(updated_client.router_id)
-            if router and router.status == 'online':
-                adapter = MikroTikAdapter()
-                try:
-                    if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
-                        adapter.restore_client_service(updated_client.to_dict())
-                        adapter.disconnect()
-                        logger.info(f"Servicio restaurado automáticamente en MikroTik para {updated_client.legal_name} por Promesa")
-                except Exception as e:
-                    logger.error(f"Error restaurando servicio en MikroTik al crear promesa: {e}")
-
-        # Auditoría
-        AuditService.log(
-            operation='promise_registered',
-            category='accounting',
-            entity_type='client',
-            entity_id=client_id,
-            description=f"Promesa de pago registrada hasta {promise_date_str}",
-            new_state={'promise_date': promise_date_str}
+        # Crear registro en historial
+        new_promise = PaymentPromise(
+            client_id=client.id,
+            promise_date=promise_date,
+            status='pending',
+            notes=f"Promesa registrada individualmente hasta {promise_date_str}"
         )
-
-        logger.info(f"Promesa de pago registrada para {updated_client.legal_name} hasta {promise_date_str}")
-        return jsonify(updated_client.to_dict())
+        db.session.add(new_promise)
+        db.session.commit()
         
-    except ValueError:
-        return jsonify({'error': 'Formato de fecha inválido. Use YYYY-MM-DD'}), 400
+        # Reactivación segura si estaba suspendido
+        if client.status == 'suspended':
+            router = router_repo.get_by_id(client.router_id)
+            if router:
+                safe_activate_client(
+                    db=db,
+                    client=client,
+                    router=router,
+                    audit_service=AuditService,
+                    audit_details=f"Reactivación por promesa hasta {promise_date_str}"
+                )
+        
+        return jsonify(client.to_dict())
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 400
 
 
 @clients_bp.route('/<int:client_id>/activate', methods=['POST'])
 def activate_client(client_id):
-    """Activa un cliente"""
+    """Activa un cliente con manejo inteligente de MikroTik y promesa opcional"""
+    from src.application.services.mikrotik_operations import safe_activate_client
+    
+    data = request.json or {}
+    promise_days = data.get('promise_days')
+    
     db = get_db()
     router_repo = db.get_router_repository()
     client_repo = db.get_client_repository()
+    # audit = AuditService(db)  <-- Removed incorrect instantiation
+
     
     client = client_repo.get_by_id(client_id)
     if not client:
         return jsonify({'error': 'Cliente no encontrado'}), 404
-        
-    # 1. Actualizar en BD
-    client = client_repo.activate(client_id)
     
-    # 2. Sincronizar con MikroTik (Remover de Address List de Corte)
-    if client.router_id:
-        router = router_repo.get_by_id(client.router_id)
-        if router and router.status == 'online':
-            adapter = MikroTikAdapter()
-            try:
-                if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
-                    adapter.restore_client_service(client.to_dict())
-                    adapter.disconnect()
-            except Exception as e:
-                logger.error(f"Error syncing activation with MikroTik: {e}")
+    if not client.router_id:
+        return jsonify({'error': 'Cliente sin router asignado'}), 400
+    
+    router = router_repo.get_by_id(client.router_id)
+    if not router:
+        return jsonify({'error': 'Router no encontrado'}), 404
+    
+    # 1. Aplicar promesa si se especifica
+    if promise_days:
+        promise_date = datetime.now() + timedelta(days=int(promise_days))
+        client.promise_date = promise_date
+        client_repo.update(client)
+        
+        # Registrar en historial
+        new_promise = PaymentPromise(
+            client_id=client.id,
+            promise_date=promise_date,
+            status='pending',
+            notes=f"Activación individual con {promise_days} días de prórroga"
+        )
+        db.session.add(new_promise)
+        db.session.commit()
+        
+        logger.info(f"🤝 Promesa de pago individual: {client.legal_name} por {promise_days} días")
 
-    # Auditoría
-    AuditService.log(
-        operation='client_activated_manual',
-        category='client',
-        entity_type='client',
-        entity_id=client_id,
-        description=f"Activación manual de cliente: {client.legal_name}",
-        previous_state={'status': 'suspended'},
-        new_state={'status': 'active'}
+    # 2. Usar función segura con validación y manejo de offline
+    result = safe_activate_client(
+        db=db,
+        client=client,
+        router=router,
+        audit_service=AuditService,
+        audit_details=f'Activación manual {"con promesa" if promise_days else ""} - Cliente: {client.legal_name}'
     )
-
-    logger.info(f"Cliente activado: {client.legal_name}")
-    return jsonify(client.to_dict())
+    
+    return jsonify({
+        'success': True,
+        'client': client.to_dict(),
+        'sync_status': result['status'],
+        'message': result['message']
+    })
 
 
 @clients_bp.route('/<int:client_id>/restore', methods=['POST'])
@@ -515,60 +592,85 @@ def restore_client(client_id):
     return jsonify(client.to_dict())
 
 
-@clients_bp.route('/<int:client_id>/register-payment', methods=['POST'])
+@clients_bp.route('/<int:client_id>/payments', methods=['POST'])
 def register_payment(client_id):
-    """Registra un pago para el cliente y restaura servicio si aplica"""
+    """Registra un pago para el cliente y restaura servicio si aplica - LOGICA UNIFICADA"""
+    data = request.json
+    db = get_db()
+    
+    try:
+        from src.application.services.billing_service import BillingService
+        service = BillingService()
+        
+        amount = float(data.get('amount') or 0)
+        
+        # Usar lógica centralizada (maneja balance, facturas, promesas y reactivación segura)
+        service.register_payment(client_id, amount, data)
+        
+        # COMMIT FINAL: Si llegamos aquí sin errores, guardamos todo atómicamente
+        db.session.commit()
+        
+        # Obtener el cliente actualizado para la respuesta
+        client_repo = db.get_client_repository()
+        updated_client = client_repo.get_by_id(client_id)
+        
+        logger.info(f"✅ Pago registrado exitosamente para {updated_client.legal_name} (${amount})")
+        return jsonify(updated_client.to_dict()), 201
+        
+    except ValueError as ve:
+        db = get_db()
+        db.session.rollback()
+        logger.warning(f"⚠️ Error de validación al registrar pago: {ve}")
+        return jsonify({'error': str(ve)}), 400
+    except Exception as e:
+        db = get_db()
+        db.session.rollback()
+        logger.error(f"❌ Error crítico registrando pago para cliente {client_id}: {e}")
+        return jsonify({'error': 'Error interno al procesar el pago'}), 500
+
+
+
+@clients_bp.route('/<int:client_id>/adjust-balance', methods=['POST'])
+def adjust_balance(client_id):
+    """Corregir manualmente el balance del cliente"""
     data = request.json
     db = get_db()
     client_repo = db.get_client_repository()
-    payment_repo = db.get_payment_repository()
-    router_repo = db.get_router_repository()
     
-    client = client_repo.get_by_id(client_id)
-    if not client:
-        return jsonify({'error': 'Cliente no encontrado'}), 404
+    new_balance = data.get('new_balance')
+    reason = data.get('reason', 'Ajuste manual de balance')
     
-    payment_data = {
-        'client_id': client_id,
-        'amount': float(data.get('amount') or 0),
-        'payment_method': data.get('payment_method', 'cash'),
-        'reference': data.get('reference', ''),
-        'notes': data.get('notes', ''),
-        'registered_by': data.get('registered_by', 'system')
-    }
-    
-    # 1. Registrar pago y descontar balance
-    payment = payment_repo.create(payment_data)
-    # Importante: Restar el pago de la deuda (account_balance)
-    updated_client = client_repo.update_balance(client_id, payment.amount, operation='subtract')
-    client_repo.update(client_id, {'last_payment_date': datetime.utcnow()})
-    
-    # 2. Restauración automática si la deuda es <= 0 y estaba suspendido
-    restored_in_mikrotik = False
-    if updated_client.account_balance <= 0 and updated_client.status == 'suspended':
-        logger.info(f"Deuda saldada para {updated_client.legal_name}. Restaurando servicio...")
+    if new_balance is None:
+        return jsonify({'error': 'Nuevo balance requerido'}), 400
         
-        # Cambiar estado en BD
-        client_repo.update(client_id, {'status': 'active'})
+    try:
+        new_balance = float(new_balance)
+        client = client_repo.get_by_id(client_id)
+        if not client:
+            return jsonify({'error': 'Cliente no encontrado'}), 404
+            
+        old_balance = client.account_balance or 0.0
         
-        # Intentar restaurar en Router
-        if updated_client.router_id:
-            router = router_repo.get_by_id(updated_client.router_id)
-            if router and router.status == 'online':
-                adapter = MikroTikAdapter()
-                try:
-                    if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
-                        adapter.restore_client_service(updated_client.to_dict())
-                        adapter.disconnect()
-                        restored_in_mikrotik = True
-                except Exception as e:
-                    logger.error(f"Error restaurando en Mikrotik tras pago: {e}")
-
-    result = updated_client.to_dict()
-    result['restored_auto'] = restored_in_mikrotik
-    
-    logger.info(f"Pago registrado para {updated_client.legal_name}: ${payment.amount}")
-    return jsonify(result), 201
+        # Actualizar balance usando 'set'
+        updated_client = client_repo.update_balance(client_id, new_balance, operation='set')
+        
+        # Auditoría crítica
+        AuditService.log(
+            operation='balance_manually_adjusted',
+            category='accounting_critical',
+            entity_type='client',
+            entity_id=client_id,
+            description=f"Balance ajustado manualmente: ${old_balance} -> ${new_balance}. Motivo: {reason}",
+            previous_state={'balance': old_balance},
+            new_state={'balance': new_balance, 'reason': reason}
+        )
+        
+        return jsonify(updated_client.to_dict())
+    except ValueError:
+        return jsonify({'error': 'El balance debe ser un número válido'}), 400
+    except Exception as e:
+        logger.error(f"Error ajustando balance para cliente {client_id}: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @clients_bp.route('/update-name-by-ip', methods=['POST'])
@@ -678,8 +780,9 @@ def lookup_client_identity():
 def preview_import_clients(router_id):
     """
     Escanea clientes del router (PPPoE + Simple Queues) y filtra por Segmentos de Red declarados.
-    Devuelve lista comparada con BD para selección manual.
+    Soporta scan_type: 'mixed', 'pppoe', 'dhcp_arp_queues'
     """
+    scan_type = request.args.get('scan_type', 'mixed')
     db = get_db()
     router_repo = db.get_router_repository()
     client_repo = db.get_client_repository()
@@ -689,37 +792,38 @@ def preview_import_clients(router_id):
         return jsonify({'error': 'Router no encontrado'}), 404
     
     # 1. Obtener Segmentos de Red Validos SOLO PARA ESTE ROUTER
-    segments = db.session.query(NetworkSegment).filter(NetworkSegment.router_id == router_id).all()
-    # Si hay segmentos definidos para este router, crear lista de redes permitidas
+    # 1. Obtener Rangos IP Válidos desde el Router (NUEVA LÓGICA)
     allowed_networks = []
-    for s in segments:
+    
+    # Combinar rangos de PPPoE y DHCP definidos en la configuración del router
+    raw_ranges = []
+    if router.pppoe_ranges:
+        raw_ranges.extend([r.strip() for r in router.pppoe_ranges.split(',') if r.strip()])
+    if router.dhcp_ranges:
+        raw_ranges.extend([r.strip() for r in router.dhcp_ranges.split(',') if r.strip()])
+        
+    for cidr in raw_ranges:
         try:
-            allowed_networks.append(ip_network(s.cidr, strict=False))
+            allowed_networks.append(ip_network(cidr, strict=False))
         except Exception as e:
-            logger.warning(f"Segmento invalido en BD {s.cidr}: {e}")
+            logger.warning(f"Rango inválido en Router {router.alias}: {cidr} - {e}")
             
-    # Reactivar filtro de segmentos
     has_segments_filter = len(allowed_networks) > 0
-    # has_segments_filter = False
 
     if has_segments_filter:
-        logger.info(f"Filtrando importación de router {router_id} ({router.alias}) por {len(allowed_networks)} segmentos de red declarados: {[s.cidr for s in segments]}")
+        logger.info(f"Filtrando importación ({scan_type}) de router {router_id} ({router.alias}) por {len(allowed_networks)} segmentos.")
     else:
-        logger.warning(f"No hay segmentos de red declarados para router {router_id} ({router.alias}). Se mostrarán TODOS los clientes encontrados.")
+        logger.warning(f"No hay segmentos de red declarados para router {router_id}. Se mostrarán todos.")
 
 
     def is_ip_allowed(ip_str):
         """Verifica si una IP está en los segmentos permitidos"""
-        if not has_segments_filter: return True # Si no hay segmentos declarados, permitir todo
+        if not has_segments_filter: return True 
+        if not ip_str: return False
         
         # Limpiar IP (quitar máscara si viene tipo 192.168.1.5/32)
-        clean_ip = ip_str.split('/')[0] if ip_str else ''
-        
-        # EXCLUSIÓN EXPLÍCITA DE BASURA CONOCIDA
-        if clean_ip.startswith('169.254'): return False # Link-local garbage
-        
-        if not clean_ip or clean_ip == '0.0.0.0': 
-            return True 
+        clean_ip = ip_str.split('/')[0]
+        if clean_ip.startswith('169.254') or clean_ip == '0.0.0.0': return False
             
         try:
             addr = ip_address(clean_ip)
@@ -729,258 +833,266 @@ def preview_import_clients(router_id):
 
     def is_management_equipment(name):
         """Verifica si un nombre corresponde a equipos de gestión, infraestructura o HOTSPOT"""
-        if not name:
-            return False
-            
+        if not name: return False
         name_upper = name.upper()
-        
-        # Patrones de equipos de gestión a excluir
         management_patterns = [
             'GESTION', 'GESTION-AP', 'AP-', 'ROUTER-', 'MIKROTIK', 'SWITCH', 'CORE', 'BACKBONE',
-            'INFRAESTRUCTURA', 'ADMIN', 'MANAGEMENT', 'TOWER', 'TORRE', 'PTP-', 'ENLACE',
-            'APB', 
-            # 'STA',  <-- REMOVIDO: Generaba falsos positivos (ej: ACOSTA)
-            # 'UBIQUITI', <-- REMOVIDO: A veces usado en notas de cliente
-            
-            # EXCLUSIONES DE HOTSPOT
+            'INFRAESTRUCTURA', 'ADMIN', 'MANAGEMENT', 'TOWER', 'TORRE', 'PTP-', 'ENLACE', 'APB', 
             'HS-', 'HOTSPOT', 'FICHAS', 'INVITADO', 'GUEST'
         ]
-        
-        # Verificar si el nombre contiene algún patrón
         for pattern in management_patterns:
-            if pattern in name_upper:
-                logger.debug(f"Cliente '{name}' excluido (equipamiento de gestión/infraestructura)")
-                return True
-                
+            if pattern in name_upper: return True
         return False
+
+    def get_suggested_plan(ip_str):
+        """Sugiere un nombre de plan basado en el segmento de red de la IP"""
+        if not ip_str or ip_str == '0.0.0.0': return 'Sin Plan'
+        try:
+            addr = ip_address(ip_str.split('/')[0])
+            for net in allowed_networks:
+                if addr in net:
+                    # HEURÍSTICA: Intentar mapear basado en el nombre del segmento o tipo
+                    # 172.16.41.0/24 -> SQ Plan (MI JARDIN AIRE)
+                    # 10.10.10.0/24 -> PLAN_30Mbps (MI JARDIN PPPoE)
+                    net_str = str(net)
+                    if net_str == '172.16.41.0/24': return 'SQ Plan'
+                    if net_str == '10.10.10.0/24': return 'PLAN_30Mbps'
+                    
+                    # Fallback por nombre de segmento si está disponible
+                    # (Como allowed_networks son objetos ip_network, no tenemos el nombre aquí fácilmente
+                    # salvo que lo hayamos guardado)
+            return 'Sin Plan'
+        except:
+            return 'Sin Plan'
 
     adapter = MikroTikAdapter()
     
     try:
         connected = adapter.connect(
-            host=router.host_address,
-            username=router.api_username,
-            password=router.api_password,
-            port=router.api_port,
-            timeout=10
+            host=router.host_address, username=router.api_username,
+            password=router.api_password, port=router.api_port, timeout=10
         )
         
         if not connected:
-            return jsonify({'error': 'No se pudo conectar al router'}), 400
+            return jsonify({'error': 'No se pudo conectar al router. Verifica que esté en línea.'}), 503
             
         existing_clients = client_repo.get_all()
-        existing_usernames = {c.username.lower() for c in existing_clients}
-        existing_ips = {c.ip_address for c in existing_clients if c.ip_address}
-        
-        # Mapeo IP -> Client para detectar cambios de nombre
+        # Mapeos para búsqueda rápida
+        existing_usernames_map = {c.username.lower(): c for c in existing_clients}
         existing_clients_by_ip = {c.ip_address: c for c in existing_clients if c.ip_address}
+        existing_ips_set = set(existing_clients_by_ip.keys())
         
         preview_list = []
         seen_ips = set()
-        seen_mikrotik_usernames = set() # Nombres que ya están en el router (Queues o PPP)
-        management_ips = set() # IPs identificadas como gestión (para excluir de ARP)
+        seen_mikrotik_usernames = set() 
+        management_ips = set()
 
         # --- A. SCAN PPPOE SECRETS ---
-        try:
-            ppp_secrets = adapter.get_all_pppoe_secrets()
-            all_profiles = adapter.get_ppp_profiles()
-            all_pools = adapter.get_ip_pools()
-            
-            # Mapa de pools y perfiles permitidos
-            pool_map = {p.get('name'): p.get('ranges') for p in all_pools}
-            allowed_profiles = set()
-            
-            for p in all_profiles:
-                p_name = p.get('name')
-                remote = p.get('remote-address')
+        if scan_type in ['mixed', 'pppoe']:
+            try:
+                ppp_secrets = adapter.get_all_pppoe_secrets()
+                all_profiles = adapter.get_ppp_profiles()
+                all_pools = adapter.get_ip_pools()
                 
-                if remote and is_ip_allowed(remote):
-                    allowed_profiles.add(p_name)
-                    continue
-                    
-                pool_range = pool_map.get(remote)
-                if pool_range:
-                    first_part = pool_range.split(',')[0]
-                    first_ip = first_part.split('-')[0]
-                    if is_ip_allowed(first_ip):
+                pool_map = {p.get('name'): p.get('ranges') for p in all_pools}
+                allowed_profiles = set()
+                
+                for p in all_profiles:
+                    p_name = p.get('name')
+                    remote = p.get('remote-address')
+                    if remote and is_ip_allowed(remote):
                         allowed_profiles.add(p_name)
+                    else:
+                        pool_range = pool_map.get(remote)
+                        if pool_range:
+                            first_ip = pool_range.split(',')[0].split('-')[0]
+                            if is_ip_allowed(first_ip): allowed_profiles.add(p_name)
 
-            for secret in ppp_secrets:
-                name = secret.get('name', '')
-                remote_addr = secret.get('remote_address', '')
-                profile_name = secret.get('profile', '')
-                
-                # FILTRO: Excluir equipos de gestión (Chequear nombre y comentario)
-                comment = secret.get('comment', '')
-                if is_management_equipment(name) or is_management_equipment(comment):
-                    if remote_addr: management_ips.add(remote_addr)
-                    continue
-                
-                # FILTRO DE SEGMENTO Y PERFIL
-                if not (is_ip_allowed(remote_addr) or profile_name in allowed_profiles):
-                    continue 
+                for secret in ppp_secrets:
+                    name = secret.get('name', '')
+                    remote_addr = secret.get('remote_address', '')
+                    profile_name = secret.get('profile', '')
+                    comment = secret.get('comment', '')
+                    
+                    if is_management_equipment(name) or is_management_equipment(comment):
+                        if remote_addr: management_ips.add(remote_addr)
+                        continue
+                    
+                    if not (is_ip_allowed(remote_addr) or profile_name in allowed_profiles):
+                        continue 
 
-                if not name: continue
-                
-                # DETECCIÓN INTELIGENTE: Buscar por IP primero
-                existing_client_by_ip = existing_clients_by_ip.get(remote_addr) if remote_addr and remote_addr != '0.0.0.0' else None
-                name_changed = False
-                
-                if existing_client_by_ip:
-                    # Ya existe un cliente con esta IP
-                    if existing_client_by_ip.username.lower() != name.lower():
-                        # El nombre cambió!
-                        name_changed = True
-                        logger.info(f"Cambio de nombre detectado en IP {remote_addr}: '{existing_client_by_ip.username}' → '{name}'")
-                    is_duplicate = True
-                else:
-                    # No existe por IP, verificar por username
-                    is_duplicate = name.lower() in existing_usernames
-                
-                seen_mikrotik_usernames.add(name.lower())
-                if remote_addr: seen_ips.add(remote_addr)
+                    if not name: continue
+                    
+                    # DETECCIÓN DE CAMBIOS (IP y Nombre)
+                    existing_client = existing_usernames_map.get(name.lower())
+                    existing_by_ip = existing_clients_by_ip.get(remote_addr) if remote_addr and remote_addr != '0.0.0.0' else None
+                    
+                    is_duplicate = existing_client is not None or existing_by_ip is not None
+                    name_changed = False
+                    ip_changed = False
+                    db_ip = None
+                    client_id = None
 
-                preview_list.append({
-                    'type': 'pppoe',
-                    'username': name,
-                    'password': secret.get('password', ''),
-                    'ip_address': remote_addr or 'Dinámica',
-                    'profile': profile_name or 'default',
-                    'status': 'disabled' if secret.get('disabled') else 'active',
-                    'exists_in_db': is_duplicate,
-                    'name_changed': name_changed,
-                    'old_username': existing_client_by_ip.username if name_changed else None,
-                    'client_id': existing_client_by_ip.id if existing_client_by_ip else None,
-                    'mikrotik_id': secret.get('mikrotik_id', '')
-                })
-        except Exception as e:
-            logger.error(f"Error scanning PPPoE: {e}")
+                    if existing_by_ip:
+                         client_id = existing_by_ip.id
+                         if existing_by_ip.username.lower() != name.lower():
+                              name_changed = True
+                    elif existing_client:
+                         client_id = existing_client.id
+                         if existing_client.ip_address != remote_addr:
+                              ip_changed = True
+                              db_ip = existing_client.ip_address
+                    
+                    seen_mikrotik_usernames.add(name.lower())
+                    if remote_addr: seen_ips.add(remote_addr)
 
-        # --- B. SCAN EXISTING SIMPLE QUEUES ---
-        try:
-            queues = adapter._api_connection.get_resource('/queue/simple').get()
-            for q in queues:
-                name = q.get('name', '')
-                target = q.get('target', '') # Ej: 192.168.10.25/32
-                
-                # FILTRO: Excluir equipos de gestión (Chequear nombre y comentario)
-                comment = q.get('comment', '')
-                if is_management_equipment(name) or is_management_equipment(comment):
-                    # Extraer IP si es posible
-                    target_ip = target.split('/')[0] if target else ''
-                    if target_ip: management_ips.add(target_ip)
-                    continue
+                    preview_list.append({
+                        'type': 'pppoe', 'username': name, 'password': secret.get('password', ''),
+                        'ip_address': remote_addr or 'Dinámica', 'profile': profile_name or 'default',
+                        'status': 'disabled' if secret.get('disabled') else 'active',
+                        'exists_in_db': is_duplicate, 
+                        'db_status': existing_client.status if existing_client else (existing_by_ip.status if existing_by_ip else None),
+                        'name_changed': name_changed,
+                        'ip_changed': ip_changed,
+                        'old_username': existing_by_ip.username if name_changed else None,
+                        'db_ip': db_ip,
+                        'client_id': client_id,
+                        'mikrotik_id': secret.get('mikrotik_id', '')
+                    })
+            except Exception as e:
+                logger.error(f"Error scanning PPPoE: {e}")
 
-                # La target ip es clave para queue
-                if not is_ip_allowed(target):
-                    continue
-                
-                if not name or name.startswith('<pppoe-'): continue # Omitir colas dinámicas de PPPoE
-                
-                # Extraer IP del target
-                queue_ip = target.split('/')[0] if target else ''
-                
-                # DETECCIÓN INTELIGENTE: Buscar por IP primero
-                existing_client_by_ip = existing_clients_by_ip.get(queue_ip) if queue_ip else None
-                name_changed = False
-                
-                if existing_client_by_ip:
-                    # Ya existe un cliente con esta IP
-                    if existing_client_by_ip.username.lower() != name.lower():
-                        # El nombre cambió!
-                        name_changed = True
-                        logger.info(f"Cambio de nombre detectado en IP {queue_ip}: '{existing_client_by_ip.username}' → '{name}'")
-                    is_duplicate = True
-                else:
-                    # No existe por IP, verificar por username
-                    is_duplicate = name.lower() in existing_usernames
-                
-                if name.lower() in seen_mikrotik_usernames: continue # Ya procesado como PPPoE
-                seen_mikrotik_usernames.add(name.lower())
-                if queue_ip: seen_ips.add(queue_ip)
+        # --- B. SCAN SIMPLE QUEUES ---
+        if scan_type in ['mixed', 'dhcp_arp_queues']:
+            try:
+                queues = adapter._api_connection.get_resource('/queue/simple').get()
+                for q in queues:
+                    name = q.get('name', '')
+                    target = q.get('target', '') 
+                    comment = q.get('comment', '')
+                    
+                    if is_management_equipment(name) or is_management_equipment(comment):
+                        target_ip = target.split('/')[0] if target else ''
+                        if target_ip: management_ips.add(target_ip)
+                        continue
 
-                preview_list.append({
-                    'type': 'simple_queue',
-                    'username': name,
-                    'password': '',
-                    'ip_address': queue_ip or 'Sin IP',
-                    'profile': q.get('max-limit', ''),
-                    'status': 'disabled' if q.get('disabled') == 'true' else 'active',
-                    'exists_in_db': is_duplicate,
-                    'name_changed': name_changed,
-                    'old_username': existing_client_by_ip.username if name_changed else None,
-                    'client_id': existing_client_by_ip.id if existing_client_by_ip else None,
-                    'mikrotik_id': q.get('.id')
-                })
-        except Exception as e:
-             logger.error(f"Error scanning Queues: {e}")
+                    if not is_ip_allowed(target): continue
+                    if not name or name.startswith('<pppoe-'): continue 
+                    
+                    queue_ip = target.split('/')[0] if target else ''
+                    
+                    # DETECCIÓN DE CAMBIOS
+                    existing_client = existing_usernames_map.get(name.lower())
+                    existing_by_ip = existing_clients_by_ip.get(queue_ip) if queue_ip else None
+                    
+                    is_duplicate = existing_client is not None or existing_by_ip is not None
+                    name_changed = False
+                    ip_changed = False
+                    db_ip = None
+                    client_id = None
 
-        # --- C. SCAN DHCP LEASES && ARP (ADVANCED SYNC) ---
-        # Buscamos clientes que estén conectados pero NO tengan Queue/PPP
-        try:
-            dhcp_leases = adapter.get_dhcp_leases()
-            arp_table = adapter.get_arp_table()
-            
-            # Unir info por IP
-            network_devices = {} # ip -> { mac, host, source }
-            
-            for lease in dhcp_leases:
-                ip = lease.get('address')
-                
-                # FILTRO: Excluir equipos de gestión (Chequear host-name y comment)
-                host_name = lease.get('host-name', '')
-                comment = lease.get('comment', '')
-                if is_management_equipment(host_name) or is_management_equipment(comment):
-                    if lease.get('address'): management_ips.add(lease.get('address'))
-                    continue
+                    if existing_by_ip:
+                         client_id = existing_by_ip.id
+                         if existing_by_ip.username.lower() != name.lower():
+                              name_changed = True
+                    elif existing_client:
+                         client_id = existing_client.id
+                         if existing_client.ip_address != queue_ip:
+                              ip_changed = True
+                              db_ip = existing_client.ip_address
+                    
+                    if name.lower() in seen_mikrotik_usernames: continue 
+                    seen_mikrotik_usernames.add(name.lower())
+                    if queue_ip: seen_ips.add(queue_ip)
 
-                if not ip or not is_ip_allowed(ip): continue
-                if ip in seen_ips: continue
-                
-                network_devices[ip] = {
-                    'mac': lease.get('mac-address', ''),
-                    'host': lease.get('host-name', lease.get('comment', f"Device-{ip.split('.')[-1]}")),
-                    'source': 'DHCP'
-                }
-            
-            for arp in arp_table:
-                ip = arp.get('address')
-                
-                # FILTRO: Excluir equipos de gestión
-                if is_management_equipment(arp.get('comment', '')):
-                    if arp.get('address'): management_ips.add(arp.get('address'))
-                    continue
+                    preview_list.append({
+                        'type': 'simple_queue', 'username': name, 'password': '',
+                        'ip_address': queue_ip or 'Sin IP', 'profile': q.get('max-limit', ''),
+                        'status': 'disabled' if q.get('disabled') == 'true' else 'active',
+                        'exists_in_db': is_duplicate, 
+                        'db_status': existing_client.status if existing_client else (existing_by_ip.status if existing_by_ip else None),
+                        'name_changed': name_changed,
+                        'ip_changed': ip_changed,
+                        'old_username': existing_by_ip.username if name_changed else None,
+                        'db_ip': db_ip,
+                        'client_id': client_id,
+                        'mikrotik_id': q.get('.id')
+                    })
+            except Exception as e:
+                 logger.error(f"Error scanning Queues: {e}")
 
-                if not ip or not is_ip_allowed(ip): continue
-                if ip in seen_ips or ip in network_devices or ip in management_ips: continue
+        # --- C. SCAN DHCP LEASES && ARP ---
+        if scan_type in ['mixed', 'dhcp_arp_queues']:
+            try:
+                dhcp_leases = adapter.get_dhcp_leases()
+                arp_table = adapter.get_arp_table()
+                network_devices = {} 
                 
-                network_devices[ip] = {
-                    'mac': arp.get('mac-address', ''),
-                    'host': arp.get('comment', f"ARP-Device-{ip.split('.')[-1]}"),
-                    'source': 'ARP'
-                }
-            
-            # Añadir candidatos detectados a la lista
-            for ip, info in network_devices.items():
-                username = info['host'].replace(' ', '_')
-                # Evitar colisión de nombres
-                if username.lower() in seen_mikrotik_usernames:
-                    username = f"{username}_{ip.split('.')[-1]}"
+                for lease in dhcp_leases:
+                    ip = lease.get('address')
+                    host_name = lease.get('host-name', '')
+                    comment = lease.get('comment', '')
+                    if is_management_equipment(host_name) or is_management_equipment(comment):
+                        if ip: management_ips.add(ip)
+                        continue
 
-                preview_list.append({
-                    'type': 'discovered',
-                    'username': username,
-                    'password': 'N/A',
-                    'ip_address': ip,
-                    'profile': 'Detected (No Queue)',
-                    'status': 'active',
-                    'exists_in_db': username.lower() in existing_usernames or ip in existing_ips,
-                    'mikrotik_id': f"new-{info['source']}",
-                    'mac': info['mac']
-                })
+                    if not ip or not is_ip_allowed(ip): continue
+                    if ip in seen_ips: continue
+                    
+                    network_devices[ip] = {
+                        'mac': lease.get('mac-address', ''),
+                        'host': lease.get('host-name', lease.get('comment', f"Device-{ip.split('.')[-1]}")),
+                        'source': 'DHCP'
+                    }
                 
-        except Exception as e:
-            logger.error(f"Error in advanced sync scanning: {e}")
+                for arp in arp_table:
+                    ip = arp.get('address')
+                    if is_management_equipment(arp.get('comment', '')):
+                        if ip: management_ips.add(ip)
+                        continue
+
+                    if not ip or not is_ip_allowed(ip): continue
+                    if ip in seen_ips or ip in network_devices or ip in management_ips: continue
+                    
+                    network_devices[ip] = {
+                        'mac': arp.get('mac-address', ''),
+                        'host': arp.get('comment', f"ARP-Device-{ip.split('.')[-1]}"),
+                        'source': 'ARP'
+                    }
+                
+                for ip, info in network_devices.items():
+                    username = info['host'].replace(' ', '_')
+                    if username.lower() in seen_mikrotik_usernames:
+                        username = f"{username}_{ip.split('.')[-1]}"
+
+                    # DETECCIÓN DE CAMBIOS para Discovered
+                    existing_client = existing_usernames_map.get(username.lower())
+                    existing_by_ip = existing_clients_by_ip.get(ip)
+                    
+                    is_duplicate = existing_client is not None or existing_by_ip is not None
+                    ip_changed = False
+                    db_ip = None
+                    client_id = None
+
+                    if existing_by_ip:
+                         client_id = existing_by_ip.id
+                    elif existing_client:
+                         client_id = existing_client.id
+                         if existing_client.ip_address != ip:
+                              ip_changed = True
+                              db_ip = existing_client.ip_address
+
+                    preview_list.append({
+                        'type': 'discovered', 'username': username, 'password': 'N/A',
+                        'ip_address': ip, 'profile': get_suggested_plan(ip), 'status': 'active',
+                        'exists_in_db': is_duplicate, 
+                        'ip_changed': ip_changed,
+                        'db_ip': db_ip,
+                        'client_id': client_id,
+                        'mikrotik_id': f"new-{info['source']}", 'mac': info['mac']
+                    })
+            except Exception as e:
+                logger.error(f"Error in advanced sync scanning: {e}")
 
         adapter.disconnect()
         
@@ -988,20 +1100,18 @@ def preview_import_clients(router_id):
         discovered_count = sum(1 for c in preview_list if c.get('type') == 'discovered')
         pppoe_count = sum(1 for c in preview_list if c.get('type') == 'pppoe')
         queue_count = sum(1 for c in preview_list if c.get('type') == 'simple_queue')
+        ip_changes_count = sum(1 for c in preview_list if c.get('ip_changed', False))
         name_changes_count = sum(1 for c in preview_list if c.get('name_changed', False))
         
         return jsonify({
-            'router_alias': router.alias,
-            'router_id': router_id,
-            'total_found': len(preview_list),
-            'segments_filter_active': has_segments_filter,
+            'router_alias': router.alias, 'router_id': router_id,
+            'total_found': len(preview_list), 'segments_filter_active': has_segments_filter,
             'clients': preview_list,
             'summary': {
-                'discovered_no_queue': discovered_count,
-                'pppoe_secrets': pppoe_count,
-                'simple_queues': queue_count,
-                'needs_provisioning': discovered_count > 0,
-                'name_changes': name_changes_count
+                'discovered_no_queue': discovered_count, 'pppoe_secrets': pppoe_count,
+                'simple_queues': queue_count, 'needs_provisioning': discovered_count > 0,
+                'name_changes': name_changes_count,
+                'ip_changes': ip_changes_count
             }
         })
         
@@ -1015,6 +1125,7 @@ def execute_import_clients():
     """Importa clientes seleccionados"""
     data = request.json
     router_id = data.get('router_id')
+    import_mode = data.get('import_mode', 'standard') # modes: standard, prorate, full_debt
     clients_to_import = data.get('clients', [])
     
     if not router_id or not clients_to_import:
@@ -1040,6 +1151,20 @@ def execute_import_clients():
     existing_clients_list = client_repo.get_all()
     existing_usernames = {c.username.lower() for c in existing_clients_list}
     
+    # Determinar el siguiente número secuencial de CLI-XXXX basado en el máximo actual
+    import re
+    max_num = 0
+    for c in existing_clients_list:
+        if c.subscriber_code and c.subscriber_code.startswith('CLI-'):
+            match = re.search(r'CLI-(\d+)', c.subscriber_code)
+            if match:
+                try:
+                    num = int(match.group(1))
+                    if num > max_num:
+                        max_num = num
+                except:
+                    pass
+    
     for item in clients_to_import:
         try:
             username = item.get('username')
@@ -1049,7 +1174,7 @@ def execute_import_clients():
             if username.lower() in existing_usernames:
                 continue
                 
-            subscriber_code = f"CLI-{current_total + 1 + imported_count:04d}"
+            subscriber_code = f"CLI-{max_num + 1 + imported_count:04d}"
             legal_name = username.replace('_', ' ').replace('.', ' ').title()
             
             # Determinar tarifa
@@ -1069,7 +1194,7 @@ def execute_import_clients():
                 'username': username,
                 'password': item.get('password', 'hidden'),
                 'ip_address': item.get('ip_address', ''),
-                'plan_name': item.get('profile', 'default'),
+                'plan_name': item.get('profile') if item.get('profile') and item.get('profile') != 'Sin Plan' else 'default',
                 'download_speed': '15M', # Default subida (Placeholder, plan real se define en router)
                 'upload_speed': '15M',   # Default bajada
                 'service_type': item.get('type', 'pppoe'), # pppoe o simple_queue
@@ -1080,12 +1205,62 @@ def execute_import_clients():
             }
             
             client_repo.create(client_data)
+            new_client = client_repo.get_by_username(username)
+            
+            # --- LÓGICA DE REGULARIZACIÓN (Smart Import) ---
+            if new_client and import_mode != 'standard':
+                from src.application.services.billing_service import BillingService
+                from src.infrastructure.database.models import Invoice, InvoiceItem
+                
+                billing_service = BillingService()
+                now = datetime.now()
+                
+                amount_to_invoice = fee
+                description = f"Mensualidad Inicial - {now.strftime('%B %Y')}"
+                
+                if import_mode == 'prorate':
+                    # Calcular prorrata: (días restantes / total días) * fee
+                    import calendar
+                    days_in_month = calendar.monthrange(now.year, now.month)[1]
+                    days_remaining = days_in_month - now.day + 1
+                    prorate_factor = days_remaining / days_in_month
+                    amount_to_invoice = round(fee * prorate_factor, 2)
+                    description = f"Prorrateo Inicial ({days_remaining} días) - {now.strftime('%B %Y')}"
+                
+                # Crear Factura de Regularización
+                new_invoice = Invoice(
+                    client_id=new_client.id,
+                    issue_date=now,
+                    due_date=now + timedelta(days=3), # Vencimiento corto para regularización
+                    total_amount=amount_to_invoice,
+                    status='unpaid'
+                )
+                db.session.add(new_invoice)
+                db.session.flush()
+                
+                item = InvoiceItem(
+                    invoice_id=new_invoice.id,
+                    description=description,
+                    amount=amount_to_invoice
+                )
+                db.session.add(item)
+                
+                # Actualizar balance del cliente
+                new_client.account_balance = amount_to_invoice
+                db.session.commit()
+                
+                logger.info(f"✨ Regularización Smart aplicada a {username}: {description} (${amount_to_invoice})")
+
             imported_count += 1
             
             # Actualizar el set local para evitar duplicados dentro del mismo lote de importación
             existing_usernames.add(username.lower())
             
         except Exception as e:
+            # IMPORTANTE: Rollback de la sesión para evitar "envenenamiento" de la transacción
+            # Esto permite que el siguiente cliente del loop se procese en una transacción limpia
+            db.session.rollback()
+            logger.error(f"Fallo en importación de {item.get('username')}: {str(e)}")
             errors.append(f"Error importando {item.get('username')}: {str(e)}")
             
     # Auditoría de importación masiva
@@ -1285,6 +1460,7 @@ def get_usage_report(client_id):
         'avg_latency': int(avg_latency),
         'latency_jitter': latency_jitter,
         'outages': sorted(outages, key=lambda x: x['start'], reverse=True)[:10], # Top 10 recientes
+        'history_raw': [h.to_dict() for h in history], # Snapshots para el modal de estabilidad
         'intelligence': {
             'user_profile': user_profile,
             'predicted_monthly_gb': round(predicted_next_month, 1),
@@ -1347,12 +1523,13 @@ def bulk_update_plan():
             # Encolar Sincronización con MikroTik
             if router_id:
                 updated_client = client_repo.get_by_id(c_id)
-                sync_repo = db.get_sync_repository()
-                sync_repo.add_task(
-                    router_id=router_id,
+                from src.application.services.sync_service import SyncService
+                sync_service = SyncService(db)
+                sync_service.queue_operation(
                     client_id=c_id,
-                    operation='update',
-                    payload={'old_username': old_username, 'data': updated_client.to_dict()}
+                    router_id=router_id,
+                    operation_type='update',
+                    operation_data={'old_username': old_username, 'data': updated_client.to_dict()}
                 )
         except Exception as e:
             logger.error(f"Error in bulk plan update for client {c_id}: {e}")
@@ -1402,8 +1579,95 @@ def lookup_identity():
         return jsonify({'error': str(e)}), 500
 
 
-@clients_bp.route('/<int:client_id>/traffic-history', methods=['GET'])
+@clients_bp.route('/<int:client_id>/fix-queue', methods=['POST'])
+def fix_client_queue(client_id):
+    """
+    Crea/Repara la Simple Queue de un cliente en MikroTik
+    Útil cuando aparece como 'Detected (No Queue)'
+    """
+    db = get_db()
+    client_repo = db.get_client_repository()
+    router_repo = db.get_router_repository()
+    
+    client = client_repo.get_by_id(client_id)
+    if not client:
+        return jsonify({'error': 'Cliente no encontrado'}), 404
+    
+    if not client.router_id:
+        return jsonify({'error': 'Cliente sin router asignado'}), 400
+    
+    router = router_repo.get_by_id(client.router_id)
+    if not router:
+        return jsonify({'error': 'Router no encontrado'}), 404
+    
+    if router.status != 'online':
+        return jsonify({'error': 'Router offline, no se puede reparar'}), 503
+    
+    # Determinar velocidad
+    max_limit = "15M/15M" # Default
+    if client.download_speed and client.upload_speed:
+        # Convertir formato visual (15M) a formato MikroTik (15M/15M)
+        # Ojo: download_speed en DB suele ser "15M". upload "15M"
+        # MikroTik max-limit = upload/download
+        ul = client.upload_speed if 'M' in client.upload_speed or 'k' in client.upload_speed else f"{client.upload_speed}M"
+        dl = client.download_speed if 'M' in client.download_speed or 'k' in client.download_speed else f"{client.download_speed}M"
+        max_limit = f"{ul}/{dl}"
 
+    target_ip = client.ip_address
+    if not target_ip:
+         return jsonify({'error': 'Cliente sin IP asignada'}), 400
+         
+    adapter = MikroTikAdapter()
+    try:
+        if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port, timeout=5):
+            # Usar nombre legal o username
+            name = client.legal_name or client.username
+            
+            # Crear Queue
+            success = adapter.create_simple_queue(
+                name=name,
+                target=f"{target_ip}/32",
+                max_limit=max_limit
+            )
+            adapter.disconnect()
+            
+            if success:
+                AuditService.log(
+                    operation='FIX_QUEUE',
+                    category='client',
+                    entity_type='client',
+                    entity_id=client_id,
+                    description=f"Reparación manual de Simple Queue para {client.legal_name} ({target_ip})"
+                )
+                logger.info(f"✅ Cola reparada para {client.legal_name} ({client.ip_address})")
+                return jsonify({'message': 'Cola simple creada/actualizada correctamente', 'success': True})
+            else:
+                return jsonify({'error': 'Falló la creación de la cola en MikroTik'}), 500
+        else:
+            return jsonify({'error': 'No se pudo conectar al router'}), 503
+    except Exception as e:
+        logger.error(f"Error fixing queue for {client.legal_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@clients_bp.route('/<int:client_id>/traffic-history', methods=['GET'])
+def get_client_traffic_history(client_id):
+    """
+    Obtiene el historial de tráfico de un cliente específico (mocked por ahora ya que el backend de telemetria no esta activo para clientes individuales en sqlite)
+    """
+    hours = request.args.get('hours', default=24, type=int)
+    from src.application.services.monitoring_manager import MonitoringManager
+    # As the telemetry method does not exist or raises an error, we provide an empty array for now 
+    # to avoid the 500 error while the monitoring engine is fully implemented.
+    try:
+        if hasattr(MonitoringManager.get_instance(), 'get_client_telemetry_history'):
+            history = MonitoringManager.get_instance().get_client_telemetry_history(client_id, hours=hours)
+            return jsonify([h.to_dict() for h in history])
+    except Exception as e:
+        logger.error(f"Error fetching telemetry: {e}")
+        pass
+    
+    return jsonify([])
 
 def get_router_clients_traffic(router_id: int, client_ids: List[int], adapter: MikroTikAdapter) -> Dict[str, Any]:
     """
@@ -1412,3 +1676,611 @@ def get_router_clients_traffic(router_id: int, client_ids: List[int], adapter: M
     """
     from src.application.services.monitoring_manager import MonitoringManager
     return MonitoringManager.get_instance().get_router_clients_traffic(router_id, client_ids, adapter)
+
+
+@clients_bp.route('/<int:client_id>/promises', methods=['GET'])
+def get_client_promises(client_id):
+    """Obtiene el historial de promesas de un cliente"""
+    db = get_db()
+    session = db.session
+    
+    promises = session.query(PaymentPromise).filter(
+        PaymentPromise.client_id == client_id
+    ).order_by(PaymentPromise.created_at.desc()).all()
+    
+    return jsonify([p.to_dict() for p in promises])
+
+
+@clients_bp.route('/bulk-suspend-pending', methods=['POST'])
+def bulk_suspend_pending_by_router():
+    """
+    Suspende todos los clientes pendientes (con deuda) de un router específico.
+    """
+    try:
+        data = request.get_json()
+        router_id = data.get('router_id')
+        
+        if not router_id:
+            return jsonify({'error': 'router_id es requerido'}), 400
+        
+        db = get_db()
+        client_repo = db.get_client_repository()
+        router_repo = db.get_router_repository()
+        
+        
+        # Obtener todos los clientes del router con deuda pendiente
+        # NO filtrar por status - queremos cortar TODOS los que tengan deuda
+        all_clients = client_repo.get_by_router(router_id)
+        clients_to_suspend = [
+            c for c in all_clients 
+            if c.account_balance > 0  # Solo verificar deuda, no status
+        ]
+        
+        if not clients_to_suspend:
+            return jsonify({
+                'message': 'No hay clientes pendientes en este router',
+                'suspended': 0
+            }), 200
+        
+        logger.info(f"🔄 Iniciando corte masivo: {len(clients_to_suspend)} clientes del router {router_id}")
+        
+        # Get router and adapter
+        router = router_repo.get_by_id(router_id)
+        adapter = None
+        mikrotik_connected = False
+        
+        if router and router.status == 'online':
+            adapter = MikroTikAdapter()
+            try:
+                if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
+                    mikrotik_connected = True
+                    logger.info(f"✅ Conectado a MikroTik {router.host_address}")
+                else:
+                    logger.error(f"❌ No se pudo conectar a MikroTik {router.host_address}")
+                    adapter = None
+            except Exception as e:
+                logger.error(f"❌ Error connecting to MikroTik: {e}")
+                adapter = None
+        else:
+            logger.warning(f"⚠️ Router {router_id} no está online o no existe")
+        
+        suspended_count = 0
+        mikrotik_sync_count = 0
+        errors = []
+        
+        for client in clients_to_suspend:
+            try:
+                logger.info(f"⏳ Procesando cliente: {client.legal_name} (ID: {client.id}, IP: {client.ip_address}, Status actual: {client.status})")
+                
+                # 1. Suspend in database solo si NO está suspendido
+                if client.status != 'suspended':
+                    updated_client = client_repo.suspend(client.id)
+                    logger.info(f"✅ BD actualizada para {client.legal_name} (active → suspended)")
+                else:
+                    logger.info(f"ℹ️ {client.legal_name} ya estaba suspendido en BD, solo sincronizamos MikroTik")
+                
+                # 2. SIEMPRE sincronizar con MikroTik (agregar a Address List si no está)
+                if adapter and mikrotik_connected:
+                    try:
+                        # Refetch para tener datos actualizados
+                        fresh_client = client_repo.get_by_id(client.id)
+                        client_dict = fresh_client.to_dict() if fresh_client else client.to_dict()
+                        
+                        logger.info(f"📡 Sincronizando con MikroTik: {client.legal_name} - IP: {client_dict.get('ip_address')}")
+                        
+                        result = adapter.suspend_client_service(client_dict)
+                        if result:
+                            mikrotik_sync_count += 1
+                            logger.info(f"✅ MikroTik sincronizado para {client.legal_name}")
+                        else:
+                            logger.error(f"❌ MikroTik sync falló para {client.legal_name}")
+                            
+                    except Exception as e:
+                        logger.error(f"❌ Error syncing client {client.id} ({client.legal_name}) with MikroTik: {e}")
+                        errors.append({
+                            'client_id': client.id, 
+                            'name': client.legal_name,
+                            'error': f'MikroTik sync failed: {str(e)}'
+                        })
+                else:
+                    logger.warning(f"⚠️ No hay conexión MikroTik para sincronizar {client.legal_name}")
+                
+                suspended_count += 1
+                
+                # 3. Audit log solo si se cambió el estado
+                if client.status != 'suspended':
+                    AuditService.log(
+                        operation='bulk_suspend_pending',
+                        category='client',
+                        entity_type='client',
+                        entity_id=client.id,
+                        description=f"Suspensión masiva por router: {client.legal_name}",
+                        previous_state={'status': 'active'},
+                        new_state={'status': 'suspended'}
+                    )
+                
+            except Exception as e:
+                logger.error(f"❌ Error suspendiendo cliente {client.id} ({client.legal_name}): {e}")
+                errors.append({
+                    'client_id': client.id,
+                    'name': client.legal_name, 
+                    'error': str(e)
+                })
+        
+        if adapter:
+            adapter.disconnect()
+            logger.info(f"🔌 Desconectado de MikroTik")
+        
+        result_message = f'{suspended_count} clientes suspendidos en BD'
+        if mikrotik_connected:
+            result_message += f', {mikrotik_sync_count} sincronizados con MikroTik'
+        
+        logger.info(f"✅ Corte masivo completado: {result_message}")
+        
+        return jsonify({
+            'message': result_message,
+            'suspended': suspended_count,
+            'mikrotik_synced': mikrotik_sync_count if mikrotik_connected else None,
+            'errors': errors if errors else None
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Error en bulk suspend by router: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@clients_bp.route('/bulk-suspend-all-pending', methods=['POST'])
+def bulk_suspend_all_pending():
+    """
+    Suspende TODOS los clientes pendientes (con deuda) de TODOS los routers.
+    """
+    try:
+        db = get_db()
+        client_repo = db.get_client_repository()
+        router_repo = db.get_router_repository()
+        
+        # Obtener todos los clientes
+        all_clients = client_repo.get_all()
+        clients_to_suspend = [
+            c for c in all_clients 
+            if c.account_balance > 0 and c.status != 'suspended'
+        ]
+        
+        if not clients_to_suspend:
+            return jsonify({
+                'message': 'No hay clientes pendientes',
+                'suspended': 0
+            }), 200
+        
+        # Agrupar por router para eficiencia
+        clients_by_router = {}
+        for client in clients_to_suspend:
+            if client.router_id:
+                if client.router_id not in clients_by_router:
+                    clients_by_router[client.router_id] = []
+                clients_by_router[client.router_id].append(client)
+        
+        suspended_count = 0
+        errors = []
+        
+        # Procesar por router
+        for router_id, router_clients in clients_by_router.items():
+            router = router_repo.get_by_id(router_id)
+            adapter = None
+            
+            if router and router.status == 'online':
+                adapter = MikroTikAdapter()
+                try:
+                    if not adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
+                        adapter = None
+                except Exception as e:
+                    logger.error(f"Error connecting to router {router_id}: {e}")
+                    adapter = None
+            
+            for client in router_clients:
+                try:
+                    # Suspend in database
+                    client_repo.suspend(client.id)
+                    
+                    # Sync with MikroTik
+                    if adapter:
+                        try:
+                            adapter.suspend_client_service(client.to_dict())
+                        except Exception as e:
+                            logger.error(f"Error syncing client {client.id} with MikroTik: {e}")
+                    
+                    suspended_count += 1
+                    
+                    # Audit log
+                    AuditService.log(
+                        operation='bulk_suspend_all_pending',
+                        category='client',
+                        entity_type='client',
+                        entity_id=client.id,
+                        description=f"Suspensión masiva global: {client.legal_name}",
+                        previous_state={'status': 'active'},
+                        new_state={'status': 'suspended'}
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Error suspendiendo cliente {client.id}: {e}")
+                    errors.append({'client_id': client.id, 'error': str(e)})
+            
+            if adapter:
+                adapter.disconnect()
+        
+        return jsonify({
+            'message': f'{suspended_count} clientes suspendidos',
+            'suspended': suspended_count,
+            'errors': errors if errors else None
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error en bulk suspend all pending: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# BULK OPERATIONS WITH MIKROTIK VALIDATION
+# ============================================================================
+
+@clients_bp.route('/bulk-suspend', methods=['POST'])
+def bulk_suspend():
+    """Suspende múltiples clientes validando estado en MikroTik"""
+    try:
+        data = request.get_json()
+        client_ids = data.get('client_ids', [])
+        
+        if not client_ids:
+            return jsonify({'error': 'No se proporcionaron IDs de clientes'}), 400
+        
+        db = get_db()
+        client_repo = db.get_client_repository()
+        router_repo = db.get_router_repository()
+        audit = AuditService
+        
+        # Agrupar clientes por router
+        clients_by_router = {}
+        for client_id in client_ids:
+            client = client_repo.get_by_id(client_id)
+            if not client:
+                continue
+            
+            router_id = client.router_id
+            if router_id not in clients_by_router:
+                clients_by_router[router_id] = []
+            clients_by_router[router_id].append(client)
+        
+        already_blocked = []
+        newly_blocked = []
+        system_only = []
+        errors = []
+        
+        # Procesar por router
+        for router_id, clients in clients_by_router.items():
+            router = router_repo.get_by_id(router_id)
+            if not router:
+                for c in clients:
+                    errors.append({'client_id': c.id, 'error': 'Router no encontrado'})
+                continue
+            
+            adapter = None
+            try:
+                adapter = MikroTikAdapter(router.to_dict())
+                
+                # Obtener lista actual de IPs bloqueadas en MikroTik
+                blocked_ips = set()
+                try:
+                    address_list = adapter.get_address_list('IPS_BLOQUEADAS')
+                    blocked_ips = {entry['address'] for entry in address_list}
+                except Exception as e:
+                    logger.warning(f"No se pudo obtener lista de bloqueados: {e}")
+                
+                for client in clients:
+                    try:
+                        client_ip = client.ip_address
+                        
+                        # Verificar si ya está bloqueado en MikroTik
+                        if client_ip in blocked_ips:
+                            # Ya está bloqueado, solo actualizar sistema
+                            client.status = 'suspended'
+                            client_repo.update(client)
+                            already_blocked.append(client.id)
+                            logger.info(f"Cliente {client.id} ya estaba bloqueado en MikroTik, solo se actualizó el sistema")
+                        else:
+                            # No está bloqueado, suspender en MikroTik
+                            try:
+                                adapter.suspend_client(client_ip)
+                                client.status = 'suspended'
+                                client_repo.update(client)
+                                newly_blocked.append(client.id)
+                                logger.info(f"Cliente {client.id} bloqueado en MikroTik y sistema")
+                            except Exception as e:
+                                # Si falla MikroTik, solo actualizar sistema
+                                client.status = 'suspended'
+                                client_repo.update(client)
+                                system_only.append(client.id)
+                                logger.warning(f"Cliente {client.id} suspendido solo en sistema (error MikroTik): {e}")
+                        
+                        # Auditar
+                        audit.log_action(
+                            action_type='client_suspended',
+                            entity_type='client',
+                            entity_id=client.id,
+                            details=f'Suspensión masiva - Cliente: {client.legal_name}'
+                        )
+                        
+                    except Exception as e:
+                        logger.error(f"Error suspendiendo cliente {client.id}: {e}")
+                        errors.append({'client_id': client.id, 'error': str(e)})
+                
+            finally:
+                if adapter:
+                    adapter.disconnect()
+        
+        # Mensaje detallado
+        total_processed = len(already_blocked) + len(newly_blocked) + len(system_only)
+        message_parts = []
+        
+        if newly_blocked:
+            message_parts.append(f"{len(newly_blocked)} bloqueados en MikroTik")
+        if already_blocked:
+            message_parts.append(f"{len(already_blocked)} ya estaban bloqueados")
+        if system_only:
+            message_parts.append(f"{len(system_only)} solo en sistema")
+        
+        message = f"Suspensión masiva: {', '.join(message_parts)}" if message_parts else "No se procesaron clientes"
+        
+        return jsonify({
+            'message': message,
+            'total': total_processed,
+            'newly_blocked': len(newly_blocked),
+            'already_blocked': len(already_blocked),
+            'system_only': len(system_only),
+            'errors': errors if errors else None
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error en bulk suspend: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@clients_bp.route('/bulk-temporary-activation', methods=['POST'])
+def bulk_temporary_activation():
+    """Activa temporalmente múltiples clientes con promesa de pago de 5 días"""
+    try:
+        data = request.get_json()
+        client_ids = data.get('client_ids', [])
+        
+        if not client_ids:
+            return jsonify({'error': 'No se proporcionaron IDs de clientes'}), 400
+        
+        from src.application.services.batch_service import BatchService
+        batch_service = BatchService()
+        
+        # Ejecutar acción masiva de restauración con promesa de 5 días por defecto
+        results = batch_service.execute_batch_action(
+            action='restore',
+            client_ids=client_ids,
+            extra_data={'promise_days': 5}
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f"Activación temporal completada: {results['success_count']} éxitos, {results['fail_count']} fallos.",
+            'results': results
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error en bulk temporary activation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@clients_bp.route('/bulk-cash-payment', methods=['POST'])
+def bulk_cash_payment():
+    """Procesa pagos en efectivo masivos usando BatchService (Contabilidad individual + Resiliencia MikroTik)"""
+    try:
+        data = request.get_json()
+        client_ids = data.get('client_ids', [])
+        
+        if not client_ids:
+            return jsonify({'error': 'No se proporcionaron IDs de clientes'}), 400
+        
+        from src.application.services.batch_service import BatchService
+        batch_service = BatchService()
+        
+        # Ejecutar acción masiva de pago
+        # BatchService ya usa BillingService.register_payment internamente, lo que garantiza:
+        # 1. Pago individual por cliente.
+        # 2. Actualización de facturas FIFO.
+        # 3. Auditoría contable individual.
+        # 4. Reactivación automática resiliente (online o queued).
+        results = batch_service.execute_batch_action(
+            action='pay',
+            client_ids=client_ids,
+            extra_data={'payment_method': 'cash', 'notes': 'Pago masivo en efectivo registrado'}
+        )
+        
+        message = f"Proceso masivo completado: {results['success_count']} éxitos, {results['fail_count']} fallos."
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'results': results
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error en bulk cash payment: {e}")
+        return jsonify({'error': str(e)}), 500
+        
+    except Exception as e:
+        logger.error(f"Error en bulk cash payment: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@clients_bp.route('/bulk-sync-ips', methods=['POST'])
+def bulk_sync_ips():
+    """Actualiza la IP de múltiples clientes de forma masiva"""
+    try:
+        data = request.get_json()
+        updates = data.get('updates', []) # [{client_id, ip_address}, ...]
+        
+        if not updates:
+            return jsonify({'error': 'No se proporcionaron actualizaciones'}), 400
+            
+        db = get_db()
+        client_repo = db.get_client_repository()
+        
+        success_count = 0
+        errors = []
+        
+        for item in updates:
+            client_id = item.get('client_id')
+            new_ip = item.get('ip_address')
+            
+            if not client_id or not new_ip:
+                errors.append(f"Datos inválidos para item: {item}")
+                continue
+                
+            try:
+                # Actualizar en la base de datos
+                # Solo actualizamos la IP, el repo de SQLAlchemy debería manejar el merge
+                client_repo.update(client_id, {'ip_address': new_ip})
+                success_count += 1
+            except Exception as e:
+                errors.append(f"Error sincronizando cliente {client_id}: {str(e)}")
+        
+        if success_count > 0:
+            AuditService.log(
+                operation='clients_bulk_ip_sync',
+                category='client',
+                description=f"Sincronización masiva: {success_count} IPs de clientes corregidas desde escaneo.",
+                new_state={'count': success_count}
+            )
+            
+        return jsonify({
+            'success': True,
+            'synchronized': success_count,
+            'errors': errors
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error en bulk IP sync: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@clients_bp.route('/bulk-revert-recent-payments', methods=['POST'])
+def bulk_revert_recent_payments():
+    """
+    Revierte los últimos pagos de múltiples clientes.
+    Útil para deshacer pagos de cortesías que no fueron cumplidas.
+    
+    Request Body:
+    {
+        "client_ids": [1, 2, 3],
+        "reason": "Reversión masiva por cortesía vencida" (opcional),
+        "days_back": 7 (opcional, default 7)
+    }
+    
+    Response:
+    {
+        "success": true,
+        "message": "...",
+        "reverted": 5,
+        "skipped": 2,
+        "details": {
+            "reverted_ids": [...],
+            "skipped_no_payment": [...],
+            "errors": [...]
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        client_ids = data.get('client_ids', [])
+        reason = data.get('reason', 'Reversión masiva desde Acción Masiva')
+        days_back = data.get('days_back', 7)
+        
+        if not client_ids:
+            return jsonify({'error': 'No se proporcionaron IDs de clientes'}), 400
+        
+        from src.infrastructure.database.models import Payment
+        from src.application.services.billing_service import BillingService
+        from datetime import timedelta
+        
+        db = get_db()
+        session = db.session
+        billing_service = BillingService()
+        
+        # Fecha límite para buscar pagos recientes
+        cutoff_date = datetime.now() - timedelta(days=days_back)
+        
+        reverted_count = 0
+        skipped_count = 0
+        reverted_ids = []
+        skipped_no_payment = []
+        errors = []
+        
+        logger.info(f"🔄 Iniciando reversión masiva de pagos para {len(client_ids)} clientes")
+        
+        for client_id in client_ids:
+            try:
+                # Buscar el pago más reciente del cliente (últimos N días)
+                recent_payment = session.query(Payment).filter(
+                    Payment.client_id == client_id,
+                    Payment.payment_date >= cutoff_date
+                ).order_by(Payment.payment_date.desc()).first()
+                
+                if not recent_payment:
+                    logger.info(f"⚠️ Cliente {client_id} no tiene pagos recientes (últimos {days_back} días)")
+                    skipped_no_payment.append(client_id)
+                    skipped_count += 1
+                    continue
+                
+                # Revertir el pago usando BillingService
+                logger.info(f"🔄 Revirtiendo pago {recent_payment.id} del cliente {client_id} (${recent_payment.amount})")
+                billing_service.revert_payment(recent_payment.id, reason)
+                
+                reverted_ids.append(client_id)
+                reverted_count += 1
+                
+            except Exception as e:
+                logger.error(f"❌ Error revirtiendo pago del cliente {client_id}: {e}")
+                errors.append({
+                    'client_id': client_id,
+                    'error': str(e)
+                })
+        
+        # Auditoría global de la operación masiva
+        if reverted_count > 0:
+            AuditService.log(
+                operation='bulk_revert_payments',
+                category='accounting',
+                description=f"Reversión masiva de pagos: {reverted_count} clientes procesados. Motivo: {reason}",
+                new_state={
+                    'reverted_count': reverted_count,
+                    'client_ids': reverted_ids,
+                    'reason': reason
+                }
+            )
+        
+        message = f"Reversión masiva completada: {reverted_count} pagos revertidos"
+        if skipped_count > 0:
+            message += f", {skipped_count} clientes sin pagos recientes"
+        
+        logger.info(f"✅ {message}")
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'reverted': reverted_count,
+            'skipped': skipped_count,
+            'details': {
+                'reverted_ids': reverted_ids,
+                'skipped_no_payment': skipped_no_payment,
+                'errors': errors if errors else None
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Error crítico en bulk revert payments: {e}")
+        return jsonify({'error': f'Error interno al revertir pagos: {str(e)}'}), 500

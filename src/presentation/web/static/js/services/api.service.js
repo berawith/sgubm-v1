@@ -29,8 +29,8 @@ export class ApiService {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 try {
                     const errorBody = await response.json();
-                    if (errorBody && errorBody.message) {
-                        errorMessage = errorBody.message;
+                    if (errorBody) {
+                        errorMessage = errorBody.message || errorBody.error || errorMessage;
                     }
                     // Adjuntar datos extra al error si es necesario
                     const error = new Error(errorMessage);

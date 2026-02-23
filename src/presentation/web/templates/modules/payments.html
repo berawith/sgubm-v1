@@ -7,7 +7,8 @@
             <p class="page-subtitle">Gestión de cobros y reportes</p>
         </div>
         <div class="view-actions">
-            <div class="segmented-control glass-panel">
+            <div class="segmented-control premium-card glass"
+                style="padding: 4px; background: rgba(255,255,255,0.4); backdrop-filter: blur(10px);">
                 <button class="segment-btn active" onclick="app.modules.payments.switchTab('list')">
                     <i class="fas fa-list"></i> Pagos
                 </button>
@@ -17,16 +18,18 @@
                 <button class="segment-btn" onclick="app.modules.payments.switchTab('reports')">
                     <i class="fas fa-chart-pie"></i> Reportes
                 </button>
+                <button class="segment-btn" onclick="app.modules.payments.switchTab('expenses')">
+                    <i class="fas fa-file-invoice-dollar"></i> Gastos
+                </button>
                 <button class="segment-btn" onclick="app.modules.payments.switchTab('promises')">
                     <i class="fas fa-handshake"></i> Promesas
                 </button>
-                <button class="segment-btn" onclick="app.modules.payments.switchTab('batch')">
-                    <i class="fas fa-tasks"></i> Masivo
-                </button>
+
+
                 <button class="segment-btn" onclick="app.modules.payments.switchTab('automation')">
                     <i class="fas fa-robot"></i> Automatización
                 </button>
-                <button class="segment-btn" onclick="app.modules.payments.switchTab('trash')">
+                <button class="segment-btn" onclick="app.modules.navigation.navigateToSubView('trash')">
                     <i class="fas fa-trash-alt"></i> Papelera
                 </button>
             </div>
@@ -141,7 +144,9 @@
         </div>
     </div>
 
-    <!-- PROMISES TAB -->
+
+    <!-- EXPENSES TAB REMOVED (Moved to modules/payments/expenses.html) -->
+
     <div id="finance-promises-tab" class="finance-tab" style="display: none;">
         <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
             <div class="toolbar-group">
@@ -178,103 +183,7 @@
         </div>
     </div>
 
-    <!-- BATCH TAB -->
-    <div id="finance-batch-tab" class="finance-tab" style="display: none;">
-        <div class="glass-panel" style="padding: 24px;">
-            <div style="display: flex; gap: 24px; align-items: flex-start;">
-                <!-- Filters Column -->
-                <div style="width: 300px; padding-right: 24px; border-right: 1px solid #e2e8f0;">
-                    <h3 style="margin-top:0; font-size:1rem; color: #475569; margin-bottom: 15px;">Filtros de Selección
-                    </h3>
 
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label class="input-label-premium">Router</label>
-                        <select id="batch-filter-router" class="input-premium"
-                            onchange="app.modules.payments.loadBatchClients()">
-                            <option value="">Todos los Routers</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label class="input-label-premium">Estado</label>
-                        <select id="batch-filter-status" class="input-premium"
-                            onchange="app.modules.payments.loadBatchClients()">
-                            <option value="active">Activos</option>
-                            <option value="suspended">Suspendidos</option>
-                            <option value="debtors">Pendientes (Con Deuda)</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label class="input-label-premium">Búsqueda Rápida</label>
-                        <input type="text" id="batch-search" class="input-premium" placeholder="Nombre..."
-                            oninput="app.modules.payments.loadBatchClients()">
-                    </div>
-
-                    <button class="btn-primary" style="width: 100%; margin-bottom: 24px;"
-                        onclick="app.modules.payments.loadBatchClients()">
-                        <i class="fas fa-search"></i> Buscar Clientes
-                    </button>
-
-                    <!-- Actions Bar (Moved here) -->
-                    <div class="mass-actions-sidebar glass-panel"
-                        style="padding: 16px; background: rgba(var(--primary-rgb), 0.03); border: 1px solid rgba(var(--primary-rgb), 0.1); border-radius: 12px;">
-                        <h4
-                            style="margin-top:0; font-size:0.75rem; color: #64748b; margin-bottom: 12px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em;">
-                            Acción Masiva</h4>
-                        <div style="display: flex; flex-direction: column; gap: 10px;">
-                            <button class="btn-premium" onclick="app.modules.payments.executeBatch('suspend')"
-                                style="background: #ef4444; border-color: #ef4444; width: 100%; justify-content: center; font-size: 0.8rem; padding: 10px;">
-                                <i class="fas fa-ban"></i> SUSPENDER / CORTAR
-                            </button>
-                            <button class="btn-premium" onclick="app.modules.payments.executeBatch('restore')"
-                                style="background: #6366f1; border-color: #6366f1; width: 100%; justify-content: center; font-size: 0.8rem; padding: 10px;">
-                                <i class="fas fa-play"></i> ACTIVAR / RESTAURAR
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Results & Actions Column -->
-                <div style="flex: 1;">
-                    <div class="toolbar-actions" style="justify-content: space-between; margin-bottom: 15px;">
-                        <div style="font-weight: 600; color: #475569;">
-                            Seleccionados: <span id="batch-selected-count"
-                                style="color: #6366f1; font-weight: 800;">0</span>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn-secondary" onclick="app.modules.payments.toggleSelectAllBatch('button')">
-                                <i class="fas fa-check-double"></i> Todos
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Client List -->
-                    <div class="table-container-premium glass-panel"
-                        style="height: 400px; overflow-y: auto; margin-bottom: 20px;">
-                        <table class="premium-data-table">
-                            <thead>
-                                <tr>
-                                    <th width="40"><input type="checkbox" id="batch-select-all-header"
-                                            onclick="app.modules.payments.toggleSelectAllBatch()"></th>
-                                    <th>Cliente</th>
-                                    <th style="width: 15%;">IP</th>
-                                    <th style="width: 15%;">ESTADO SERVICIO</th>
-                                    <th style="width: 15%;">ESTADO FINANCIERO</th>
-                                    <th style="width: 15%;">DEUDA</th>
-                                </tr>
-                            </thead>
-                            <tbody id="batch-clients-table">
-                                <!-- Dynamic -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Actions Bar removed from here -->
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- AUTOMATION TAB -->
     <div id="finance-automation-tab" class="finance-tab" style="display: none;">
@@ -288,7 +197,7 @@
                     <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: #64748b;">Gestión de facturación, cortes y
                         tareas programadas</p>
                 </div>
-                <div class="badge active"
+                <div class="status-badge active"
                     style="background: rgba(16, 185, 129, 0.1); color: #059669; border: 1px solid rgba(16, 185, 129, 0.2);">
                     Motor Activo</div>
             </div>
@@ -405,6 +314,47 @@
                 </div>
 
                 <div
+                    style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 15px; grid-column: span 2;">
+                    <div
+                        style="background: rgba(16, 185, 129, 0.1); color: #10b981; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                        <i class="fas fa-divide"></i>
+                    </div>
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0; color: #1e293b; font-size: 1rem;">Configuración Cambiaria (Global)</h4>
+                        <p style="margin: 4px 0 15px 0; font-size: 0.8rem; color: #64748b;">Parámetros de conversión
+                            para pagos en VES y COP.</p>
+
+                        <div style="display: flex; gap: 20px; align-items: flex-end;">
+                            <div class="filter-item">
+                                <label
+                                    style="font-size: 0.65rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">USD
+                                    -> VES (BCV)</label>
+                                <input type="number" id="global-rate-bcv" step="0.01" class="input-premium"
+                                    style="width: 100px; height: 38px;">
+                            </div>
+                            <div class="filter-item">
+                                <label
+                                    style="font-size: 0.65rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">USD
+                                    -> VES (COM)</label>
+                                <input type="number" id="global-rate-com" step="0.01" class="input-premium"
+                                    style="width: 100px; height: 38px;">
+                            </div>
+                            <div class="filter-item">
+                                <label
+                                    style="font-size: 0.65rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">USD
+                                    -> COP</label>
+                                <input type="number" id="global-rate-cop" step="1" class="input-premium"
+                                    style="width: 100px; height: 38px;">
+                            </div>
+                            <button class="btn-success" onclick="app.modules.payments.saveGlobalRates()"
+                                style="height: 38px; padding: 0 20px; font-weight: 700;">
+                                <i class="fas fa-save"></i> Guardar Tasas
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div
                     style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 15px; opacity: 0.7; cursor: not-allowed;">
                     <div
                         style="background: rgba(148, 163, 184, 0.1); color: #64748b; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
@@ -413,8 +363,7 @@
                     <div style="flex: 1;">
                         <h4 style="margin: 0; color: #1e293b; font-size: 1rem;">Backup Automático</h4>
                         <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: #64748b;">Respaldo diario de
-                            configuraciones
-                            (Próximamente).</p>
+                            configuraciones (Próximamente).</p>
                     </div>
                     <button class="btn-secondary" disabled style="padding: 10px 20px;">
                         Configurar
@@ -427,37 +376,12 @@
     <!-- REPORTS TAB -->
     <div id="finance-reports-tab" class="finance-tab" style="display: none;">
         <!-- Toolbar for Reports -->
-        <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
-            <div class="toolbar-group">
-                <div class="filter-item">
-                    <label>Desde</label>
-                    <input type="date" id="filter-date-start" class="input-premium"
-                        onchange="app.modules.payments.applyFilters()">
-                </div>
-                <div class="filter-item">
-                    <label>Hasta</label>
-                    <input type="date" id="filter-date-end" class="input-premium"
-                        onchange="app.modules.payments.applyFilters()">
-                </div>
-                <div class="filter-item">
-                    <label>Método</label>
-                    <select id="filter-method" class="select-premium" onchange="app.modules.payments.applyFilters()">
-                        <option value="">Todos</option>
-                        <option value="efectivo">Efectivo</option>
-                        <option value="transferencia">Transferencia</option>
-                        <option value="pago_movil">Pago Móvil</option>
-                        <option value="zelle">Zelle</option>
-                        <option value="binance">Binance</option>
-                    </select>
-                </div>
-            </div>
+        <!-- Toolbar for Reports -->
+        <div class="clients-toolbar glass-panel" style="margin-bottom: 20px; justify-content: flex-end;">
             <div class="toolbar-actions">
                 <button class="btn-primary" onclick="app.modules.payments.openReportModal()"
                     style="background: #4f46e5; color: white !important;">
                     <i class="fas fa-file-invoice-dollar"></i> Generar Reporte
-                </button>
-                <button class="btn-secondary" onclick="app.modules.payments.exportDebtors()">
-                    <i class="fas fa-user-clock"></i> Morosos
                 </button>
             </div>
         </div>
@@ -588,6 +512,7 @@
                                 style="height: 50px; border-radius: 12px; font-weight: 600; border: 2px solid #e2e8f0; padding: 0 15px;">
                                 <option value="payments">Pagos Procesados (Histórico)</option>
                                 <option value="debtors">Clientes Morosos (Cartera)</option>
+                                <option value="routers">Análisis Financiero por Router (Gráficas)</option>
                                 <option value="today">Recaudación del Día (Cierre)</option>
                             </select>
                         </div>
@@ -697,7 +622,7 @@
                 <div style="display: flex; gap: 15px;">
                     <button class="btn-secondary" onclick="app.modules.payments.closeReportModal()"
                         style="padding: 12px 25px; border-radius: 12px; font-weight: 600;">Cerrar</button>
-                    <button class="btn-primary" onclick="app.modules.payments.submitReportExport()"
+                    <button class="btn-primary" id="btn-submit-report"
                         style="background: #4f46e5; color: white !important; padding: 12px 35px; border-radius: 12px; font-weight: 700; box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);">
                         <i class="fas fa-cloud-download-alt" style="margin-right: 8px;"></i> GENERAR Y DESCARGAR
                     </button>
@@ -776,290 +701,12 @@
 
 
     <!-- TRASH TAB -->
-    <div id="finance-trash-tab" class="finance-tab" style="display: none;">
-        <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
-            <div class="toolbar-group">
-                <div class="filter-item search-container" style="flex-grow: 1;">
-                    <div class="input-with-icon">
-                        <i class="fas fa-search"></i>
-                        <input type="text" id="trash-search" class="input-premium" placeholder="Buscar en papelera..."
-                            oninput="app.modules.payments.loadDeletedPayments()">
-                    </div>
-                </div>
-            </div>
-            <div class="toolbar-actions">
-                <button class="btn-secondary btn-icon" onclick="app.modules.payments.loadDeletedPayments()"
-                    title="Recargar">
-                    <i class="fas fa-sync-alt"></i>
-                </button>
-            </div>
-        </div>
+    <!-- TRASH TAB REMOVED (Moved to modules/payments/trash.html) -->
 
-        <div class="table-container-premium glass-panel">
-            <table class="premium-data-table">
-                <thead>
-                    <tr>
-                        <th>CLIENTE</th>
-                        <th>MONTO</th>
-                        <th>FECHA ELIMINACIÓN</th>
-                        <th>MOTIVO</th>
-                        <th style="text-align: right;">ACCIONES</th>
-                    </tr>
-                </thead>
-                <tbody id="trash-table-body">
-                    <!-- Dynamic Rows -->
-                </tbody>
-            </table>
-        </div>
-    </div>
+
+
 </div>
-<!-- Payment Registration Modal (Premium Design) -->
-<div id="payment-modal" class="modal">
-    <div class="modal-content" style="max-width: 1350px; width: 95%; height: 85vh;">
-        <div class="modal-header">
-            <div>
-                <h3 id="payment-modal-title">Registrar Nuevo Pago</h3>
-                <p class="modal-subtitle-text">INGRESO DE TRANSACCIONES Y COBROS</p>
-            </div>
+</body>
 
-            <button class="close-btn" onclick="app.modules.payments.closePaymentModal()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-
-        <div class="modal-body" style="padding: 30px; background: #f8fafc;">
-            <form id="payment-form">
-                <!-- Client Search Phase -->
-                <div id="payment-client-search-step" style="max-width: 800px; margin: 0 auto; padding: 20px 0;">
-                    <div style="text-align: center; margin-bottom: 20px;">
-                        <h2 style="font-size: 1.4rem; font-weight: 900; color: #0f172a; margin-bottom: 4px;">¿A quién
-                            vamos a cobrar?</h2>
-                        <p style="color: #64748b; font-size: 0.85rem;">Busca por nombre, IP, documento o código de
-                            suscriptor</p>
-                    </div>
-
-                    <div class="search-container-premium">
-                        <div class="search-input-group-ultra">
-                            <div class="search-icon-box">
-                                <i class="fas fa-search"></i>
-                            </div>
-                            <input type="text" id="payment-client-query" placeholder="Escribe para buscar..."
-                                autocomplete="off" class="search-input-large">
-                            <button type="button" class="search-action-btn"
-                                onclick="app.modules.payments.searchClients(document.getElementById('payment-client-query').value)">
-                                <i class="fas fa-arrow-right"></i>
-                                <span>BUSCAR</span>
-                            </button>
-                        </div>
-
-                        <!-- Help Tip -->
-                        <div id="search-help-tip"
-                            style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; color: #94a3b8; font-size: 0.75rem; font-weight: 500;">
-                            <i class="fas fa-keyboard" style="opacity: 0.5;"></i>
-                            <span>Presiona ENTER para buscar directamente o escribe al menos 2 caracteres</span>
-                        </div>
-
-                        <!-- Results Area -->
-                        <div id="payment-search-results" class="search-results-floating-panel">
-                            <!-- Populated by JS -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Selected Client Info (Ultra-Premium) -->
-                <div id="selected-client-display" style="display:none; margin-bottom: 24px;">
-                    <div class="payment-modal-card">
-                        <div class="client-section">
-                            <div class="client-card-avatar">
-                                <i class="fas fa-user"></i>
-                            </div>
-                            <div class="client-card-info">
-                                <span id="display-client-name" class="client-card-name"></span>
-                                <div class="client-card-badges">
-                                    <span id="display-client-code" class="client-code-pill"></span>
-                                    <span id="display-client-ip"
-                                        style="font-size: 0.8rem; color: #64748b; font-weight: 500;"></span>
-                                    <span id="display-client-document"
-                                        style="font-size: 0.8rem; color: #94a3b8; font-weight: 500;"></span>
-                                </div>
-                            </div>
-
-                            <!-- New: Debt Info Integrated (Fixed Overlap) -->
-                            <div id="display-client-debt-info"
-                                style="flex: 1.2; margin: 0 15px; background: rgba(255,255,255,0.5); border-radius: 12px; padding: 5px 15px; border: 1px dashed rgba(0,0,0,0.05); min-width: 200px;">
-                            </div>
-
-                            <!-- Vertical Divider (Optional, for clarity) -->
-                            <div id="layout-divider-v"
-                                style="display:none; width: 1px; height: 40px; background: #e2e8f0; margin: 0 10px;">
-                            </div>
-
-                            <!-- AUDIT INFO BOX (Blue Premium) - Only visible in edit mode -->
-                            <div id="payment-audit-box"
-                                style="display: none; min-width: 220px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.15)); backdrop-filter: blur(10px); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);">
-                                <div style="display: flex; flex-direction: column; gap: 6px;">
-                                    <div style="display: flex; align-items: center; gap: 8px;">
-                                        <i class="fas fa-fingerprint" style="color: #3b82f6; font-size: 0.9rem;"></i>
-                                        <div style="display: flex; flex-direction: column;">
-                                            <span
-                                                style="font-size: 0.65rem; color: #64748b; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">ID
-                                                Operación</span>
-                                            <span id="audit-payment-id"
-                                                style="font-size: 1rem; color: #1e293b; font-weight: 900; font-family: 'JetBrains Mono', monospace;">#0000</span>
-                                        </div>
-                                    </div>
-                                    <div
-                                        style="height: 1px; background: linear-gradient(90deg, rgba(59, 130, 246, 0.2), transparent); margin: 2px 0;">
-                                    </div>
-                                    <div style="display: flex; gap: 12px; align-items: center;">
-                                        <div style="display: flex; align-items: center; gap: 6px;">
-                                            <i class="far fa-calendar-alt"
-                                                style="color: #6366f1; font-size: 0.75rem;"></i>
-                                            <span id="audit-payment-date"
-                                                style="font-size: 0.75rem; color: #475569; font-weight: 600;">--/--/----</span>
-                                        </div>
-                                        <div style="display: flex; align-items: center; gap: 6px;">
-                                            <i class="far fa-clock" style="color: #6366f1; font-size: 0.75rem;"></i>
-                                            <span id="audit-payment-time"
-                                                style="font-size: 0.75rem; color: #475569; font-weight: 600;">--:--:--</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="actions-section" style="margin-top: 15px;">
-                            <button type="button" class="action-btn-glass"
-                                onclick="app.modules.payments.showClientHistoryModal()" title="Ver Historial">
-                                <i class="fas fa-history"></i>
-                            </button>
-                            <button type="button" class="action-btn-glass danger"
-                                onclick="app.modules.payments.clearSelectedClient()" title="Cambiar Cliente">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="payment-details-fields" style="display:none;">
-                    <input type="hidden" id="payment-client-id">
-
-                    <!-- Main Payment Row: Amount, Currency, Method -->
-                    <div style="display: flex; gap: 20px; margin-bottom: 24px;">
-                        <!-- Amount -->
-                        <div class="form-group" style="flex: 1.5;">
-                            <label class="input-label-premium">MONTO A PAGAR</label>
-                            <div class="input-group-premium">
-                                <div class="icon"
-                                    style="position: absolute; left: 16px; z-index: 2; color: #10b981; font-weight: 800; font-size: 1.1rem;">
-                                    $
-                                </div>
-                                <input type="number" id="pay-amount" class="input-premium" step="0.01" min="0" required
-                                    placeholder="0.00"
-                                    style="width: 100%; padding: 10px 16px 10px 42px; border-radius: 10px; font-size: 1.1rem; font-weight: 800; color: #0f172a; height: 44px;">
-                            </div>
-                        </div>
-
-                        <!-- Currency -->
-                        <div class="form-group" style="flex: 0.8;">
-                            <label class="input-label-premium">MONEDA</label>
-                            <div class="currency-select-wrapper" style="position: relative; height: 44px;">
-                                <select id="pay-currency" class="input-premium"
-                                    style="width: 100%; height: 100%; padding: 0 40px 0 16px; border-radius: 10px; font-size: 0.9rem; font-weight: 600; appearance: none; -webkit-appearance: none; -moz-appearance: none; background: white; cursor: pointer;">
-                                    <option value="COP" selected>Pesos (COP)</option>
-                                    <option value="USD">Dólares (USD)</option>
-                                    <option value="VES">Bolívares (VES)</option>
-                                </select>
-                                <div
-                                    style="position: absolute; right: 16px; top: 0; bottom: 0; display: flex; align-items: center; pointer-events: none; color: #64748b;">
-                                    <i class="fas fa-chevron-down" style="font-size: 0.8rem;"></i>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Payment Method -->
-                        <div class="form-group" style="flex: 1.2;">
-                            <label class="input-label-premium">MÉTODO DE PAGO</label>
-                            <div style="position: relative; height: 44px;">
-                                <select id="pay-method" class="input-premium"
-                                    onchange="app.modules.payments.toggleMethodFields()"
-                                    style="width: 100%; height: 100%; padding: 0 40px 0 16px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 0.9rem; background: white; appearance: none; -webkit-appearance: none; cursor: pointer;">
-                                    <option value="cash">Efectivo</option>
-                                    <option value="transfer">Transferencia</option>
-                                    <option value="card">Tarjeta / Digital</option>
-                                </select>
-                                <div
-                                    style="position: absolute; right: 16px; top: 0; bottom: 0; display: flex; align-items: center; pointer-events: none; color: #64748b;">
-                                    <i class="fas fa-chevron-down" style="font-size: 0.8rem;"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Origin (If Transfer/Zelle) - Moved to own row -->
-                    <!-- Origin & Reference Row -->
-                    <div style="display: flex; gap: 20px; margin-bottom: 24px;">
-                        <!-- Origin (If Transfer/Zelle) -->
-                        <div class="form-group" id="group-origin" style="display:none; flex: 1;">
-                            <label class="input-label-premium">ORIGEN DE FONDOS</label>
-                            <div style="position: relative; height: 44px;">
-                                <select id="pay-origin" class="input-premium"
-                                    style="width: 100%; height: 100%; padding: 0 40px 0 16px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 0.9rem; background: white; appearance: none; -webkit-appearance: none; cursor: pointer;">
-                                    <option value="national" selected>Banco Nacional</option>
-                                    <option value="international">Zelle / Internacional</option>
-                                </select>
-                                <div
-                                    style="position: absolute; right: 16px; top: 0; bottom: 0; display: flex; align-items: center; pointer-events: none; color: #64748b;">
-                                    <i class="fas fa-chevron-down" style="font-size: 0.8rem;"></i>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Reference -->
-                        <div class="form-group" id="group-reference" style="display:none; flex: 1;">
-                            <label class="input-label-premium">REFERENCIA / NRO. OPERACIÓN</label>
-                            <div class="input-group-premium">
-                                <div class="icon"
-                                    style="position: absolute; left: 16px; z-index: 2; color: #94a3b8; font-size: 0.9rem;">
-                                    <i class="fas fa-hashtag"></i>
-                                </div>
-                                <input type="text" id="pay-reference" class="input-premium" placeholder="Ej: 12345678"
-                                    style="width: 100%; padding: 10px 16px 10px 42px; border-radius: 10px; font-size: 0.9rem; color: #0f172a; height: 44px;">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Date & Notes Row -->
-                    <div style="display: flex; gap: 20px; margin-bottom: 24px;">
-                        <div class="form-group" style="flex: 1;">
-                            <label class="input-label-premium">FECHA DE PAGO</label>
-                            <div class="input-group-premium">
-                                <div class="icon"
-                                    style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); z-index: 2; color: #94a3b8; font-size: 0.9rem;">
-                                    <i class="far fa-calendar-alt"></i>
-                                </div>
-                                <input type="date" id="pay-date" class="input-premium" required
-                                    style="width: 100%; padding: 10px 16px 10px 42px; border-radius: 10px; font-size: 0.9rem; color: #0f172a; height: 44px;">
-                            </div>
-                        </div>
-                        <div class="form-group" style="flex: 2;">
-                            <label class="input-label-premium">NOTAS (OPCIONAL)</label>
-                            <input type="text" id="pay-notes" class="input-premium" placeholder="Descripción breve..."
-                                style="width: 100%; padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 0.9rem; background: white; height: 44px;">
-                        </div>
-                    </div>
-
-                    <div class="modal-actions"
-                        style="display: flex; gap: 16px; justify-content: flex-end; padding-top: 10px; border-top: 1px solid #e2e8f0;">
-                        <button type="button" class="btn-secondary" onclick="app.modules.payments.closePaymentModal()"
-                            style="padding: 12px 24px; border-radius: 12px; font-weight: 600;">Cancelar</button>
-                        <button type="submit" id="payment-submit-btn" class="btn-premium"
-                            style="padding: 12px 32px; box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);">
-                            <i class="fas fa-check-circle"></i> <span id="payment-submit-text">Confirmar Pago</span>
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+</html>
+<!-- Obsolete payment modal removed - now using component-based modal from payment-modal.component.js -->

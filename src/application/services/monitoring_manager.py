@@ -104,22 +104,32 @@ class MonitoringManager:
 
             # 2. Establish persistent connection
             adapter = MikroTikAdapter()
-            connected = adapter.connect(
-                host=router.host_address,
-                username=router.api_username,
-                password=router.api_password,
-                port=router.api_port
-            )
-
-            if not connected:
-                logger.error(f"Could not connect to router {router_id} for live monitoring")
+            
+            # Reintentar conexión inicial si falla (Resiliencia ante routers offline)
+            while not stop_event.is_set():
+                connected = adapter.connect(
+                    host=router.host_address,
+                    username=router.api_username,
+                    password=router.api_password,
+                    port=router.api_port,
+                    timeout=5
+                )
+                
+                if connected:
+                    break
+                
+                # Reportar estado offline pero seguir intentando
+                logger.warning(f"Router {router_id} ({router.alias}) offline. Reintentando en 30s...")
                 if self.socketio:
                     self.socketio.emit('router_status', {
                         'router_id': router_id,
                         'status': 'offline',
-                        'error': 'Connection failed'
+                        'error': 'No se pudo establecer conexión inicial'
                     }, room=f"router_{router_id}")
-                return
+                
+                # Esperar 30 segundos antes de reintentar (permitiendo interrupción)
+                if stop_event.wait(30):
+                    return
 
             self.router_sessions[router_id] = adapter
             
@@ -130,53 +140,47 @@ class MonitoringManager:
                 
                 try:
                     # ---------------------------------------------------------
-                    # SENTINEL: Procesar Cola de Sincronización Pendiente
+                    # SYNC SERVICE: Procesar Operaciones Pendientes (suspend/activate)
                     # ---------------------------------------------------------
                     if adapter._is_connected:
                         try:
-                            # Importar sys para debugging si es necesario, pero get_db ya es global
-                            # from src.infrastructure.database.db_manager import get_db (Removed to fix UnboundLocalError)
-                            import json
-                            
-                            sync_repo = get_db().get_sync_repository()
-                            pending_tasks = sync_repo.get_pending_for_router(router_id)
-                            
-                            if pending_tasks:
-                                logger.info(f"Sentinel: Procesando {len(pending_tasks)} tareas pendientes para Router {router_id}")
+                            # Sincronizar operaciones pendientes cada 15 segundos (más conservador)
+                            if now - getattr(self, f'last_pending_sync_{router_id}', 0) > 15.0:
+                                setattr(self, f'last_pending_sync_{router_id}', now)
                                 
-                                for task in pending_tasks:
-                                    success = False
-                                    try:
-                                        payload = json.loads(task.payload)
-                                        op = task.operation
-                                        
-                                        if op == 'update':
-                                            old_user = payload.get('old_username')
-                                            data = payload.get('data')
-                                            success = adapter.update_client_service(old_user, data)
-                                            
-                                        # TODO: Implementar otros ops (create, suspend) aquí cuando se requiera
-                                        
-                                        if success:
-                                            sync_repo.mark_completed(task.id)
-                                            logger.info(f"✅ Tarea {task.id} ({op}) completada por Sentinel")
-                                        else:
-                                            sync_repo.mark_failed(task.id, "Adapter returned False")
-                                            
-                                    except Exception as e:
-                                        logger.error(f"Error procesando tarea {task.id}: {e}")
-                                        sync_repo.mark_failed(task.id, str(e))
-                                        
+                                # Instanciar localmente solo cuando sea necesario
+                                from src.application.services.sync_service import SyncService
+                                sync_service = SyncService(get_db())
+                                result = sync_service.sync_router_operations(router_id, router.to_dict())
+                                
+                                if result['completed'] > 0:
+                                    logger.info(f"🔄 Sincronizadas {result['completed']} operaciones pendientes para router {router_id}")
+                                    if self.socketio:
+                                        self.socketio.emit('sync_completed', {
+                                            'router_id': router_id,
+                                            'router_name': router.alias,
+                                            'completed': result['completed'],
+                                            'failed': result['failed'],
+                                            'timestamp': datetime.now().isoformat()
+                                        })
+                                elif result['failed'] > 0:
+                                    if self.socketio:
+                                        self.socketio.emit('sync_failed', {
+                                            'router_id': router_id,
+                                            'router_name': router.alias,
+                                            'failed': result['failed'],
+                                            'timestamp': datetime.now().isoformat()
+                                        })
+                                    
                         except Exception as e:
-                            logger.error(f"Sentinel Error: {e}")
+                            logger.error(f"Error en Sync Service: {e}")
                     # ---------------------------------------------------------
 
-                    # Traer Tráfico de Interfaces (Cada 500ms - 800ms)
+                    # Traer Tráfico de Interfaces (Usando Bulk para mayor velocidad)
                     current_interfaces = list(self.monitored_interfaces.get(router_id, []))
                     traffic_data = {}
                     if current_interfaces:
-                        for iface in current_interfaces:
-                            traffic_data[iface] = adapter.get_interface_traffic(iface)
+                        traffic_data = adapter.get_bulk_traffic(current_interfaces)
                         
                         if traffic_data and self.socketio:
                             self.socketio.emit('interface_traffic', {
@@ -232,13 +236,15 @@ class MonitoringManager:
                             }, room=f"router_{router_id}")
 
                 except Exception as e:
-                    logger.error(f"Error in monitor loop for router {router_id}: {e}")
                     if not adapter._is_connected:
-                        connected = adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port)
+                        logger.warning(f"Conexión perdida con router {router_id} ({router.alias}). Reintentando...")
+                        connected = adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port, timeout=5)
                         if not connected:
-                            time.sleep(5)
+                            time.sleep(15) # Esperar más tiempo si sigue offline
+                    else:
+                        logger.error(f"Error en loop de monitoreo para router {router_id}: {e}")
                 
-                time.sleep(0.5) # Intervalo base Winbox-style
+                time.sleep(1.5) # Intervalo optimizado para reducir carga en MikroTik y CPU
 
         except Exception as e:
             logger.critical(f"Critical error in monitor thread for router {router_id}: {e}")
@@ -326,7 +332,7 @@ class MonitoringManager:
                         'username': c.username,
                         'ip': c.ip_address,
                         'router_id': c.router_id,
-                        'last_seen_cache': c.last_seen.isoformat() + 'Z' if c.last_seen else None
+                        'last_seen_cache': c.last_seen.isoformat() if c.last_seen else None
                     }
                 db.remove_session()
 
@@ -387,8 +393,11 @@ class MonitoringManager:
                     sess = active_sessions[real_name]
                     uptime, ip = sess.get('uptime'), sess.get('ip') or c_ip
                     
+                    # Guardar nombre real para monitoreo de tráfico preciso
+                    meta['real_iface_name'] = real_name
+                    
                     # Optimización: Usar stats de colas si están disponibles
-                    q_candidates = [real_name.lower(), f"<pppoe-{user_lower}>", f"pppoe-{user_lower}"]
+                    q_candidates = [real_name, real_name.lower(), f"<pppoe-{user_lower}>", f"pppoe-{user_lower}", user_lower]
                     matched_q = None
                     for cand in q_candidates:
                         if cand in queue_map:
@@ -410,12 +419,22 @@ class MonitoringManager:
                     if q:
                         ip, up, dw = q.get('ip') or c_ip, q.get('up', 0), q.get('dw', 0)
                 
+                # C. FALLBACK: Si no está en ARP/DHCP pero tiene una cola activa con tráfico REAL
+                # Esto detecta clientes con IPs estáticas que no están en el cache ARP en este instante
+                if not is_online:
+                    # Siempre buscar por IP primero para colas estáticas
+                    q = queue_by_ip.get(c_ip) or queue_map.get(user_lower)
+                    if q and (q.get('up', 0) > 0 or q.get('dw', 0) > 0):
+                        is_online = True
+                        ip, up, dw = q.get('ip') or c_ip, q.get('up', 0), q.get('dw', 0)
+                        logger.debug(f"Monitor {router_id}: Client {user_lower} detected ONLINE via Queue traffic fallback.")
+                
 
 
                 if is_online: 
                     online_count += 1
                     # Si está online, actualizamos el cache de last_seen a ahora
-                    self.client_metadata_cache[c_id]['last_seen_cache'] = datetime.utcnow().isoformat() + 'Z'
+                    self.client_metadata_cache[c_id]['last_seen_cache'] = datetime.now().isoformat()
                 
                 # Obtener last_seen del cache (evita queries pesadas a la BD en cada ciclo)
                 db_last_seen = self.client_metadata_cache[c_id].get('last_seen_cache')
@@ -444,9 +463,16 @@ class MonitoringManager:
                     meta = self.client_metadata_cache.get(cid)
                     if not meta: continue
                     
+                    # Si es PPPoE, usamos el nombre real de la interface dinámica
+                    real_name = meta.get('real_iface_name')
                     user = meta['username']
-                    # Intentar diversos patrones de nombres en MikroTik
-                    patterns = [user, f"<{user}>", f"pppoe-{user}", f"<pppoe-{user}>"]
+                    
+                    if real_name:
+                        patterns = [real_name]
+                    else:
+                        # Para Simple Queues, el nombre suele ser el username o <username>
+                        patterns = [user, f"<{user}>", f"pppoe-{user}", f"<pppoe-{user}>"]
+                        
                     for p in patterns:
                         names_to_monitor.append(p)
                         id_to_name_map[p] = cid_str
@@ -458,11 +484,15 @@ class MonitoringManager:
                     for iface_name, traffic in real_traffic.items():
                         cid_str = id_to_name_map.get(iface_name)
                         if cid_str and cid_str in results:
+                            # Asegurar que traffic tenga los campos necesarios
+                            up_val = traffic.get('upload', 0)
+                            dw_val = traffic.get('download', 0)
+                            
                             # Solo sobreescribir si el valor es mayor a cero para evitar parpadeos
                             # o si el valor previo era Cero
-                            if traffic['upload'] > 0 or traffic['download'] > 0 or results[cid_str]['upload'] == 0:
-                                results[cid_str]['upload'] = traffic['upload']
-                                results[cid_str]['download'] = traffic['download']
+                            if up_val > 0 or dw_val > 0 or results[cid_str].get('upload') == 0:
+                                results[cid_str]['upload'] = up_val
+                                results[cid_str]['download'] = dw_val
 
             # Obtener estadísticas globales de DHCP para el Dashboard
             dhcp_stats = adapter.get_dhcp_stats()
@@ -543,7 +573,7 @@ class MonitoringManager:
                     if match: total_seconds += int(match.group(1)) * mult
             
             if total_seconds > 0:
-                return datetime.utcnow() - timedelta(seconds=total_seconds)
+                return datetime.now() - timedelta(seconds=total_seconds)
         except:
             pass
             
@@ -611,9 +641,9 @@ class MonitoringManager:
 
                 if is_online:
                      # Si está online, last_seen es AHORA
-                     update_data['last_seen'] = datetime.utcnow()
+                     update_data['last_seen'] = datetime.now()
                      if cid in self.client_metadata_cache:
-                         self.client_metadata_cache[cid]['last_seen_cache'] = update_data['last_seen'].isoformat() + 'Z'
+                         self.client_metadata_cache[cid]['last_seen_cache'] = update_data['last_seen'].isoformat()
                 else:
                     # Si está offline, intentamos usar metadata de Mikrotik
                     if offline_metadata:
@@ -634,7 +664,7 @@ class MonitoringManager:
                         if last_seen_dt:
                             update_data['last_seen'] = last_seen_dt
                             if cid in self.client_metadata_cache:
-                                self.client_metadata_cache[cid]['last_seen_cache'] = last_seen_dt.isoformat() + 'Z'
+                                self.client_metadata_cache[cid]['last_seen_cache'] = last_seen_dt.isoformat()
 
                 client_updates.append(update_data)
             

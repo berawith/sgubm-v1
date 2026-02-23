@@ -1,241 +1,229 @@
-/* 
- * Plans Module Styles - Premium Design System
- * Focus: High contrast, elegant card layouts, and intuitive plan management
- */
+﻿/*  * Plans Module Styles - Premium Design System * Focus: High contrast, elegant card layouts, and intuitive plan management */
 
-.plans-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 24px;
+/* Plans Grid / Table Wrapper */
+.plans-wrapper {
+    background: #ffffff;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04);
+    border: 1px solid #f1f5f9;
+    overflow: hidden;
     margin-top: 24px;
 }
 
-.plan-card {
-    background: white;
-    border-radius: var(--radius-lg, 16px);
-    border: 1px solid #e2e8f0;
-    padding: 24px;
-    position: relative;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+/* Premium Table Styles */
+.premium-plans-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
-.plan-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    border-color: var(--primary-color, #4f46e5);
-}
-
-.plan-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-}
-
-.plan-title {
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: #0f172a;
-    letter-spacing: -0.02em;
-}
-
-.plan-badge {
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    background: #f1f5f9;
-    color: #475569;
-}
-
-.plan-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    padding: 16px;
+.premium-plans-table thead th {
     background: #f8fafc;
-    border-radius: 12px;
+    padding: 16px 24px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #64748b;
+    letter-spacing: 0.05em;
+    text-align: left;
+    border-bottom: 2px solid #e2e8f0;
 }
 
-.stat-item {
+.premium-plans-table tbody td {
+    padding: 18px 24px;
+    vertical-align: middle;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.2s;
+}
+
+.premium-plans-table tbody tr:hover td {
+    background: #f8fafc;
+}
+
+.premium-plans-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Plan Name & ID Cell */
+.plan-name-cell {
     display: flex;
     flex-direction: column;
-    gap: 4px;
 }
 
-.stat-label {
-    font-size: 0.7rem;
-    color: #64748b;
-    font-weight: 600;
-    text-transform: uppercase;
-}
-
-.stat-value {
-    font-size: 1rem;
-    font-weight: 750;
-    color: #1e293b;
-}
-
-.plan-price {
-    font-size: 1.5rem;
-    font-weight: 900;
-    color: var(--primary-color, #4f46e5);
-    margin-top: auto;
-}
-
-.plan-actions {
-    display: flex;
-    gap: 10px;
-}
-
-.btn-plan-action {
-    flex: 1;
-    padding: 10px;
-    border-radius: 10px;
-    font-size: 0.85rem;
+.plan-name {
+    font-size: 0.95rem;
     font-weight: 700;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: none;
+    color: #0f172a;
+    margin-bottom: 4px;
 }
 
-.btn-plan-edit {
-    background: #eff6ff;
-    color: #2563eb;
-}
-
-.btn-plan-edit:hover {
-    background: #dbeafe;
-}
-
-/* Empty State for Plans */
-.plans-empty {
-    text-align: center;
-    padding: 60px 20px;
-    background: white;
-    border-radius: 20px;
-    border: 2px dashed #e2e8f0;
-    margin-top: 24px;
-}
-
-.plans-empty i {
-    font-size: 3rem;
-    color: #cbd5e1;
-    margin-bottom: 20px;
-}
-
-/* Premium Table Enhancements */
-.badge-speed {
+.plan-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: #94a3b8;
+    background: #f1f5f9;
     padding: 2px 6px;
     border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    gap: 3px;
     width: fit-content;
 }
 
-.badge-speed.down {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10b981;
+/* Speed Badges */
+.speed-badge-group {
+    display: flex;
+    gap: 8px;
 }
 
-.badge-speed.up {
-    background: rgba(59, 130, 246, 0.1);
+.speed-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.speed-badge.download {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #d1fae5;
+}
+
+.speed-badge.upload {
+    background: #eff6ff;
     color: #3b82f6;
+    border: 1px solid #dbeafe;
 }
 
-.badge-premium {
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.6rem;
-    font-weight: 850;
+.speed-badge i {
+    font-size: 0.75rem;
+}
+
+/* Price Cell */
+.price-display {
+    font-family: 'Inter', sans-serif;
+    font-weight: 800;
+    color: #1e293b;
+    font-size: 1rem;
+}
+
+.currency-tag {
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+/* Service Type Badges */
+.service-badge {
+    padding: 6px 12px;
+    border-radius: 30px;
+    font-size: 0.7rem;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
-    display: inline-block;
+    letter-spacing: 0.05em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
-.badge-premium.pppoe {
+.service-badge.pppoe {
     background: #f5f3ff;
     color: #7c3aed;
     border: 1px solid #ddd6fe;
 }
 
-.badge-premium.simple_queue {
+.service-badge.simple_queue {
     background: #f8fafc;
     color: #475569;
     border: 1px solid #e2e8f0;
 }
 
-.badge-premium.hotspot {
+.service-badge.hotspot {
     background: #fffbeb;
     color: #d97706;
     border: 1px solid #fef3c7;
 }
 
-.clients-counter-premium {
-    display: flex;
+/* Clients Counter */
+.clients-counter-pill {
+    display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-weight: 800;
-    color: #1e293b;
+    gap: 6px;
+    padding: 6px 12px;
     background: #f1f5f9;
-    padding: 2px 10px;
-    border-radius: 12px;
-    width: fit-content;
-    font-size: 0.75rem;
+    border-radius: 20px;
+    color: #475569;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    cursor: pointer;
+    border: 1px solid transparent;
 }
 
-.clients-counter-premium i {
-    font-size: 0.75rem;
-    color: #64748b;
+.clients-counter-pill:hover {
+    background: #e0e7ff;
+    color: #4338ca;
+    border-color: #c7d2fe;
 }
 
-.btn-icon-action {
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
+.clients-counter-pill.has-clients {
+    background: #eff6ff;
+    color: #2563eb;
+    border-color: #dbeafe;
+}
+
+/* Action Buttons */
+.plan-actions-cell {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.btn-icon-soft {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid #e2e8f0;
+    border: 1px solid transparent;
     transition: all 0.2s;
     cursor: pointer;
-    background: white;
-    font-size: 0.75rem;
-}
-
-.btn-icon-action.edit {
-    color: #4f46e5;
-    border-color: #e2e8f0;
-}
-
-.btn-icon-action.edit:hover {
-    background: #f5f3ff;
-    border-color: #c4b5fd;
-}
-
-.btn-icon-action.delete {
-    color: #ef4444;
-    border-color: #fee2e2;
-}
-
-.btn-icon-action.delete:hover:not(.disabled) {
-    background: #fef2f2;
-    border-color: #fecaca;
-}
-
-.btn-icon-action.disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
+    background: transparent;
     color: #94a3b8;
+}
+
+.btn-icon-soft:hover {
+    background: #f8fafc;
+    color: #64748b;
     border-color: #e2e8f0;
+}
+
+.btn-icon-soft.edit {
+    color: #4f46e5;
+    background: rgba(79, 70, 229, 0.05);
+}
+
+.btn-icon-soft.edit:hover {
+    background: rgba(79, 70, 229, 0.1);
+    transform: translateY(-2px);
+}
+
+.btn-icon-soft.delete {
+    color: #ef4444;
+}
+
+.btn-icon-soft.delete:hover {
+    background: #fef2f2;
+    border-color: #fee2e2;
+    transform: translateY(-2px);
+}
+
+.btn-icon-soft.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(1);
 }
 
 /* Form Styles */

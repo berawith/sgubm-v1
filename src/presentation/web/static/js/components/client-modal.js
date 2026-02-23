@@ -16,6 +16,13 @@ class ClientModal {
         this.routers = [];
         this.plans = [];
         this.trafficChart = null;
+        this.consumptionChart = null;
+        this.stabilityChart = null;
+
+        // Throttling
+        this.lastChartUpdate = 0;
+        this.chartUpdateInterval = 2000; // 2s throttle for modal chart
+
         this.init();
     }
 
@@ -55,9 +62,16 @@ class ClientModal {
     updateLiveChart(uploadBps, downloadBps) {
         if (!this.trafficChart) return;
 
+        // PERFORMANCE: Throttle chart updates to avoid UI lag in the modal
+        const now = Date.now();
+        if (now - this.lastChartUpdate < this.chartUpdateInterval) {
+            return;
+        }
+        this.lastChartUpdate = now;
+
         const range = this.modal.querySelector('#traffic-time-range')?.value || 'live';
-        const now = new Date();
-        const label = `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+        const date = new Date();
+        const label = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
 
         const upMbps = (uploadBps / 1000000).toFixed(2);
         const dwMbps = (downloadBps / 1000000).toFixed(2);
@@ -102,26 +116,26 @@ class ClientModal {
     createModal() {
         const modalHTML = `
             <div id="client-modal" class="modal">
-                <div class="modal-content large-modal">
-                    <div class="modal-header">
-                        <div>
-                            <h3 id="modal-title">Nuevo Cliente</h3>
-                            <p class="modal-subtitle-text">GESTIÓN INTEGRAL DE SUSCRIPTOR</p>
+                <div class="modal-content large-modal" style="border-radius: 24px; border: 1px solid rgba(226, 232, 240, 0.8); background: #f4f7f9; overflow: hidden; box-shadow: 0 30px 60px -15px rgba(0,0,0,0.2);">
+                    <div class="modal-header" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); padding: 24px 32px; display: flex; align-items: center;">
+                        <div style="flex: 1;">
+                            <h3 id="modal-title" style="font-size: 1.5rem; font-weight: 800; color: #1e293b; margin: 0; letter-spacing: -0.02em;">Nuevo Cliente</h3>
+                            <p class="modal-subtitle-text" style="font-size: 0.75rem; font-weight: 800; color: #64748b; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8;">GESTIÓN INTEGRAL DE SUSCRIPTOR</p>
                         </div>
                         
                         <!-- Info Box para nombre e IP (solicitado por usuario) -->
-                        <div id="modal-client-summary" class="modal-client-summary-box" style="display: none;">
+                        <div id="modal-client-summary" class="modal-client-summary-box premium-status-badge" style="display: none; padding: 8px 18px; border-radius: 20px; font-weight: 900; font-size: 0.85rem; letter-spacing: 0.02em; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid rgba(255,255,255,0.4); background: #ffffff; color: #1e293b; align-items: center; gap: 8px; margin-left: auto; margin-right: 20px;">
                             <span id="header-client-name" class="header-info-name"></span>
-                            <span class="header-info-divider">|</span>
-                            <span id="header-client-ip" class="header-info-ip"></span>
+                            <span class="header-info-divider" style="color: #cbd5e1;">|</span>
+                            <span id="header-client-ip" class="header-info-ip" style="color: #6366f1;"></span>
                         </div>
 
-                        <button class="close-btn" onclick="window.clientModal.close()">
-                            <i class="fas fa-times"></i>
+                        <button class="close-btn" onclick="window.clientModal.close()" style="background: #f1f5f9; border: none; width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #64748b; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e2e8f0'; this.style.color='#0f172a';" onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">
+                            <i class="fas fa-times" style="font-size: 1.15rem;"></i>
                         </button>
                     </div>
                     
-                    <div class="modal-body">
+                    <div class="modal-body" style="padding: 32px; background: #f4f7f9;">
                         <!-- Tabs - Glass Pills UI -->
                         <div class="modal-tabs">
                             <button class="tab-btn active" data-tab="personal">
@@ -238,7 +252,7 @@ class ClientModal {
                                     <label for="username">Usuario PPPoE *</label>
                                     <div class="input-icon-wrapper">
                                         <i class="fas fa-user-circle field-icon"></i>
-                                        <input type="text" id="username" class="form-control" placeholder="usuario123" required>
+                                        <input type="text" id="username" class="form-control" placeholder="usuario123" required autocomplete="username">
                                     </div>
                                 </div>
                                 
@@ -246,7 +260,7 @@ class ClientModal {
                                     <label for="password">Contraseña de Servicio</label>
                                     <div class="input-icon-wrapper">
                                         <i class="fas fa-key field-icon"></i>
-                                        <input type="text" id="password" class="form-control" placeholder="••••••••">
+                                        <input type="text" id="password" class="form-control" placeholder="••••••••" autocomplete="current-password">
                                     </div>
                                 </div>
                                 
@@ -314,7 +328,12 @@ class ClientModal {
                                 </div>
                                 <div class="metric-card balance" id="card-balance">
                                     <div class="icon"><i class="fas fa-wallet"></i></div>
-                                    <div class="metric-label">Balance de Cuenta</div>
+                                    <div class="metric-label" style="display: flex; justify-content: space-between; align-items: center;">
+                                        Balance de Cuenta
+                                        <button class="btn-balance-adjust" onclick="window.clientModal.adjustBalance()" title="Ajustar Balance Manualmente" style="background: none; border: none; font-size: 0.8rem; color: #64748b; cursor: pointer; opacity: 0.6; transition: all 0.2s;">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                    </div>
                                     <div class="metric-value" id="metric-balance">$0</div>
                                     <div class="metric-subtext" id="metric-balance-subtext">Crédito a favor</div>
                                 </div>
@@ -342,13 +361,26 @@ class ClientModal {
 
                             <!-- Refined History Section -->
                             <div class="history-grid-refined">
-                                <div class="modern-panel">
-                                    <div class="panel-header-modern">
-                                        <div class="panel-title"><i class="fas fa-history"></i> Historial de Pagos</div>
+                                <div style="display: flex; flex-direction: column; gap: 24px;">
+                                    <div class="modern-panel">
+                                        <div class="panel-header-modern">
+                                            <div class="panel-title"><i class="fas fa-history"></i> Historial de Pagos</div>
+                                        </div>
+                                        <div class="panel-body-modern">
+                                            <div id="client-payments-history" class="compact-table-container">
+                                                <p class="text-muted text-center py-4">Cargando...</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="panel-body-modern">
-                                        <div id="client-payments-history" class="compact-table-container">
-                                            <p class="text-muted text-center py-4">Cargando...</p>
+
+                                    <div class="modern-panel">
+                                        <div class="panel-header-modern">
+                                            <div class="panel-title"><i class="fas fa-handshake"></i> Historial de Promesas</div>
+                                        </div>
+                                        <div class="panel-body-modern">
+                                            <div id="client-promises-history" class="compact-table-container">
+                                                <p class="text-muted text-center py-4">Cargando...</p>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -386,7 +418,7 @@ class ClientModal {
                                     <div class="metric-value" id="report-quality">100</div>
                                     <div class="metric-subtext">Calidad de Enlace</div>
                                 </div>
-                                <div class="metric-card consumption-total">
+                                <div class="metric-card consumption-total cursor-pointer" onclick="window.clientModal.showStabilityHistory()">
                                     <div class="icon"><i class="fas fa-wave-square"></i></div>
                                     <div class="metric-label">Latencia / Jitter</div>
                                     <div class="metric-value">
@@ -472,12 +504,20 @@ class ClientModal {
                         </div>
                     </div>
                     
-                    <div class="modal-footer">
-                        <button class="btn-secondary" onclick="window.clientModal.close()">
+                    <!-- Modal Footer -->
+                    <div class="modal-footer" style="padding: 24px 32px; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border-top: 1px solid rgba(226, 232, 240, 0.8); display: flex; gap: 14px; align-items: center; justify-content: flex-end;">
+                        <button class="btn-secondary" data-close onclick="window.clientModal.close()" 
+                            style="padding: 14px 28px; border-radius: 16px; font-weight: 800; font-size: 0.95rem; background: #ffffff; color: #475569; border: 1px solid rgba(226, 232, 240, 0.8); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);"
+                            onmouseover="this.style.background='#f8fafc'; this.style.borderColor='#cbd5e1'; this.style.color='#1e293b';"
+                            onmouseout="this.style.background='#ffffff'; this.style.borderColor='rgba(226, 232, 240, 0.8)'; this.style.color='#475569';">
                             <i class="fas fa-times"></i>
                             Cancelar
                         </button>
-                        <button class="btn-primary" id="save-client-btn" onclick="window.clientModal.save()">
+                        <button class="btn-primary" id="save-client-btn" onclick="window.clientModal.save()"
+                            style="padding: 14px 32px; border-radius: 16px; font-weight: 800; font-size: 0.95rem; text-transform: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: none; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255,255,255,0.2);"
+                            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 15px 25px -5px rgba(99, 102, 241, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)';"
+                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 10px 20px -5px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)';"
+                            onmousedown="this.style.transform='translateY(1px)';">
                             <i class="fas fa-save"></i>
                             Guardar Cliente
                         </button>
@@ -869,7 +909,11 @@ class ClientModal {
                 toast.success('Cliente creado correctamente');
             }
 
-            this.close();
+            if (window.app && window.app.modalManager) {
+                window.app.modalManager.close('client');
+            } else {
+                this.close();
+            }
 
             // Recargar lista de clientes
             if (window.app && window.app.modules && window.app.modules.clients) {
@@ -894,6 +938,14 @@ class ClientModal {
             this.trafficChart.destroy();
             this.trafficChart = null;
         }
+        if (this.consumptionChart) {
+            this.consumptionChart.destroy();
+            this.consumptionChart = null;
+        }
+        if (this.stabilityChart) {
+            this.stabilityChart.destroy();
+            this.stabilityChart = null;
+        }
     }
 
     /**
@@ -905,7 +957,11 @@ class ClientModal {
             const payments = await apiService.get(`/api/payments?client_id=${clientId}&limit=10`);
             this.renderPaymentsHistory(payments);
 
-            // 2. Cargar Tráfico
+            // 2. Cargar Promesas (NUEVO)
+            const promises = await apiService.get(`/api/clients/${clientId}/promises`);
+            this.renderPromiseHistory(promises);
+
+            // 3. Cargar Tráfico
             this.loadTrafficHistory();
         } catch (error) {
             console.error('Error loading history data:', error);
@@ -964,6 +1020,69 @@ class ClientModal {
                     <td class="font-bold">$${parseFloat(p.amount).toLocaleString()}</td>
                     <td>${p.payment_method}</td>
                     <td><small>${p.reference || '-'}</small></td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    renderPromiseHistory(promises) {
+        const container = this.modal.querySelector('#client-promises-history');
+        if (!container) return;
+
+        if (!promises || promises.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center py-4">No hay historial de promesas</p>';
+            return;
+        }
+
+        let html = `
+            <table class="compact-history-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Estado</th>
+                        <th>Vencimiento</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        promises.forEach(p => {
+            const createdDate = new Date(p.created_at).toLocaleDateString();
+            const promiseDate = new Date(p.promise_date).toLocaleDateString();
+
+            let statusClass = '';
+            let statusLabel = '';
+            let icon = '';
+
+            switch (p.status) {
+                case 'fulfilled':
+                    statusClass = 'status-active';
+                    statusLabel = 'Cumplida';
+                    icon = '<i class="fas fa-check-circle"></i>';
+                    break;
+                case 'broken':
+                    statusClass = 'status-suspended';
+                    statusLabel = 'Incumplida';
+                    icon = '<i class="fas fa-times-circle"></i>';
+                    break;
+                default:
+                    statusClass = 'status-pending';
+                    statusLabel = 'Pendiente';
+                    icon = '<i class="fas fa-clock"></i>';
+            }
+
+            html += `
+                <tr title="${p.notes || ''}">
+                    <td><small>${createdDate}</small></td>
+                    <td>
+                        <span class="badge ${statusClass}" style="font-size: 0.7rem; padding: 2px 6px;">
+                            ${icon} ${statusLabel}
+                        </span>
+                    </td>
+                    <td><small>${promiseDate}</small></td>
                 </tr>
             `;
         });
@@ -1228,6 +1347,399 @@ class ClientModal {
 
         html += '</tbody></table>';
         list.innerHTML = html;
+    }
+
+    async showStabilityHistory() {
+        if (!this.currentClient) return;
+        const clientId = this.currentClient.id;
+
+        // Abrir modal usando ModalManager
+        if (window.app && window.app.modalManager) {
+            window.app.modalManager.open('stability-history', { clientId });
+        } else {
+            // Fallback (Legacy)
+            const modal = document.getElementById('stability-history-modal');
+            if (modal) modal.classList.add('active');
+        }
+
+        try {
+            const data = await apiService.get(`/api/clients/${clientId}/usage-report?days=7`);
+            this.renderStabilityChart(data);
+            this.renderStabilityTable(data.history_raw || []);
+        } catch (error) {
+            console.error('Error loading stability history:', error);
+            toast.error('Error al cargar historial de estabilidad');
+        }
+    }
+
+    renderStabilityChart(data) {
+        let canvas = document.getElementById('stability-history-chart');
+        if (!canvas) return;
+
+        const container = canvas.parentElement;
+
+        if (this.stabilityChart) {
+            this.stabilityChart.destroy();
+            this.stabilityChart = null;
+        }
+
+        const history = data.history_raw || [];
+
+        const modernPanel = container.closest('.modern-panel');
+        const headerTitle = modernPanel ? modernPanel.querySelector('.panel-title') : null;
+
+        let offlineMsg = container.querySelector('.offline-telemetry-msg');
+
+        if (history.length === 0) {
+            canvas.style.display = 'none';
+            if (!offlineMsg) {
+                offlineMsg = document.createElement('div');
+                offlineMsg.className = 'offline-telemetry-msg';
+                offlineMsg.style.cssText = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #94a3b8; font-weight: 700; font-family: 'JetBrains Mono', 'Courier New', monospace;";
+                offlineMsg.innerHTML = `<i class="fas fa-satellite-dish" style="font-size: 3.5rem; margin-bottom: 20px; opacity: 0.3; color: #64748b;"></i><span style="letter-spacing: 0.15em; font-size: 0.9rem;">[ TELEMETRÍA OFFLINE ]</span><span style="font-size: 0.75rem; font-weight: 500; margin-top: 8px; opacity: 0.8;">Esperando inicialización de sondas de red...</span>`;
+                container.appendChild(offlineMsg);
+            }
+            offlineMsg.style.display = 'flex';
+            if (headerTitle) {
+                headerTitle.style.display = 'flex';
+                headerTitle.style.justifyContent = 'flex-start';
+                headerTitle.innerHTML = `<i class="fas fa-chart-area" style="color: #6366f1;"></i> Análisis de Salud de Red (LHI)`;
+            }
+            return;
+        }
+
+        canvas.style.display = 'block';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        if (offlineMsg) offlineMsg.style.display = 'none';
+
+        const ctx = canvas.getContext('2d');
+
+        // Cálculo algorítmico del LHI (Link Health Index) basado en ingeniería de tráfico
+        let totalScore = 0;
+        let validSamples = 0;
+
+        history.forEach(h => {
+            if (!h.is_online) return;
+            validSamples++;
+            let sampleScore = 100;
+
+            // Penalización logarítmica/proporcional por latencia térmica
+            if (h.latency_ms > 40) {
+                sampleScore -= Math.min(30, (h.latency_ms - 40) * 0.25);
+            }
+
+            // Penalización por fluctuación de fase (Jitter)
+            if (h.jitter_ms > 8) {
+                sampleScore -= Math.min(25, (h.jitter_ms - 8) * 0.8);
+            }
+
+            // Penalización severa por Packet Loss (Micro-cortes)
+            if (h.packet_loss_pct > 0) {
+                sampleScore -= Math.min(100, h.packet_loss_pct * 8); // 12.5% loss = 0 score
+            }
+
+            totalScore += Math.max(0, sampleScore);
+        });
+
+        const finalLhi = validSamples > 0 ? Math.round(totalScore / validSamples) : 0;
+
+        if (headerTitle) {
+            const lhiColor = finalLhi >= 90 ? '#10b981' : (finalLhi >= 70 ? '#f59e0b' : '#ef4444');
+            const lhiBgColor = finalLhi >= 90 ? '16, 185, 129' : (finalLhi >= 70 ? '245, 158, 11' : '239, 68, 68');
+            const lhiStatus = finalLhi >= 90 ? 'OPTIMAL' : (finalLhi >= 70 ? 'DEGRADED' : 'CRITICAL');
+
+            headerTitle.style.display = 'flex';
+            headerTitle.style.justifyContent = 'space-between';
+            headerTitle.style.width = '100%';
+            headerTitle.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-satellite-dish" style="color: #6366f1;"></i> 
+                    <span>Métricas de Vuelo (Telemetría de Enlace)</span>
+                </div>
+                <div style="margin-left: auto; display: flex; align-items: center; gap: 12px; font-family: 'JetBrains Mono', 'Courier New', monospace;">
+                    <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; text-transform: uppercase;">Health Index:</span>
+                    <div style="background: rgba(${lhiBgColor}, 0.1); border: 1px solid rgba(${lhiBgColor}, 0.3); border-radius: 8px; padding: 4px 12px; display: flex; align-items: center; gap: 8px; box-shadow: inset 0 0 10px rgba(${lhiBgColor}, 0.05);">
+                        <span style="font-size: 1.15rem; font-weight: 900; color: ${lhiColor};">${finalLhi}<span style="font-size: 0.7rem; opacity:0.6;">/100</span></span>
+                        <div style="width: 1px; height: 16px; background: ${lhiColor}; opacity: 0.3;"></div>
+                        <span style="font-size: 0.65rem; font-weight: 900; letter-spacing: 0.1em; color: ${lhiColor}; text-shadow: 0 0 8px rgba(${lhiBgColor}, 0.6);">${lhiStatus}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        const labels = history.map(h => {
+            const d = new Date(h.timestamp);
+            return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        });
+
+        const latencyData = history.map(h => h.latency_ms);
+        const jitterData = history.map(h => h.jitter_ms || 0);
+        const lossData = history.map(h => h.packet_loss_pct || 0);
+
+        // Gradients (Neon Vibes)
+        const gradientLatency = ctx.createLinearGradient(0, 0, 0, 400);
+        gradientLatency.addColorStop(0, 'rgba(99, 102, 241, 0.45)');
+        gradientLatency.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+
+        const gradientLoss = ctx.createLinearGradient(0, 0, 0, 400);
+        gradientLoss.addColorStop(0, 'rgba(239, 68, 68, 0.35)');
+        gradientLoss.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
+
+        try {
+            this.stabilityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'LATENCIA REAL (ms)',
+                            data: latencyData,
+                            borderColor: '#6366f1',
+                            backgroundColor: gradientLatency,
+                            borderWidth: 3,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: '#6366f1',
+                            pointBorderWidth: 2,
+                            pointRadius: 0,
+                            pointHoverRadius: 6,
+                            fill: true,
+                            tension: 0.4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'JITTER DE ONDA (ms)',
+                            data: jitterData,
+                            borderColor: '#10b981',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            fill: false,
+                            tension: 0.4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'PÉRDIDA DE PAQUETES (%)',
+                            data: lossData,
+                            borderColor: '#ef4444',
+                            backgroundColor: gradientLoss,
+                            borderWidth: 2,
+                            fill: true,
+                            stepped: 'middle',
+                            yAxisID: 'y1',
+                            pointBackgroundColor: '#ef4444',
+                            pointRadius: history.map(h => h.packet_loss_pct > 0 ? 4 : 0),
+                            pointHoverRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { family: "'JetBrains Mono', 'Courier New', monospace", size: 10, weight: 'bold' },
+                                usePointStyle: true,
+                                boxWidth: 8,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleFont: { family: "'JetBrains Mono', 'Courier New', monospace", size: 12 },
+                            bodyFont: { family: "'JetBrains Mono', 'Courier New', monospace", size: 11 },
+                            padding: 14,
+                            cornerRadius: 12,
+                            displayColors: true,
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function (context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y + (context.dataset.yAxisID === 'y1' ? '%' : 'ms');
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'TIEMPO (ms)', font: { family: "'JetBrains Mono', 'Courier New', monospace", size: 10, weight: 'bold' }, color: '#64748b' },
+                            grid: { color: 'rgba(226, 232, 240, 0.6)', borderDash: [4, 4] },
+                            ticks: { font: { family: "'JetBrains Mono', 'Courier New', monospace", size: 10 }, color: '#94a3b8' }
+                        },
+                        y1: {
+                            beginAtZero: true,
+                            max: 100,
+                            position: 'right',
+                            title: { display: true, text: 'PÉRDIDA (%)', font: { family: "'JetBrains Mono', 'Courier New', monospace", size: 10, weight: 'bold' }, color: '#ef4444' },
+                            grid: { drawOnChartArea: false },
+                            ticks: { font: { family: "'JetBrains Mono', 'Courier New', monospace", size: 10 }, color: '#ef4444' }
+                        },
+                        x: {
+                            grid: { color: 'rgba(226, 232, 240, 0.6)', drawBorder: false },
+                            ticks: {
+                                font: { family: "'JetBrains Mono', 'Courier New', monospace", size: 10 },
+                                color: '#94a3b8',
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 12
+                            }
+                        }
+                    }
+                }
+            });
+        } catch (e) {
+            console.error("Chart.js Error in renderStabilityChart:", e);
+            if (headerTitle) {
+                headerTitle.innerHTML = `<span style="color:red; font-size:12px;">CHART ERROR: ${e.message}</span>`;
+            }
+        }
+    }
+
+    async adjustBalance() {
+        if (!this.currentClient) return;
+        if (!window.Swal) {
+            toast.error('Sistema de diálogos no disponible');
+            return;
+        }
+
+        const { value: formValues } = await window.Swal.fire({
+            title: 'Corregir Balance Manualmente',
+            html:
+                `<div>
+                    <label style="display:block; text-align:left; font-weight:700; margin-bottom:8px; font-size:0.85rem;">Nuevo Balance ($)</label>
+                    <input id="swal-new-balance" class="swal2-input" type="number" step="1" style="margin:0; width:100% !important; border-radius:12px;" value="${this.currentClient.account_balance || 0}">
+                </div>
+                <div style="margin-top:20px;">
+                    <label style="display:block; text-align:left; font-weight:700; margin-bottom:8px; font-size:0.85rem;">Motivo del Ajuste</label>
+                    <textarea id="swal-reason" class="swal2-textarea" style="margin:0; width:100% !important; border-radius:12px; height:80px;" placeholder="Ej: Error en facturación duplicada"></textarea>
+                </div>`,
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Confirmar Ajuste',
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => {
+                const newBalance = document.getElementById('swal-new-balance').value;
+                const reason = document.getElementById('swal-reason').value;
+                if (newBalance === "") {
+                    window.Swal.showValidationMessage('El balance es requerido');
+                    return false;
+                }
+                return { newBalance, reason };
+            }
+        });
+
+        if (formValues) {
+            try {
+                if (window.app && window.app.showLoading) window.app.showLoading(true);
+                const response = await apiService.post(`/api/clients/${this.currentClient.id}/adjust-balance`, {
+                    new_balance: formValues.newBalance,
+                    reason: formValues.reason
+                });
+
+                if (response.error) throw new Error(response.error);
+
+                toast.success('Balance ajustado correctamente');
+
+                // Actualizar cliente local y vista
+                this.currentClient.account_balance = parseFloat(formValues.newBalance);
+                this.loadClientData(this.currentClient);
+
+                // Emitir evento para refrescar lista de clientes si es necesario
+                if (window.app && window.app.refreshList) {
+                    window.app.refreshList();
+                }
+
+            } catch (error) {
+                console.error('Error adjusting balance:', error);
+                toast.error(error.message || 'Error al ajustar balance');
+            } finally {
+                if (window.app && window.app.showLoading) window.app.showLoading(false);
+            }
+        }
+    }
+
+    renderStabilityTable(history) {
+        const container = document.getElementById('stability-history-table-container');
+        if (!container) return;
+
+        if (!history || history.length === 0) {
+            container.innerHTML = '<div style="padding: 40px; text-align: center; color: #94a3b8; font-weight: 600;"><i class="fas fa-satellite-dish" style="font-size: 2.5rem; margin-bottom: 16px; opacity: 0.3; display: block;"></i>Sin datos de telemetría suficientes para el análisis predictivo</div>';
+            return;
+        }
+
+        let html = `
+            <table style="width: 100%; border-collapse: separate; border-spacing: 0; text-align: left;">
+                <thead style="background: rgba(248, 250, 252, 0.95); position: sticky; top: 0; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10;">
+                    <tr>
+                        <th style="padding: 16px 24px; font-size: 0.7rem; text-transform: uppercase; font-weight: 800; color: #64748b; border-bottom: 1px solid rgba(226, 232, 240, 0.8); letter-spacing: 0.08em;"><i class="fas fa-clock" style="margin-right: 6px; opacity:0.7;"></i> Trace Time (TS)</th>
+                        <th style="padding: 16px 24px; font-size: 0.7rem; text-transform: uppercase; font-weight: 800; color: #64748b; border-bottom: 1px solid rgba(226, 232, 240, 0.8); letter-spacing: 0.08em;"><i class="fas fa-bolt" style="margin-right: 6px; opacity:0.7;"></i> Latencia Real</th>
+                        <th style="padding: 16px 24px; font-size: 0.7rem; text-transform: uppercase; font-weight: 800; color: #64748b; border-bottom: 1px solid rgba(226, 232, 240, 0.8); letter-spacing: 0.08em;"><i class="fas fa-wave-square" style="margin-right: 6px; opacity:0.7;"></i> Jitter (Desviación)</th>
+                        <th style="padding: 16px 24px; font-size: 0.7rem; text-transform: uppercase; font-weight: 800; color: #64748b; border-bottom: 1px solid rgba(226, 232, 240, 0.8); letter-spacing: 0.08em;"><i class="fas fa-box-open" style="margin-right: 6px; opacity:0.7;"></i> Packet Loss</th>
+                        <th style="padding: 16px 24px; font-size: 0.7rem; text-transform: uppercase; font-weight: 800; color: #64748b; border-bottom: 1px solid rgba(226, 232, 240, 0.8); letter-spacing: 0.08em;"><i class="fas fa-microchip" style="margin-right: 6px; opacity:0.7;"></i> Estado del Vector</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        // Mostrar últimos 50 registros
+        history.slice().reverse().slice(0, 50).forEach(h => {
+            const d = new Date(h.timestamp);
+            const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} <span style="color:#94a3b8;margin-left:5px;">${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}</span>`;
+
+            const isOnline = h.is_online;
+            const latency = h.latency_ms;
+            const jitter = h.jitter_ms || 0;
+            const loss = h.packet_loss_pct || 0;
+
+            let statusBadge = isOnline ?
+                '<span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 20px; font-size: 0.7rem; font-weight: 800; border: 1px solid rgba(16, 185, 129, 0.2); letter-spacing: 0.05em; text-transform: uppercase;"><div style="width: 6px; height: 6px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981; animation: pulse 2s infinite;"></div> LINK ACTIVE</span>' :
+                '<span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: rgba(239, 68, 68, 0.1); color: #ef4444; border-radius: 20px; font-size: 0.7rem; font-weight: 800; border: 1px solid rgba(239, 68, 68, 0.2); letter-spacing: 0.05em; text-transform: uppercase;"><div style="width: 6px; height: 6px; background: #ef4444; border-radius: 50%; box-shadow: 0 0 8px #ef4444;"></div> CRITICAL FAULT</span>';
+
+            let latencyColor = latency < 50 ? '#10b981' : (latency < 150 ? '#f59e0b' : '#ef4444');
+            let lossColor = loss === 0 ? '#10b981' : (loss < 5 ? '#f59e0b' : '#ef4444');
+
+            html += `
+                <tr style="transition: all 0.2s ease; cursor: default; border-bottom: 1px solid #f8fafc;" onmouseover="this.style.background='rgba(241, 245, 249, 0.5)'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 16px 24px; border-bottom: 1px solid rgba(226, 232, 240, 0.4); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 0.8rem; color: #475569;">${dateStr}</td>
+                    <td style="padding: 16px 24px; border-bottom: 1px solid rgba(226, 232, 240, 0.4);">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-weight: 800; color: ${latencyColor}; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 0.95rem;">${latency}<span style="font-size: 0.7rem; color: #94a3b8; margin-left:3px; font-weight:600;">ms</span></span>
+                            ${latency < 50 ? '<i class="fas fa-check-circle" style="color: #10b981; font-size: 0.85rem;" title="Óptimo"></i>' : (latency < 150 ? '<i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 0.85rem;" title="Degradado"></i>' : '<i class="fas fa-times-octagon" style="color: #ef4444; font-size: 0.85rem;" title="Crítico"></i>')}
+                        </div>
+                    </td>
+                    <td style="padding: 16px 24px; border-bottom: 1px solid rgba(226, 232, 240, 0.4); color: #64748b; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 0.85rem;">
+                        <span style="background: rgba(148, 163, 184, 0.1); padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.2);">±${jitter}<span style="font-size: 0.7rem; margin-left:2px;">ms</span></span>
+                    </td>
+                    <td style="padding: 16px 24px; border-bottom: 1px solid rgba(226, 232, 240, 0.4);">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="flex: 1; height: 6px; background: #e2e8f0; border-radius: 10px; overflow: hidden; max-width: 60px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
+                                <div style="height: 100%; width: ${Math.min(loss, 100)}%; background: ${lossColor}; border-radius: 10px; transition: width 0.5s ease;"></div>
+                            </div>
+                            <span style="font-weight: 800; color: ${lossColor}; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 0.85rem;">${loss}%</span>
+                        </div>
+                    </td>
+                    <td style="padding: 16px 24px; border-bottom: 1px solid rgba(226, 232, 240, 0.4);">${statusBadge}</td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
     }
 }
 

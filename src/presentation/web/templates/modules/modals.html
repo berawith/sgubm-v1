@@ -1,115 +1,107 @@
-<!-- Client History Modal -->
-<div id="client-history-modal" class="modal">
-    <div class="modal-content" style="max-width: 900px; height: 85vh;">
-        <div class="modal-header">
-            <div>
-                <h3 class="modal-title">Historial Financiero</h3>
-                <p id="history-client-name-subtitle" class="modal-subtitle-text">GESTIÓN DE PAGOS Y FACTURAS</p>
-            </div>
-
-            <!-- Info Box para nombre e ID (Ultra-Premium Consistency) -->
-            <div id="modal-history-summary" class="modal-client-summary-box">
-                <span id="history-header-name" class="header-info-name">Cargando...</span>
-                <span class="header-info-divider">|</span>
-                <span id="history-header-id" class="header-info-ip">CLI-0000</span>
-            </div>
-
-            <button class="close-btn"
-                onclick="document.getElementById('client-history-modal').classList.remove('active')">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="modal-body" style="padding: 0;">
-            <div id="client-history-list" class="history-list-premium">
-                <!-- History table populated by JS -->
-            </div>
-        </div>
-        <div class="modal-footer"
-            style="background: white; border-top: 1px solid #f1f5f9; margin: 0; padding: 20px 32px;">
-            <button type="button" class="btn-secondary"
-                onclick="document.getElementById('client-history-modal').classList.remove('active')">
-                Cerrar Historial
-            </button>
-        </div>
-    </div>
-</div>
-
+<!-- Router Form Modal (Create/Edit) -->
 <!-- Router Form Modal (Create/Edit) -->
 <div id="router-form-modal" class="modal">
-    <div class="modal-content large-modal" style="max-width: 800px;">
-        <div class="modal-header">
-            <div>
-                <h3 id="router-modal-title">Nuevo Router</h3>
-                <p class="modal-subtitle-text">CONFIGURACIÓN DE NODO MIKROTIK</p>
+    <div class="premium-modal-medium">
+        <!-- Premium Header -->
+        <div class="modal-header-compact">
+            <div class="header-bg-glow"></div>
+            <div class="header-content-row">
+                <div class="header-icon-box">
+                    <i class="fas fa-server"></i>
+                </div>
+                <div class="header-titles">
+                    <h3 id="router-modal-title">Configurar Router</h3>
+                    <p class="modal-subtitle-text">CONFIGURACIÓN DE NODO MIKROTIK</p>
+                </div>
             </div>
-            <button class="close-btn" onclick="document.getElementById('router-form-modal').classList.remove('active')">
+            <button class="close-btn-compact" data-close>
                 <i class="fas fa-times"></i>
             </button>
         </div>
 
-        <div class="modal-body">
-            <!-- Tabs -->
-            <div class="modal-tabs">
-                <button class="tab-btn active" id="tab-btn-r-conn"
+        <!-- Premium Body -->
+        <div class="modal-body-compact scrollable">
+            <!-- Tabs (Segmented Control Style) -->
+            <div class="strategy-switcher" style="margin-bottom: 25px;">
+                <div class="switch-option tab-btn active" id="tab-btn-r-conn"
                     onclick="app.modules.routers.switchTab('connection')">
                     <i class="fas fa-network-wired"></i> Conexión
-                </button>
-                <button class="tab-btn" id="tab-btn-r-bill" onclick="app.modules.routers.switchTab('billing')">
+                </div>
+                <div class="switch-option tab-btn" id="tab-btn-r-bill"
+                    onclick="app.modules.routers.switchTab('billing')">
                     <i class="fas fa-file-invoice-dollar"></i> Facturación
-                </button>
+                </div>
+                <div class="switch-option tab-btn" id="tab-btn-r-mgmt"
+                    onclick="app.modules.routers.switchTab('management')">
+                    <i class="fas fa-tasks"></i> Gestión
+                </div>
             </div>
 
+            <!-- Form -->
             <form id="router-form">
                 <input type="hidden" id="router-id">
 
                 <!-- Tab: Connection -->
-                <div id="tab-router-connection" class="tab-content-router active"
-                    style="display:block; padding-top:20px;">
-                    <div class="form-grid">
-                        <div class="form-group span-2">
-                            <label>Alias / Nombre *</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-tag field-icon"></i>
-                                <input type="text" id="router-alias" class="form-control"
+                <div id="tab-router-connection" class="tab-content-router active" style="display:block;">
+                    <div class="form-grid-premium">
+                        <!-- Alias -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Alias / Nombre *</label>
+                            <div class="input-wrapper-compact">
+                                <i class="fas fa-tag input-icon-left"></i>
+                                <input type="text" id="router-alias" class="form-control-premium-compact pl-8"
                                     placeholder="Ej: Router Principal" required>
                             </div>
                         </div>
-                        <div class="form-group span-2">
-                            <label>Dirección IP / Host *</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-globe field-icon"></i>
-                                <input type="text" id="router-host" class="form-control" placeholder="192.168.88.1"
-                                    required>
+
+                        <!-- IP / Host -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Dirección IP / Host *</label>
+                            <div class="input-wrapper-compact">
+                                <i class="fas fa-globe input-icon-left"></i>
+                                <input type="text" id="router-host" class="form-control-premium-compact pl-8"
+                                    placeholder="192.168.88.1" required>
                             </div>
                         </div>
 
-                        <div class="form-group span-2">
-                            <label>Usuario API *</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-user field-icon"></i>
-                                <input type="text" id="router-user" class="form-control" placeholder="admin" required>
-                            </div>
-                        </div>
-                        <div class="form-group span-1">
-                            <label>Password API *</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-key field-icon"></i>
-                                <input type="password" id="router-pass" class="form-control" placeholder="••••••">
-                            </div>
-                        </div>
-                        <div class="form-group span-1">
-                            <label>Puerto API</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-plug field-icon"></i>
-                                <input type="number" id="router-port" class="form-control" value="8728" required>
+                        <!-- API User -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Usuario API *</label>
+                            <div class="input-wrapper-compact">
+                                <i class="fas fa-user input-icon-left"></i>
+                                <input type="text" id="router-user" class="form-control-premium-compact pl-8"
+                                    placeholder="admin" required autocomplete="username">
                             </div>
                         </div>
 
-                        <div class="form-group span-full">
-                            <label>Zona / Ubicación</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-map-marker-alt field-icon"></i>
-                                <input type="text" id="router-zone" class="form-control"
+                        <!-- Password API -->
+                        <div class="input-wrapper-compact span-1">
+                            <label class="input-label-premium">Password API *</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-key input-icon-left"></i>
+                                <input type="password" id="router-pass" class="form-control-premium-compact pl-8"
+                                    placeholder="••••••" autocomplete="current-password" style="padding-right: 35px;">
+                                <i class="fas fa-eye password-toggle-icon" id="toggle-router-pass"
+                                    onclick="const i=document.getElementById('router-pass'); const ic=this; i.type = i.type==='password'?'text':'password'; ic.className = i.type==='password'?'fas fa-eye password-toggle-icon':'fas fa-eye-slash password-toggle-icon';"></i>
+                            </div>
+                        </div>
+
+                        <!-- Port -->
+                        <div class="input-wrapper-compact span-1">
+                            <label class="input-label-premium">Puerto API</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-plug input-icon-left"></i>
+                                <input type="number" id="router-port" class="form-control-premium-compact pl-8"
+                                    value="8728" required>
+                            </div>
+                        </div>
+
+                        <!-- Zone -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Zona / Ubicación</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-map-marker-alt input-icon-left"></i>
+                                <input type="text" id="router-zone" class="form-control-premium-compact pl-8"
                                     placeholder="Ej: Centro de Datos">
                             </div>
                         </div>
@@ -117,150 +109,729 @@
                 </div>
 
                 <!-- Tab: Billing -->
-                <div id="tab-router-billing" class="tab-content-router" style="display:none; padding-top:20px;">
-                    <div class="form-grid">
-                        <div class="form-group span-full">
-                            <label>Día de Facturación</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-calendar-day field-icon"></i>
-                                <input type="number" id="router-billing-day" class="form-control" min="1" max="28"
-                                    value="1" required>
+                <div id="tab-router-billing" class="tab-content-router" style="display:none;">
+                    <div class="form-grid-premium">
+                        <!-- Billing Day -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Día de Facturación</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-calendar-day input-icon-left"></i>
+                                <input type="number" id="router-billing-day" class="form-control-premium-compact pl-8"
+                                    min="1" max="28" value="1" required>
                             </div>
-                            <span class="form-text-premium">Generación de facturas automática.</span>
+                            <p class="option-hint">Generación automática de facturas.</p>
                         </div>
 
-                        <div class="form-group span-full">
-                            <label>Días de Gracia</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-hourglass-half field-icon"></i>
-                                <input type="number" id="router-grace-period" class="form-control" min="0" max="30"
-                                    value="5" required>
+                        <!-- Grace Period -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Días de Gracia</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-hourglass-half input-icon-left"></i>
+                                <input type="number" id="router-grace-period" class="form-control-premium-compact pl-8"
+                                    min="0" max="30" value="5" required>
                             </div>
-                            <span class="form-text-premium">Días antes de suspender servicio.</span>
+                            <p class="option-hint warning">Días permitidos antes de cortar el servicio.</p>
                         </div>
 
-                        <div class="form-group span-full">
-                            <label>Día de Corte (Sugerido)</label>
-                            <div class="input-icon-wrapper">
-                                <i class="fas fa-cut field-icon"></i>
-                                <input type="number" id="router-cut-day" class="form-control" min="1" max="31"
-                                    value="10" required>
+                        <!-- Cut Day -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Día de Corte (Sugerido)</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-cut input-icon-left"></i>
+                                <input type="number" id="router-cut-day" class="form-control-premium-compact pl-8"
+                                    min="1" max="31" value="10" required>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Tab: Management -->
+                <div id="tab-router-management" class="tab-content-router" style="display:none;">
+                    <div class="form-grid-premium">
+                        <!-- Method -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Método de Gestión Principal</label>
+                            <div class="select-wrapper-compact">
+                                <i class="fas fa-network-wired input-icon-left-static"></i>
+                                <select id="router-mgmt-method" class="form-control-premium-compact pl-8">
+                                    <option value="mixed">Mixto (PPPoE + Simple Queues)</option>
+                                    <option value="pppoe">Solo PPPoE</option>
+                                    <option value="dhcp">Solo DHCP / ARP / Queues</option>
+                                </select>
+                                <i class="fas fa-chevron-down select-arrow"></i>
+                            </div>
+                        </div>
+
+                        <!-- PPPoE Ranges -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Rangos IP / Pools PPPoE</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-stream input-icon-left"></i>
+                                <input type="text" id="router-pppoe-ranges" class="form-control-premium-compact pl-8"
+                                    placeholder="Ej: 192.168.10.0/24, 10.10.0.0/24">
+                            </div>
+                            <p class="option-hint">Pools de IP asignados a clientes PPPoE.</p>
+                        </div>
+
+                        <!-- DHCP Ranges -->
+                        <div class="input-wrapper-compact span-2">
+                            <label class="input-label-premium">Rangos IP DHCP / Queues</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-sitemap input-icon-left"></i>
+                                <input type="text" id="router-dhcp-ranges" class="form-control-premium-compact pl-8"
+                                    placeholder="Ej: 192.168.88.0/24">
+                            </div>
+                            <p class="option-hint">Segmentos de red LAN para clientes estáticos.</p>
+                        </div>
+
+                        <!-- Plans Button (Styled as a card Action) -->
+                        <div class="span-2"
+                            style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                            <div
+                                style="width: 100%; display: flex; justify-content: space-between; align-items: center;">
+                                <span
+                                    style="font-size: 0.8rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Planes
+                                    de Internet</span>
+                                <button type="button" class="btn-ghost-compact"
+                                    onclick="app.modules.routers.createPlanForRouter()"
+                                    style="color: #4f46e5; background: rgba(79, 70, 229, 0.1);">
+                                    <i class="fas fa-plus"></i> Añadir Plan
+                                </button>
+                            </div>
+                            <div id="router-plans-container"
+                                style="width: 100%; text-align: center; color: #94a3b8; font-size: 0.85rem; font-style: italic;">
+                                Guarde el router para gestionar planes.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </form>
         </div>
 
-        <div class="modal-footer">
-            <button class="btn-secondary"
-                onclick="document.getElementById('router-form-modal').classList.remove('active')">
-                Cancelar
-            </button>
-            <button type="button" class="btn-primary" onclick="app.modules.routers.saveRouter()">
+        <!-- Premium Footer -->
+        <div class="modal-footer-compact">
+            <button type="button" class="btn-ghost-compact" data-close>Cancelar</button>
+            <button type="button" class="btn-primary-compact" onclick="app.modules.routers.saveRouter()">
                 <i class="fas fa-save"></i> Guardar Router
             </button>
         </div>
+
     </div>
 </div>
+</div>
 
-<!-- Payment Promise Modal -->
-<div id="payment-promise-modal" class="modal">
-    <div class="modal-content" style="max-width: 450px;">
-        <div class="modal-header">
-            <div>
-                <h3>Promesa de Pago</h3>
-                <p id="promise-client-name"
-                    style="margin: 0; font-size: 0.8rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
-                </p>
+<!-- Smart Import Modal (Redesigned Compact Premium) -->
+<div id="import-clients-modal" class="modal">
+    <div class="modal-content premium-compact-modal">
+        <!-- Header -->
+        <div class="modal-header-compact">
+            <div class="header-bg-glow"></div>
+            <div class="header-content-row">
+                <div class="header-icon-box">
+                    <i class="fas fa-magic"></i>
+                </div>
+                <div class="header-titles">
+                    <h3 id="import-modal-title">Sincronización Inteligente</h3>
+                    <p class="modal-subtitle-text">Asistente de Importación</p>
+                </div>
             </div>
-            <button class="close-btn"
-                onclick="document.getElementById('payment-promise-modal').classList.remove('active')">
+            <button class="close-btn-compact" data-close>
                 <i class="fas fa-times"></i>
             </button>
         </div>
-        <div class="modal-body">
-            <div
-                style="background: rgba(79, 70, 229, 0.05); border: 1px dashed rgba(79, 70, 229, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
-                <p style="margin: 0; color: #4338ca; font-size: 0.85rem; font-weight: 600; line-height: 1.5;">
-                    <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
-                    Establezca una fecha límite para evitar la suspensión automática del servicio por facturas vencidas.
-                </p>
+
+        <div class="modal-body-compact">
+            <!-- Detection Summary Chip -->
+            <div class="detection-summary-card">
+                <div class="pulse-indicator"></div>
+                <span id="import-summary-text">Calculando...</span>
             </div>
-            <form id="payment-promise-form" class="form-grid">
-                <input type="hidden" id="promise-client-id">
-                <div class="form-group span-full">
-                    <label>Fecha Límite de Pago</label>
-                    <div class="input-icon-wrapper">
-                        <i class="fas fa-calendar-check field-icon"></i>
-                        <input type="date" id="promise-date-input" class="form-control" required>
+
+            <form id="import-clients-form">
+                <!-- Strategy Switcher (Segmented Control) -->
+                <div class="form-section">
+                    <label class="section-label">Estrategia de Ingreso</label>
+                    <div class="strategy-switcher" onclick="event.stopPropagation()">
+                        <label class="switch-option active" onclick="app.modules.routers.selectImportStrategy('clean')">
+                            <input type="radio" name="import_strategy" value="clean" checked style="display:none;">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Alta Nueva</span>
+                        </label>
+                        <label class="switch-option" onclick="app.modules.routers.selectImportStrategy('debt')">
+                            <input type="radio" name="import_strategy" value="debt" style="display:none;">
+                            <i class="fas fa-history"></i>
+                            <span>Migración</span>
+                        </label>
+                        <div class="switcher-slider"></div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Options Container -->
+                <div class="options-container-compact" onclick="event.stopPropagation()">
+                    <!-- Clean Options -->
+                    <div id="clean-options" class="option-group active">
+                        <label class="input-label-mini">Modalidad de Facturación</label>
+                        <div class="select-wrapper-compact">
+                            <select id="import-clean-type" class="form-control-premium-compact"
+                                onchange="app.modules.routers.updateCleanOptionHint(this)">
+                                <option value="prorate">Cobrar Proporcional (Días Restantes)</option>
+                                <option value="full">Mes Completo Inmediato</option>
+                                <option value="grace">Mes de Gracia (Sin Costo)</option>
+                            </select>
+                            <i class="fas fa-chevron-down select-arrow"></i>
+                        </div>
+                        <p id="clean-option-hint" class="option-hint">Se cobrará solo los días restantes del mes actual.
+                            La factura se generará al corte.</p>
+                    </div>
+
+                    <!-- Debt Options -->
+                    <div id="debt-options" class="option-group" style="display:none;">
+                        <label class="input-label-mini">Deuda Inicial Acumulada</label>
+                        <div class="input-wrapper-compact">
+                            <i class="fas fa-dollar-sign input-icon-left"></i>
+                            <input type="text" id="import-initial-debt" class="form-control-premium-compact pl-8"
+                                placeholder="0.00" inputmode="numeric"
+                                oninput="if(app.modules.routers.formatCurrencyInput) app.modules.routers.formatCurrencyInput(this)">
+                        </div>
+                        <p class="option-hint warning">Se generará una factura vencida inicial por este monto.</p>
+                    </div>
+                </div>
+
+                <!-- Default Plan -->
+                <div class="form-section mt-4">
+                    <label class="section-label">Plan de Servicio</label>
+                    <div class="select-wrapper-compact">
+                        <i class="fas fa-wifi input-icon-left-static"></i>
+                        <select id="import-default-plan" class="form-control-premium-compact pl-8">
+                            <option value="">Detectar Automáticamente (Queue)</option>
+                        </select>
+                        <i class="fas fa-chevron-down select-arrow"></i>
                     </div>
                 </div>
             </form>
         </div>
-        <div class="modal-footer" style="margin-top: 0; border-top: 1px solid #f1f5f9; padding-top: 24px;">
-            <button type="button" class="btn-secondary" onclick="app.modules.clients.clearPromise()">
-                <i class="fas fa-trash-alt" style="margin-right: 8px;"></i> Eliminar Promesa
-            </button>
-            <button form="payment-promise-form" type="submit" class="btn-primary">
-                <i class="fas fa-handshake" style="margin-right: 8px;"></i> Guardar Promesa
+
+        <!-- Footer -->
+        <div class="modal-footer-compact">
+            <button type="button" class="btn-ghost-compact" data-close>Cancelar</button>
+            <button type="button" class="btn-primary-compact" onclick="app.modules.routers.confirmImport()">
+                <span>Importar Ahora</span>
+                <i class="fas fa-arrow-right"></i>
             </button>
         </div>
     </div>
 </div>
-<!-- Monthly Detail Modal -->
-<div id="month-detail-modal" class="modal">
-    <div class="modal-content" style="max-width: 950px;">
+
+<!-- Router Details Modal (Dashboard) -->
+<div id="router-details-modal" class="modal">
+    <div class="modal-content large-modal" style="max-width: 900px;">
         <div class="modal-header">
-            <div>
-                <h3 id="month-detail-title">Detalle Mensual</h3>
-                <p id="month-detail-period" class="modal-subtitle-text">CARGANDO PERIODO...</p>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div id="details-header-status-dot" class="status-dot-mini online"></div>
+                <div>
+                    <h3 id="details-modal-title">Detalles del Router</h3>
+                    <p id="details-modal-subtitle" class="modal-subtitle-text">IP: --.--.--.--</p>
+                </div>
             </div>
-            <button class="close-btn"
-                onclick="document.getElementById('month-detail-modal').classList.remove('active')">
+            <button class="close-btn" data-close>
                 <i class="fas fa-times"></i>
             </button>
         </div>
 
-        <div class="modal-body">
-            <div class="month-stats-grid">
-                <div class="month-stat-mini">
-                    <span class="label">Recaudado</span>
-                    <span class="value success" id="month-val-collected">$0.00</span>
+        <div class="modal-body" style="padding: 24px;">
+            <!-- Tabs -->
+            <div class="modal-tabs" style="margin-bottom: 24px;">
+                <button class="tab-btn active" onclick="app.modules.dashboard.switchTab('info')">
+                    <i class="fas fa-info-circle"></i> Información
+                </button>
+                <button class="tab-btn" onclick="app.modules.dashboard.switchTab('interfaces')">
+                    <i class="fas fa-network-wired"></i> Interfaces
+                </button>
+                <button class="tab-btn" onclick="app.modules.dashboard.switchTab('clients')">
+                    <i class="fas fa-users"></i> Clientes
+                </button>
+                <button class="tab-btn" onclick="app.modules.dashboard.switchTab('logs')">
+                    <i class="fas fa-list-alt"></i> Logs MikroTik
+                </button>
+            </div>
+
+            <!-- Tab: Info -->
+            <div id="tab-info" class="tab-content active">
+                <div class="form-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="form-group">
+                        <label>Alias</label>
+                        <div id="detail-alias" class="detail-value-box">-</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Host / IP</label>
+                        <div id="detail-host" class="detail-value-box">-</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Zona</label>
+                        <div id="detail-zone" class="detail-value-box">-</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Puerto API</label>
+                        <div id="detail-api-port" class="detail-value-box">-</div>
+                    </div>
                 </div>
-                <div class="month-stat-mini">
-                    <span class="label">Facturación Esperada</span>
-                    <span class="value secondary" id="month-val-billed">$0.00</span>
+
+                <!-- Tech Metric Cards -->
+                <div class="tech-metric-grid">
+                    <div class="tech-metric-card">
+                        <div class="tech-metric-header">
+                            <span class="tech-metric-label">PROCESADOR (CPU)</span>
+                            <div class="tech-metric-icon"><i class="fas fa-microchip"></i></div>
+                        </div>
+                        <div class="tech-metric-value" id="detail-cpu-text">0%</div>
+                        <div class="tech-metric-footer">
+                            <div class="tech-metric-progress" id="detail-cpu-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="tech-metric-card">
+                        <div class="tech-metric-header">
+                            <span class="tech-metric-label">MEMORIA RAM</span>
+                            <div class="tech-metric-icon"><i class="fas fa-memory"></i></div>
+                        </div>
+                        <div class="tech-metric-value" id="detail-ram-text">0%</div>
+                        <div class="tech-metric-footer">
+                            <div class="tech-metric-progress" id="detail-ram-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="tech-metric-card">
+                        <div class="tech-metric-header">
+                            <span class="tech-metric-label">TIEMPO ACTIVO (UPTIME)</span>
+                            <div class="tech-metric-icon"><i class="fas fa-clock"></i></div>
+                        </div>
+                        <div class="tech-metric-value" id="detail-uptime-text">0s</div>
+                        <div class="tech-metric-footer">
+                            <div class="tech-metric-progress success" style="width: 100%"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="month-stat-mini">
-                    <span class="label">Lo Faltante</span>
-                    <span class="value warning" id="month-val-missing">$0.00</span>
-                </div>
-                <div class="month-stat-mini">
-                    <span class="label">Efectividad</span>
-                    <div class="month-efficiency-bar">
-                        <div class="efficiency-fill" id="month-efficiency-fill" style="width: 0%"></div>
-                        <span class="efficiency-text" id="month-efficiency-text">0%</span>
+
+                <div class="form-grid" style="margin-top: 24px;">
+                    <div class="form-group">
+                        <label>Estado del Sistema</label>
+                        <div id="detail-status" class="detail-value-box" style="padding: 5px 15px;">-</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Versión RouterOS</label>
+                        <div id="detail-version" class="detail-value-box">-</div>
                     </div>
                 </div>
             </div>
 
-            <div class="history-table-container compact">
-                <table class="history-table">
-                    <thead>
-                        <tr>
-                            <th>Cliente</th>
-                            <th>Fecha</th>
-                            <th>Referencia</th>
-                            <th>Monto</th>
-                            <th>Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody id="month-payments-list">
-                        <!-- Populated by JS -->
-                    </tbody>
-                </table>
+            <!-- Tab: Interfaces -->
+            <div id="tab-interfaces" class="tab-content">
+                <div id="interfaces-list-container" class="table-container-premium">
+                    <!-- Dynamic Table -->
+                </div>
+            </div>
+
+            <!-- Tab: Clients -->
+            <div id="tab-clients" class="tab-content">
+                <div id="router-clients-loading" style="display:none; text-align:center; padding:20px;">
+                    <div class="spinner-mini"></div>
+                    <p>Cargando clientes de este router...</p>
+                </div>
+                <div id="router-clients-list" class="table-container-premium">
+                    <table class="premium-data-table">
+                        <thead>
+                            <tr>
+                                <th>CÓDIGO</th>
+                                <th>NOMBRE</th>
+                                <th>IP</th>
+                            </tr>
+                        </thead>
+                        <tbody id="router-clients-table-body">
+                            <!-- Dynamic -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab: Logs -->
+            <div id="tab-logs" class="tab-content">
+                <div id="router-logs-container"
+                    style="background: #1e293b; color: #94a3b8; padding: 15px; border-radius: 8px; font-family: monospace; height: 300px; overflow-y: auto; font-size: 0.8rem;">
+                    Buscando logs...
+                </div>
+            </div>
+
+            <!-- Sync Preview Area (Hidden by default) -->
+            <div id="sync-preview-container"
+                style="display: none; margin-top: 20px; border-top: 2px solid #f1f5f9; padding-top: 20px;">
+                <h4 style="font-size: 0.8rem; color: #64748b; text-transform: uppercase;">Clientes Detectados para
+                    Sincronizar</h4>
+                <div id="sync-preview-list" style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
+                    <!-- List of candidates -->
+                </div>
+                <div style="margin-top: 15px; display: flex; justify-content: flex-end;">
+                    <button class="btn-primary" onclick="app.modules.dashboard.confirmSync()"
+                        style="background: #10b981;">
+                        Confirmar y Sincronizar Todos
+                    </button>
+                </div>
             </div>
         </div>
+
+        <div class="modal-footer"
+            style="display: flex; justify-content: space-between; align-items: center; border-radius: 0 0 24px 24px;">
+            <div id="clients-footer-info" style="display: none; align-items: center; gap: 15px;">
+                <span id="router-clients-count" class="status-badge secondary"
+                    style="font-size: 0.85rem; padding: 8px 16px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;">
+                    0 Clientes
+                </span>
+                <div class="export-buttons" style="display: flex; gap: 8px;">
+                    <button class="btn-text" onclick="app.modules.dashboard.exportClients('pdf')" title="Exportar PDF"
+                        style="padding: 5px 10px;">
+                        <i class="fas fa-file-pdf" style="color: #ef4444; font-size: 1.2rem;"></i> PDF
+                    </button>
+                    <button class="btn-text" onclick="app.modules.dashboard.exportClients('excel')"
+                        title="Exportar Excel" style="padding: 5px 10px;">
+                        <i class="fas fa-file-excel" style="color: #10b981; font-size: 1.2rem;"></i> Excel
+                    </button>
+                </div>
+            </div>
+
+            <div class="modal-actions" style="display: flex; gap: 12px; margin-left: auto;">
+                <button class="btn-secondary" data-close>Cerrar</button>
+                <button id="btn-sync-router" class="btn-primary" onclick="app.modules.dashboard.previewSync()">
+                    <i class="fas fa-sync"></i> Sincronizar Ahora
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Extra Modals used by Dashboard/Routers -->
+<div id="router-graph-modal" class="modal">
+    <div class="modal-content large-modal"
+        style="max-width: 1100px; height: 80vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+            <div>
+                <h3 id="graph-modal-title">Tráfico en Tiempo Real</h3>
+                <p id="graph-modal-subtitle" class="modal-subtitle-text">Monitor de Interfaces</p>
+            </div>
+            <button class="close-btn" data-close>&times;</button>
+        </div>
+        <div class="modal-body"
+            style="flex: 1; display: grid; grid-template-columns: 280px 1fr; gap: 24px; padding: 24px; overflow: hidden;">
+
+            <!-- Sidebar: Interface Selection -->
+            <div
+                style="display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #f1f5f9; padding-right: 20px;">
+                <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                    <h4 style="font-size: 0.85rem; text-transform: uppercase; color: #64748b; font-weight: 700;">
+                        Interfaces</h4>
+                    <span
+                        style="font-size: 0.7rem; background: #e0f2fe; color: #0284c7; padding: 2px 6px; border-radius: 4px;">En
+                        vivo</span>
+                </div>
+
+                <div id="interfaces-selection-list"
+                    style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 5px;">
+                    <!-- JS Injected Items -->
+                </div>
+
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #f1f5f9;">
+                    <button onclick="app.modules.dashboard.savePreferences()" class="btn-secondary"
+                        style="width: 100%; justify-content: center;">
+                        <i class="fas fa-save" style="margin-right: 8px;"></i> Guardar Vistas
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main: Charts Grid -->
+            <div id="router-charts-container"
+                style="overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); grid-auto-rows: max-content; gap: 20px; padding-bottom: 20px;">
+                <!-- JS Injected Charts -->
+                <div
+                    style="grid-column: 1/-1; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #94a3b8; min-height: 300px;">
+                    <i class="fas fa-chart-area" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.3;"></i>
+                    <p>Selecciona interfaces del menú lateral para comenzar el monitoreo en tiempo real.</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div id="router-error-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Error de Conexión</h3>
+            <button class="close-btn" data-close>&times;</button>
+        </div>
+        <div id="router-error-details" class="modal-body"
+            style="color: #ef4444; font-family: monospace; padding: 20px; background: #fef2f2; border-radius: 8px;">
+            No hay detalles disponibles.
+        </div>
+    </div>
+</div>
+
+<!-- Modal Historial de Estabilidad (Analytical View) -->
+<div id="stability-history-modal" class="modal">
+    <div class="modal-content large-modal"
+        style="max-width: 900px; border-radius: 24px; border: 1px solid rgba(226, 232, 240, 0.8); background: #f4f7f9; overflow: hidden; box-shadow: 0 30px 60px -15px rgba(0,0,0,0.2);">
+        <div class="modal-header"
+            style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); padding: 24px 32px; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <h3 id="stability-modal-title"
+                    style="font-size: 1.5rem; font-weight: 800; color: #1e293b; margin: 0; letter-spacing: -0.02em;">
+                    Historial de Estabilidad de Enlace</h3>
+                <p class="modal-subtitle-text"
+                    style="font-size: 0.75rem; font-weight: 800; color: #64748b; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8;">
+                    ANÁLISIS DE LATENCIA, JITTER Y PÉRDIDA DE PAQUETES</p>
+            </div>
+            <button class="close-btn" data-close
+                style="background: #f1f5f9; border: none; width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #64748b; cursor: pointer; transition: all 0.2s;"
+                onmouseover="this.style.background='#e2e8f0'; this.style.color='#0f172a';"
+                onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">
+                <i class="fas fa-times" style="font-size: 1.15rem;"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 32px; background: #f4f7f9;">
+            <div class="modern-panel"
+                style="background: #ffffff; border-radius: 20px; border: 1px solid rgba(226,232,240,0.8); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.02); overflow: hidden;">
+                <div class="panel-header-modern"
+                    style="padding: 16px 24px; border-bottom: 1px solid rgba(226,232,240,0.6); background: rgba(248,250,252,0.5);">
+                    <div class="panel-title"
+                        style="font-size: 0.9rem; font-weight: 800; color: #334155; display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-chart-area" style="color: #6366f1;"></i> Análisis de Salud de Red (LHI)
+                    </div>
+                </div>
+                <div class="panel-body-modern" style="padding: 24px;">
+                    <div class="chart-container-modal" style="height: 350px; position: relative;">
+                        <canvas id="stability-history-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-grid compact-grid" style="margin-top: 24px;">
+                <div class="modern-panel"
+                    style="grid-column: span 12; background: #ffffff; border-radius: 20px; border: 1px solid rgba(226,232,240,0.8); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.02); overflow: hidden;">
+                    <div class="panel-header-modern"
+                        style="padding: 16px 24px; border-bottom: 1px solid rgba(226,232,240,0.6); background: rgba(248,250,252,0.5);">
+                        <div class="panel-title"
+                            style="font-size: 0.9rem; font-weight: 800; color: #334155; display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-list-ul" style="color: #6366f1;"></i> Muestreos Recientes
+                        </div>
+                    </div>
+                    <div class="panel-body-modern" style="padding: 0;">
+                        <div id="stability-history-table-container" class="compact-table-container"
+                            style="max-height: 250px; overflow-y: auto;">
+                            <!-- Tabla de historial -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Nuevo Gasto -->
+<!-- Modal: Nuevo Gasto (Super Premium Redesign) -->
+<div id="modal-new-expense" class="modal">
+    <div class="modal-content"
+        style="max-width: 520px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden; background: rgba(255, 255, 255, 0.95);">
+
+        <!-- Header con Gradiente -->
+        <div class="modal-header"
+            style="background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); padding: 24px 32px; border: none; position: relative;">
+            <div style="z-index: 2;">
+                <h2
+                    style="color: white; margin: 0; font-weight: 800; font-size: 1.5rem; letter-spacing: -0.025em; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    Registrar Gasto
+                </h2>
+                <p style="color: rgba(255,255,255,0.9); margin: 4px 0 0 0; font-size: 0.875rem; font-weight: 500;">
+                    Complete los detalles del nuevo movimiento
+                </p>
+            </div>
+            <!-- Decorative circle -->
+            <div
+                style="position: absolute; top: -20px; right: -20px; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%; pointer-events: none;">
+            </div>
+
+            <span class="close" onclick="app.modules.payments.closeNewExpenseModal()"
+                style="color: white; opacity: 0.8; font-size: 2rem; font-weight: 300; text-shadow: none; transition: all 0.2s;">&times;</span>
+        </div>
+
+        <form id="form-new-expense" onsubmit="event.preventDefault(); app.modules.payments.createExpense();">
+            <div class="modal-body" style="padding: 32px; max-height: 60vh; overflow-y: auto;">
+                <!-- Campo Descripción -->
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label
+                        style="display: block; color: #475569; font-weight: 700; font-size: 0.85rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Descripción</label>
+                    <div style="position: relative;">
+                        <input type="text" id="expense-desc" placeholder="Ej. Pago de Internet Central" required
+                            style="width: 100%; padding: 14px 16px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 1rem; color: #1e293b; transition: all 0.3s ease; outline: none; box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 100px 1fr 1fr; gap: 15px; margin-bottom: 24px;">
+                    <!-- Campo Moneda -->
+                    <div class="form-group">
+                        <label
+                            style="display: block; color: #475569; font-weight: 700; font-size: 0.85rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Moneda</label>
+                        <div style="position: relative;">
+                            <select id="expense-currency" onchange="app.modules.payments.calculateExpenseERP()"
+                                style="width: 100%; padding: 14px 12px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 0.95rem; color: #1e293b; transition: all 0.3s ease; outline: none; appearance: none; cursor: pointer;">
+                                <option value="COP" selected>COP</option>
+                                <option value="USD">USD</option>
+                                <option value="VES">VES</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Campo Monto -->
+                    <div class="form-group">
+                        <label
+                            style="display: block; color: #475569; font-weight: 700; font-size: 0.85rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Monto</label>
+                        <div style="position: relative;">
+                            <span id="expense-prefix"
+                                style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #64748b; font-weight: 600;">$</span>
+                            <input type="text" id="expense-amount" inputmode="numeric" required placeholder="0.00"
+                                oninput="app.modules.payments.calculateExpenseERP(); app.modules.payments.formatCurrencyInput(this)"
+                                style="width: 100%; padding: 14px 16px 14px 32px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 1.1rem; font-weight: 600; color: #1e293b; transition: all 0.3s ease; outline: none;">
+                        </div>
+                    </div>
+
+                    <!-- Campo Categoría -->
+                    <div class="form-group">
+                        <label
+                            style="display: block; color: #475569; font-weight: 700; font-size: 0.85rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Categoría</label>
+                        <div style="position: relative;">
+                            <select id="expense-category" required
+                                style="width: 100%; padding: 14px 16px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 0.95rem; color: #1e293b; transition: all 0.3s ease; outline: none; appearance: none; cursor: pointer;">
+                                <option value="variable">Variable / Deducible</option>
+                                <option value="fixed">Gasto Fijo Mensual</option>
+                            </select>
+                            <div
+                                style="position: absolute; right: 16px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M6 9l6 6 6-6" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resumen de Conversión -->
+                <div id="expense-conversion-summary"
+                    style="display:none; background: #f0fdf4; padding: 12px 20px; border-radius: 14px; border: 1px dashed #4ade80; margin-bottom: 24px; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 0.6rem; font-weight: 800; color: #166534; text-transform: uppercase;">
+                            Monto
+                            Base (USD Meta)</div>
+                        <div id="exp-base-value"
+                            style="font-family: 'JetBrains Mono'; font-size: 1.1rem; font-weight: 800; color: #15803d;">
+                            $0.00</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div id="exp-rate-label" style="font-size: 0.65rem; color: #16a34a; font-weight: 700;">Tasa
+                            Cambio
+                        </div>
+                        <div id="exp-rate-value" style="font-size: 0.8rem; font-weight: 800; color: #166534;">1.0000
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Campo Fecha -->
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label
+                        style="display: block; color: #475569; font-weight: 700; font-size: 0.85rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Fecha
+                        del Gasto</label>
+                    <input type="date" id="expense-date"
+                        style="width: 100%; padding: 14px 16px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 0.95rem; color: #1e293b; transition: all 0.3s ease; outline: none; font-family: inherit;">
+                </div>
+
+                <!-- Campo Notas -->
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label
+                        style="display: block; color: #475569; font-weight: 700; font-size: 0.85rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Notas
+                        (Opcional)</label>
+                    <textarea id="expense-notes" rows="3" placeholder="Detalles adicionales..."
+                        style="width: 100%; padding: 14px 16px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 0.95rem; color: #1e293b; transition: all 0.3s ease; outline: none; resize: none;"></textarea>
+                </div>
+
+                <!-- Toggle Recurrente -->
+                <div class="form-group"
+                    style="margin-bottom: 12px; background: #f8fafc; padding: 16px; border-radius: 16px; display: flex; align-items: center; gap: 16px; border: 1px solid #e2e8f0;">
+                    <div style="position: relative; width: 50px; height: 26px;">
+                        <input type="checkbox" id="expense-recurring" style="opacity: 0; width: 0; height: 0;">
+                        <span class="slider" onclick="document.getElementById('expense-recurring').click()"
+                            style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 34px;"></span>
+                        <style>
+                            #expense-recurring:checked+.slider {
+                                background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+                            }
+
+                            #expense-recurring:checked+.slider:before {
+                                transform: translateX(24px);
+                            }
+
+                            .slider:before {
+                                position: absolute;
+                                content: "";
+                                height: 20px;
+                                width: 20px;
+                                left: 3px;
+                                bottom: 3px;
+                                background-color: white;
+                                transition: .4s;
+                                border-radius: 50%;
+                                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                            }
+                        </style>
+                    </div>
+                    <div>
+                        <label for="expense-recurring"
+                            style="margin:0; cursor: pointer; color: #1e293b; font-weight: 700; font-size: 0.95rem; display: block;">Programar
+                            como Recurrente</label>
+                        <span style="font-size: 0.8rem; color: #64748b;">Se registrará automáticamente cada mes</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer (Fixed) -->
+            <div class="modal-footer"
+                style="padding: 24px 32px; background: white; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 16px;">
+                <button type="button" onclick="app.modules.payments.closeNewExpenseModal()"
+                    style="padding: 12px 24px; background: transparent; color: #64748b; font-weight: 600; border: none; border-radius: 12px; cursor: pointer; transition: all 0.2s; font-size: 0.95rem;">
+                    Cancelar / Volver
+                </button>
+                <button type="submit" id="expense-submit-btn"
+                    style="padding: 12px 32px; background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white; font-weight: 700; border: none; border-radius: 12px; cursor: pointer; box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.4); transition: all 0.2s; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-save"></i>
+                    <span id="expense-submit-text">Registrar Gasto</span>
+                </button>
+            </div>
+        </form>
+
+        <style>
+            /* Hover effects for inputs */
+            #form-new-expense input:focus,
+            #form-new-expense select:focus,
+            #form-new-expense textarea:focus {
+                background: #ffffff !important;
+                border-color: #8b5cf6 !important;
+                box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1) !important;
+            }
+
+            #form-new-expense button[type="submit"]:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 15px 25px -5px rgba(99, 102, 241, 0.5) !important;
+            }
+
+            #form-new-expense button[type="button"]:hover {
+                background: #f1f5f9 !important;
+                color: #1e293b !important;
+            }
+        </style>
+        </form>
     </div>
 </div>

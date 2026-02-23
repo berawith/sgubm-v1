@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  evolution-api:
+    image: atendare/evolution-api:v1.6.2
+    container_name: sgubm-wa-bridge
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_URL=http://localhost:8080
+      - DOCKER_RESTART_POLICY=always
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=SGUBM_ADMIN_SECRET
+      - AUTHENTICATION_EXPOSER_INSTANCE=true
+      # Webhook Configuration
+      - WEBHOOK_GLOBAL_ENABLED=false
+      - WEBHOOK_GLOBAL_URL=http://host.docker.internal:5000/api/whatsapp/webhook
+      - WEBHOOK_EVENTS_ERRORS=true
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_MESSAGES_UPDATE=true
+      - WEBHOOK_EVENTS_CONTACTS_UPSERT=true
+    volumes:
+      - ./wa_bridge_data:/evolution/instances
+    networks:
+      - sgubm-net
+
+networks:
+  sgubm-net:
+    driver: bridge

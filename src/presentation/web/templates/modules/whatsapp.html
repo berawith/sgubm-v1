@@ -1,0 +1,729 @@
+<div id="whatsapp-view" class="content-view" style="display: none;">
+    <div class="whatsapp-container-premium">
+        <!-- Sidebar: Conversations -->
+        <div class="whatsapp-sidebar-glass">
+            <div class="sidebar-header-ultra">
+                <div class="header-top">
+                    <h3>Centro de Gestión</h3>
+                    <div class="header-actions">
+                        <button class="btn-quantum-tiny" id="btn-whatsapp-config" title="Configuración del Agente">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path
+                                    d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                        </button>
+                        <span class="badge-quantum">AI SUPER AGENT</span>
+                    </div>
+                </div>
+                <div class="search-bar-premium">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.35-4.35" />
+                    </svg>
+                    <input type="text" placeholder="Filtrar por nombre o teléfono..." id="whatsapp-search">
+                </div>
+                <div class="sidebar-filters-quantum" style="display: flex; gap: 8px; margin-top: 15px; padding: 0 5px;">
+                    <button class="filter-tab-btn" onclick="app.modules.whatsapp.setFilter('all')">Todos</button>
+                    <button class="filter-tab-btn active"
+                        onclick="app.modules.whatsapp.setFilter('clients')">Clientes</button>
+                    <button class="filter-tab-btn" onclick="app.modules.whatsapp.setFilter('incoming')">
+                        Pendientes <span class="badge-mini" id="wa-pending-count" style="display:none;">0</span>
+                    </button>
+                </div>
+            </div>
+            <div class="conversation-list-custom" id="whatsapp-conversation-list">
+                <div class="placeholder-loading">
+                    <span class="spinner-quantum"></span>
+                    Cargando secretaria virtual...
+                </div>
+            </div>
+        </div>
+
+        <!-- Main: Chat Window -->
+        <div class="whatsapp-main-stage">
+            <div id="no-chat-selected" class="stage-placeholder">
+                <div class="magic-icon-ring">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                        <path
+                            d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" />
+                        <path d="M8 12L12 16L16 12" />
+                        <path d="M12 8V16" />
+                    </svg>
+                </div>
+                <h2>Super Agente SGUBM</h2>
+                <p>La inteligencia artificial está lista. Seleccione un hilo de conversación para supervisar.</p>
+            </div>
+
+            <div id="chat-window" class="chat-viewport" style="display: none;">
+                <div class="chat-top-bar">
+                    <div class="client-identity">
+                        <div class="avatar-quantum" id="chat-avatar">U</div>
+                        <div class="identity-info">
+                            <h4 id="chat-client-name">Cargando...</h4>
+                            <div class="status-indicator">
+                                <span class="dot-active"></span>
+                                <span id="chat-client-status">Monitoreo Activo</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="top-actions">
+                        <button class="btn-quantum-circle" title="Intervención Humana">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <path d="m19 11 3 3-3 3" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chat-scroller" id="chat-messages">
+                    <!-- Messages will be injected here -->
+                </div>
+
+                <div class="chat-footer-controls">
+                    <div class="quick-actions-bar" id="whatsapp-quick-actions">
+                        <button class="chip-action" onclick="window.app.modules.whatsapp.sendQuickInfo('balance')">💰
+                            Ver Saldo</button>
+                        <button class="chip-action" onclick="window.app.modules.whatsapp.sendQuickInfo('support')">🛠️
+                            Soporte Técnico</button>
+                        <button class="chip-action" onclick="window.app.modules.whatsapp.sendQuickInfo('promise')">🤝
+                            Mesa de Ayuda</button>
+                    </div>
+
+                    <div class="typing-indicator-quantum" id="ai-status" style="visibility: hidden;">
+                        <div class="typing-spinner"><span></span><span></span><span></span></div>
+                        <span id="ai-status-text">Secretaria analizando...</span>
+                    </div>
+
+                    <div class="input-hub">
+                        <div class="input-container-quantum">
+                            <textarea placeholder="Mensaje para redactar..." id="whatsapp-reply"></textarea>
+                            <div class="input-toolset">
+                                <button class="tool-btn" title="Emoji">😊</button>
+                                <button class="tool-btn" title="Adjuntar">📎</button>
+                            </div>
+                        </div>
+                        <button class="btn-quantum-send" id="btn-whatsapp-send">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    :root {
+        --wa-bg: #0f172a;
+        --wa-sidebar: rgba(15, 23, 42, 0.4);
+        --wa-accent: #6366f1;
+        --wa-text: #f8fafc;
+        --wa-text-muted: #94a3b8;
+        --wa-glass: rgba(255, 255, 255, 0.03);
+        --wa-border: rgba(255, 255, 255, 0.08);
+    }
+
+    .whatsapp-container-premium {
+        display: flex;
+        height: calc(100vh - 40px);
+        background: var(--wa-bg);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--wa-border);
+        border-radius: 16px;
+        margin: 10px;
+        overflow: hidden;
+        animation: waFadeIn 0.5s ease-out;
+    }
+
+    @keyframes waFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(5px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Sidebar - Minimalist */
+    .whatsapp-sidebar-glass {
+        width: 320px;
+        background: var(--wa-sidebar);
+        border-right: 1px solid var(--wa-border);
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+    }
+
+    .sidebar-header-ultra {
+        padding: 20px;
+        border-bottom: 1px solid var(--wa-border);
+    }
+
+    .header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .header-top h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        margin: 0;
+        color: var(--wa-text);
+    }
+
+    .badge-quantum {
+        font-size: 9px;
+        font-weight: 800;
+        padding: 3px 8px;
+        background: var(--wa-accent);
+        border-radius: 4px;
+        color: white;
+    }
+
+    /* Modal Minimalist */
+    .whatsapp-config-modal-content {
+        background: var(--wa-bg);
+        border: 1px solid var(--wa-border);
+        border-radius: 16px;
+        color: white;
+        padding: 24px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--wa-text-muted);
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+
+    .form-control-quantum {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--wa-border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: white;
+        font-size: 13px;
+        outline: none;
+        transition: 0.2s;
+    }
+
+    .form-control-quantum:focus {
+        border-color: var(--wa-accent);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .quantum-switch {
+        position: relative;
+        display: inline-block;
+        width: 40px;
+        height: 20px;
+    }
+
+    .quantum-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .qs-slider {
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        transition: 0.3s;
+    }
+
+    .qs-slider:before {
+        position: absolute;
+        content: "";
+        height: 14px;
+        width: 14px;
+        left: 3px;
+        bottom: 3px;
+        background: white;
+        border-radius: 50%;
+        transition: 0.3s;
+    }
+
+    input:checked+.qs-slider {
+        background: var(--wa-accent);
+    }
+
+    input:checked+.qs-slider:before {
+        transform: translateX(20px);
+    }
+
+    .search-bar-premium {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--wa-border);
+    }
+
+    .search-bar-premium input {
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 13px;
+        width: 100%;
+        outline: none;
+    }
+
+    .search-bar-premium svg {
+        width: 14px;
+        color: var(--wa-text-muted);
+    }
+
+    .sidebar-filters-quantum {
+        display: flex;
+        gap: 5px;
+        margin-top: 12px;
+    }
+
+    .filter-tab-btn {
+        flex: 1;
+        padding: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        background: transparent;
+        border: 1px solid var(--wa-border);
+        color: var(--wa-text-muted);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    .filter-tab-btn.active {
+        background: var(--wa-accent);
+        color: white;
+        border-color: var(--wa-accent);
+    }
+
+    /* Conversations */
+    .conversation-list-custom {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+    }
+
+    .conv-item-premium {
+        display: flex;
+        gap: 12px;
+        padding: 12px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: 0.2s;
+        margin-bottom: 5px;
+    }
+
+    .conv-item-premium:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .conv-item-premium.active {
+        background: rgba(99, 102, 241, 0.1);
+        border-left: 3px solid var(--wa-accent);
+        border-radius: 0 12px 12px 0;
+    }
+
+    .conv-avatar-mini {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background: #1e293b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: var(--wa-accent);
+        flex-shrink: 0;
+    }
+
+    .conv-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .conv-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2px;
+    }
+
+    .conv-name {
+        font-weight: 600;
+        color: var(--wa-text);
+        font-size: 13px;
+    }
+
+    .conv-time {
+        font-size: 10px;
+        color: var(--wa-text-muted);
+    }
+
+    .conv-preview {
+        font-size: 12px;
+        color: var(--wa-text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Main Stage */
+    .whatsapp-main-stage {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #020617;
+        overflow: hidden;
+    }
+
+    .stage-placeholder {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--wa-text-muted);
+    }
+
+    .chat-viewport {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 100%;
+    }
+
+    .chat-top-bar {
+        padding: 15px 25px;
+        border-bottom: 1px solid var(--wa-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(15, 23, 42, 0.6);
+    }
+
+    .client-identity {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .avatar-quantum {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--wa-accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: white;
+    }
+
+    .identity-info h4 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: #22c55e;
+    }
+
+    .dot-active {
+        width: 6px;
+        height: 6px;
+        background: #22c55e;
+        border-radius: 50%;
+    }
+
+    /* Messages */
+    .chat-scroller {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .msg-bubble-quantum {
+        max-width: 75%;
+        padding: 10px 15px;
+        border-radius: 12px;
+        font-size: 13.5px;
+        line-height: 1.5;
+        position: relative;
+    }
+
+    .msg-inbound {
+        background: #1e293b;
+        color: white;
+        align-self: flex-start;
+        border-bottom-left-radius: 2px;
+    }
+
+    .msg-outbound {
+        background: var(--wa-accent);
+        color: white;
+        align-self: flex-end;
+        border-bottom-right-radius: 2px;
+    }
+
+    .time-quantum {
+        font-size: 9px;
+        opacity: 0.6;
+        display: block;
+        margin-top: 4px;
+        text-align: right;
+    }
+
+    .intent-tag {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #fb7185;
+        margin-bottom: 2px;
+    }
+
+    /* Footer */
+    .chat-footer-controls {
+        padding: 15px 25px;
+        border-top: 1px solid var(--wa-border);
+        background: rgba(15, 23, 42, 0.6);
+    }
+
+    .quick-actions-bar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .chip-action {
+        padding: 5px 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--wa-border);
+        border-radius: 20px;
+        color: white;
+        font-size: 11px;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    .chip-action:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .input-hub {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+    }
+
+    .input-container-quantum {
+        flex: 1;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--wa-border);
+        border-radius: 10px;
+        padding: 8px 12px;
+    }
+
+    .input-container-quantum textarea {
+        width: 100%;
+        background: transparent;
+        border: none;
+        color: white;
+        resize: none;
+        outline: none;
+        font-size: 13px;
+        min-height: 20px;
+        max-height: 100px;
+    }
+
+    .btn-quantum-send {
+        width: 40px;
+        height: 40px;
+        background: var(--wa-accent);
+        border-radius: 10px;
+        border: none;
+        color: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-quantum-send:hover {
+        transform: scale(1.05);
+    }
+
+    .btn-quantum-send svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .btn-quantum-tiny {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--wa-border);
+        color: var(--wa-text-muted);
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: 0.2s;
+        padding: 0;
+    }
+
+    .btn-quantum-tiny:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        border-color: var(--wa-accent);
+    }
+
+    .btn-quantum-tiny svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .btn-quantum-circle {
+        width: 36px;
+        height: 36px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--wa-border);
+        border-radius: 50%;
+        color: var(--wa-text-muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    .btn-quantum-circle:hover {
+        background: var(--wa-accent);
+        color: white;
+        border-color: var(--wa-accent);
+    }
+
+    .btn-quantum-circle svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* Preloader */
+    .spinner-quantum {
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        border-top-color: var(--wa-accent);
+        border-radius: 50%;
+        animation: waSpin 0.8s linear infinite;
+    }
+
+    @keyframes waSpin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+</style>
+
+<!-- Agent Configuration Modal -->
+<div id="whatsapp-config-modal" class="modal">
+    <div class="whatsapp-config-modal-content" style="max-width: 450px; margin: 50px auto;">
+        <div class="modal-header"
+            style="border-bottom: 1px solid var(--wa-border); padding-bottom: 15px; margin-bottom: 20px;">
+            <div>
+                <h3 style="margin:0; font-size: 16px;">Configuración</h3>
+                <p style="margin:0; font-size: 10px; color: var(--wa-text-muted);">MODO MINIMALISTA ACTIVO</p>
+            </div>
+            <button class="close-btn" onclick="app.modalManager.close('whatsapp-config')"
+                style="background:transparent; border:none; color:white; cursor:pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <form onsubmit="event.preventDefault(); app.modules.whatsapp.saveConfig();">
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
+                    <label style="margin:0;">Piloto Automático (IA)</label>
+                    <label class="quantum-switch">
+                        <input type="checkbox" id="config-auto-reply" checked>
+                        <span class="qs-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Gemini API Key</label>
+                <input type="password" id="config-gemini-key" class="form-control-quantum" placeholder="sk-..." autocomplete="current-password">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Nombre del Agente</label>
+                <input type="text" id="config-agent-name" class="form-control-quantum" placeholder="Ej: Secretaria">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Teléfono</label>
+                <input type="text" id="config-agent-phone" class="form-control-quantum" placeholder="Numero">
+            </div>
+
+            <div
+                style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px; align-items: center;">
+                    <span>Estado: <span id="wa-status-badge"
+                            style="color: #fbbf24; margin-left: 5px;">Cargando...</span></span>
+                    <button type="button" class="btn-quantum-tiny"
+                        style="width: auto; padding: 0 10px; height: 24px; font-size: 10px;"
+                        onclick="app.modules.whatsapp.requestPairing()">
+                        Vincular por Código
+                    </button>
+                </div>
+                <div id="wa-qr-container"
+                    style="display:none; text-align:center; background: rgba(0,0,0,0.3); padding:20px; border-radius:12px; margin-top:15px; border: 1px dashed var(--wa-border);">
+                    <div id="wa-qr-image-placeholder"></div>
+                </div>
+                <code>Webhook: <span id="config-webhook-url" style="color:var(--wa-accent);">...</span></code>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button type="button" class="filter-tab-btn" style="flex:1;"
+                    onclick="app.modalManager.close('whatsapp-config')">Cerrar</button>
+                <button type="submit" class="filter-tab-btn active" style="flex:2;">Guardar Cambios</button>
+            </div>
+        </form>
+    </div>
+</div>

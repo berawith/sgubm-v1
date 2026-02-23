@@ -1,0 +1,358 @@
+<div class="modal-content" style="max-width: 1350px; width: 95%; height: 90vh;">
+    <div class="modal-header" style="padding: 12px 20px;">
+        <div>
+            <h3 id="payment-modal-title" style="font-size: 1rem;">Registrar Pago</h3>
+            <p class="modal-subtitle-text" style="font-size: 0.65rem;">INGRESO DE TRANSACCIONES</p>
+        </div>
+
+        <button class="close-btn" data-action="close" style="width: 32px; height: 32px; font-size: 16px;">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <div class="modal-body" style="padding: 0; background: #f8fafc;">
+        <form id="payment-form" style="display: contents;">
+            <!-- Client Search Phase -->
+            <div id="payment-client-search-step" style="max-width: 800px; margin: 0 auto; padding: 60px 20px;">
+                <div style="text-align: center; margin-bottom: 32px;">
+                    <h2
+                        style="font-size: 1.8rem; font-weight: 900; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.03em;">
+                        ¿A quién vamos a cobrar?</h2>
+                    <p style="color: #64748b; font-size: 0.95rem; font-weight: 500;">Busca por nombre, IP, documento
+                        o código de suscriptor</p>
+                </div>
+
+                <div class="search-container-premium">
+                    <div class="search-input-group-ultra">
+                        <div class="search-icon-box"
+                            style="padding: 0 20px; color: #94a3b8; display: flex; align-items: center;">
+                            <i class="fas fa-search" style="font-size: 1.2rem;"></i>
+                        </div>
+                        <input type="text" id="payment-client-query" placeholder="Escribe para buscar..."
+                            autocomplete="off" class="search-input-large"
+                            style="flex: 1; border: none; outline: none; font-size: 1.1rem; font-weight: 600; color: #1e293b; background: transparent;">
+                        <button type="button" class="btn-premium" data-action="search"
+                            style="margin-left: 10px; padding: 10px 30px; border-radius: 14px;">
+                            <i class="fas fa-arrow-right"></i>
+                            <span>BUSCAR</span>
+                        </button>
+                    </div>
+
+                    <!-- Help Tip -->
+                    <div id="search-help-tip"
+                        style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; color: #94a3b8; font-size: 0.8rem; font-weight: 600;">
+                        <i class="fas fa-keyboard" style="opacity: 0.5;"></i>
+                        <span>Presiona <kbd
+                                style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; color: #475569;">ENTER</kbd>
+                            para buscar directamente</span>
+                    </div>
+
+                    <!-- Results Area -->
+                    <div id="payment-search-results" class="search-results-floating-panel">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Selected Client Info (Ultra-Premium Banner) -->
+            <div id="selected-client-display"
+                style="display:none; padding: 16px 24px; background: white; border-bottom: 1px solid #f1f5f9; position: sticky; top: 0; z-index: 10;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <div class="client-avatar-luxe"
+                            style="width: 48px; height: 48px; background: var(--primary); border-radius: 14px; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.2rem; box-shadow: 0 8px 16px rgba(79, 70, 229, 0.15);">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div>
+                            <h4 id="display-client-name"
+                                style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #0f172a; letter-spacing: -0.02em;">
+                            </h4>
+                            <div style="display: flex; gap: 8px; margin-top: 2px;">
+                                <span id="display-client-code" class="premium-status-badge secondary"
+                                    style="font-size: 0.6rem; padding: 2px 8px;"></span>
+                                <span id="display-client-ip" class="ip-cell"
+                                    style="background: #f1f5f9; padding: 1px 8px; border-radius: 6px; font-size: 0.75rem;"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="payment-client-debt-display" style="gap: 20px;">
+                        <!-- Debt info cards added here by JS -->
+                    </div>
+
+                    <div style="display: flex; gap: 12px;">
+                        <button type="button" class="btn-secondary" data-action="show-history" title="Ver Historial">
+                            <i class="fas fa-history"></i> Historial
+                        </button>
+                        <button type="button" class="btn-secondary" data-action="clear-client" style="color: #dc2626;"
+                            title="Cambiar Cliente">
+                            <i class="fas fa-user-minus"></i> Cambiar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="payment-details-fields"
+                style="display:none; max-width: 1000px; margin: 0 auto; padding: 40px 20px;">
+                <input type="hidden" id="payment-client-id">
+
+                <div class="form-grid" style="grid-template-columns: repeat(3, 1fr);">
+                    <!-- Amount Card -->
+                    <div class="form-group span-1"
+                        style="background: white; padding: 16px; border-radius: 16px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.01);">
+                        <label class="modal-subtitle-text"
+                            style="color: #059669; margin-bottom: 8px; display: block; font-size: 0.65rem;">MONTO A
+                            PAGAR</label>
+                        <div class="input-icon-wrapper">
+                            <span
+                                style="position: absolute; left: 14px; font-weight: 800; color: #059669; font-size: 1rem;"
+                                id="amount-prefix">$</span>
+                            <input type="text" id="pay-amount" class="form-control" inputmode="numeric"
+                                placeholder="0.00"
+                                style="font-size: 1.25rem; font-weight: 900; padding-left: 32px; height: 44px; border-radius: 10px;">
+                        </div>
+                    </div>
+
+                    <!-- Currency & Method Card -->
+                    <div class="form-group span-2"
+                        style="background: white; padding: 16px; border-radius: 16px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.01); display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <label class="modal-subtitle-text"
+                                style="margin-bottom: 8px; display: block; font-size: 0.65rem;">MONEDA</label>
+                            <select id="pay-currency" class="form-control"
+                                style="height: 44px; font-size: 0.85rem; border-radius: 10px;">
+                                <option value="COP" selected>Pesos (COP)</option>
+                                <option value="USD">Dólares (USD)</option>
+                                <option value="VES">Bolívares (VES)</option>
+                            </select>
+
+                            <!-- NUEVO: Selector de Tasa para VES -->
+                            <div id="ves-rate-selector" style="display: none; margin-top: 10px;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                    <div class="rate-type-card active" data-rate="BCV"
+                                        style="cursor: pointer; border: 2px solid var(--primary); background: #f5f3ff; padding: 6px; border-radius: 10px; text-align: center; transition: all 0.2s;">
+                                        <div
+                                            style="font-size: 0.55rem; font-weight: 800; color: #6d28d9; text-transform: uppercase;">
+                                            BCV (Oficial)</div>
+                                        <div id="val-rate-bcv"
+                                            style="font-size: 0.85rem; font-weight: 900; color: #1e1b4b;">36.50</div>
+                                    </div>
+                                    <div class="rate-type-card" data-rate="COM"
+                                        style="cursor: pointer; border: 2px solid #e2e8f0; background: white; padding: 6px; border-radius: 10px; text-align: center; transition: all 0.2s;">
+                                        <div
+                                            style="font-size: 0.55rem; font-weight: 800; color: #64748b; text-transform: uppercase;">
+                                            COMER (Paralelo)</div>
+                                        <div id="val-rate-com"
+                                            style="font-size: 0.85rem; font-weight: 900; color: #1e1b4b;">40.00</div>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="selected-ves-rate-type" value="BCV">
+                                <div style="margin-top: 4px; text-align: center;">
+                                    <button type="button" class="btn-text" id="btn-update-rates-quick"
+                                        style="font-size: 0.6rem; color: #6366f1; padding: 2px 4px;">
+                                        <i class="fas fa-edit"></i> Ajustar Tasas de Hoy
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="modal-subtitle-text"
+                                style="margin-bottom: 8px; display: block; font-size: 0.65rem;">MÉTODO
+                                DE PAGO</label>
+                            <select id="pay-method" class="form-control" data-action="toggle-method-fields"
+                                style="height: 44px; font-size: 0.85rem; border-radius: 10px;">
+                                <option value="cash">Efectivo</option>
+                                <option value="transfer">Transferencia</option>
+                                <option value="card">Tarjeta / Digital</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- NEW: Fiscal & Conversion Summary Row -->
+                    <div id="fiscal-summary-container" class="form-group span-full"
+                        style="display:none; background: #fdf2f2; padding: 12px 20px; border-radius: 14px; border: 1px dashed #f87171; margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; gap: 24px;">
+                            <div style="text-align: left;">
+                                <div
+                                    style="font-size: 0.6rem; font-weight: 800; color: #991b1b; text-transform: uppercase; margin-bottom: 2px;">
+                                    IGTF (3%)</div>
+                                <div id="fiscal-tax-value"
+                                    style="font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 800; color: #dc2626;">
+                                    $0.00</div>
+                            </div>
+                            <div style="text-align: left;">
+                                <div
+                                    style="font-size: 0.6rem; font-weight: 800; color: #991b1b; text-transform: uppercase; margin-bottom: 2px;">
+                                    MONTO BASE (USD)</div>
+                                <div id="fiscal-base-value"
+                                    style="font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 800; color: #dc2626;">
+                                    $0.00</div>
+                            </div>
+                            <div style="text-align: left;">
+                                <div
+                                    style="font-size: 0.6rem; font-weight: 800; color: #991b1b; text-transform: uppercase; margin-bottom: 2px;">
+                                    TOTAL COBRADO</div>
+                                <div id="fiscal-total-value"
+                                    style="font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 800; color: #dc2626;">
+                                    $0.00</div>
+                            </div>
+                        </div>
+                        <div
+                            style="text-align: right; border-left: 1px solid rgba(220, 38, 38, 0.1); padding-left: 20px;">
+                            <div style="font-size: 0.65rem; color: #ef4444; font-weight: 700;"><i
+                                    class="fas fa-calculator"></i> Tasa aplicada:</div>
+                            <div id="fiscal-rate-value" style="font-size: 0.75rem; font-weight: 800; color: #991b1b;">
+                                1.00</div>
+                        </div>
+                    </div>
+
+                    <!-- Secondary Info Card -->
+                    <div class="form-group span-full"
+                        style="background: white; padding: 16px; border-radius: 16px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.01); display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
+                        <div>
+                            <label class="modal-subtitle-text"
+                                style="margin-bottom: 8px; display: block; font-size: 0.65rem;">FECHA
+                                COBRO</label>
+                            <input type="date" id="pay-date" class="form-control"
+                                style="height: 40px; font-size: 0.8rem; border-radius: 8px;">
+                        </div>
+                        <div style="grid-column: span 2;">
+                            <label class="modal-subtitle-text"
+                                style="margin-bottom: 8px; display: block; font-size: 0.65rem;">HORA
+                                COBRO</label>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                                <select id="pay-hour" class="form-control"
+                                    style="height: 40px; font-size: 0.8rem; border-radius: 8px;">
+                                    <option value="">Hora</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="7">7</option>
+                                    <option value="8">8</option>
+                                    <option value="9">9</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                </select>
+                                <select id="pay-minute" class="form-control"
+                                    style="height: 40px; font-size: 0.8rem; border-radius: 8px;">
+                                    <option value="">Min</option>
+                                    <option value="00">00</option>
+                                    <option value="01">01</option>
+                                    <option value="02">02</option>
+                                    <option value="03">03</option>
+                                    <option value="04">04</option>
+                                    <option value="05">05</option>
+                                    <option value="06">06</option>
+                                    <option value="07">07</option>
+                                    <option value="08">08</option>
+                                    <option value="09">09</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="13">13</option>
+                                    <option value="14">14</option>
+                                    <option value="15">15</option>
+                                    <option value="16">16</option>
+                                    <option value="17">17</option>
+                                    <option value="18">18</option>
+                                    <option value="19">19</option>
+                                    <option value="20">20</option>
+                                    <option value="21">21</option>
+                                    <option value="22">22</option>
+                                    <option value="23">23</option>
+                                    <option value="24">24</option>
+                                    <option value="25">25</option>
+                                    <option value="26">26</option>
+                                    <option value="27">27</option>
+                                    <option value="28">28</option>
+                                    <option value="29">29</option>
+                                    <option value="30">30</option>
+                                    <option value="31">31</option>
+                                    <option value="32">32</option>
+                                    <option value="33">33</option>
+                                    <option value="34">34</option>
+                                    <option value="35">35</option>
+                                    <option value="36">36</option>
+                                    <option value="37">37</option>
+                                    <option value="38">38</option>
+                                    <option value="39">39</option>
+                                    <option value="40">40</option>
+                                    <option value="41">41</option>
+                                    <option value="42">42</option>
+                                    <option value="43">43</option>
+                                    <option value="44">44</option>
+                                    <option value="45">45</option>
+                                    <option value="46">46</option>
+                                    <option value="47">47</option>
+                                    <option value="48">48</option>
+                                    <option value="49">49</option>
+                                    <option value="50">50</option>
+                                    <option value="51">51</option>
+                                    <option value="52">52</option>
+                                    <option value="53">53</option>
+                                    <option value="54">54</option>
+                                    <option value="55">55</option>
+                                    <option value="56">56</option>
+                                    <option value="57">57</option>
+                                    <option value="58">58</option>
+                                    <option value="59">59</option>
+                                </select>
+                                <select id="pay-period" class="form-control"
+                                    style="height: 40px; font-size: 0.8rem; border-radius: 8px;">
+                                    <option value="">AM/PM</option>
+                                    <option value="AM">AM</option>
+                                    <option value="PM">PM</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="group-origin" style="display:none;">
+                            <label class="modal-subtitle-text"
+                                style="margin-bottom: 8px; display: block; font-size: 0.65rem;">ORIGEN</label>
+                            <select id="pay-origin" class="form-control"
+                                style="height: 40px; font-size: 0.8rem; border-radius: 8px;">
+                                <option value="national" selected>Banco Nacional</option>
+                                <option value="international">Internacional / Zelle</option>
+                            </select>
+                        </div>
+                        <div id="group-reference" style="display:none;">
+                            <label class="modal-subtitle-text"
+                                style="margin-bottom: 8px; display: block; font-size: 0.65rem;">REFERENCIA</label>
+                            <input type="text" id="pay-reference" class="form-control" placeholder="Hash o Nro"
+                                style="height: 40px; font-size: 0.8rem; border-radius: 8px;">
+                        </div>
+                    </div>
+
+                    <!-- Notes Field -->
+                    <div class="form-group span-full" style="margin-top: 20px;">
+                        <label class="modal-subtitle-text" style="margin-bottom: 8px; display: block;">NOTAS
+                            INTERNAS / OBSERVACIONES</label>
+                        <textarea id="pay-notes" class="form-control" placeholder="Escribe detalles adicionales aquí..."
+                            style="min-height: 100px; padding: 15px;"></textarea>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="modal-footer"
+        style="background: white; border-top: 1px solid #f1f5f9; margin: 0; padding: 16px 32px; justify-content: space-between; align-items: center;">
+        <div id="payment-footer-info" style="color: #94a3b8; font-size: 0.75rem; font-weight: 500;">
+            <i class="fas fa-shield-alt"></i> Transacción segura y auditada
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <button type="button" class="btn-secondary" data-action="close"
+                style="padding: 10px 24px; font-weight: 700; font-size: 0.85rem;">
+                Cancelar
+            </button>
+            <button form="payment-form" type="submit" id="payment-submit-btn" class="btn-premium"
+                style="padding: 10px 32px; font-size: 0.85rem; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.2);">
+                <i class="fas fa-check-double"></i> <span id="payment-submit-text">Confirmar Pago</span>
+            </button>
+        </div>
+    </div>
+</div>

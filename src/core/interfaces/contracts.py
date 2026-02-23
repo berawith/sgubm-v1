@@ -204,6 +204,34 @@ class INotificationService(ABC):
 
 
 # ============================================================================
+# WHATSAPP AGENT SERVICE INTERFACE
+# ============================================================================
+class IWhatsAppAgentService(ABC):
+    """
+    Contrato para el Agente Inteligente de WhatsApp
+    Define las capacidades de la "Secretaria/Administradora"
+    """
+
+    @abstractmethod
+    def process_incoming_message(self, phone: str, message: str) -> str:
+        """
+        Procesa un mensaje entrante y genera una respuesta inteligente
+        integrada con el CRM y la Administración.
+        """
+        pass
+
+    @abstractmethod
+    def identify_intent(self, message: str) -> Dict[str, Any]:
+        """Identifica la intención del usuario (consulta saldo, reporte falla, etc.)"""
+        pass
+
+    @abstractmethod
+    def execute_administrative_task(self, intent: str, params: Dict[str, Any]) -> str:
+        """Ejecuta una tarea administrativa (ver saldo, registrar promesa)"""
+        pass
+
+
+# ============================================================================
 # REPORT GENERATOR INTERFACE
 # ============================================================================
 class IReportGenerator(ABC):

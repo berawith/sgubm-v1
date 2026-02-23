@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+wa_bridge/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# Backups and Temporary
+backups/
+temp/
+tmp/
+*.bak
+*.swp
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+!src/presentation/web/static/data/*.db
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+logs/
+server_log.txt
+startup_debug.log
+reactivation.log
+
+# Build / Distribution
+dist/
+build/
+.cache/

@@ -12,6 +12,17 @@ def register_socket_events(socketio):
     # Iniciar monitoreo del dashboard (global)
     monitor_manager.start_dashboard_monitoring()
 
+    # Bridge WhatsApp events to SocketIO
+    from src.application.events.event_bus import get_event_bus, SystemEvents
+    event_bus = get_event_bus()
+
+    def on_whatsapp_event(data):
+        socketio.emit('whatsapp_message', data)
+        logger.debug(f"WhatsApp event broadcasted to sockets: {data.get('id')}")
+
+    event_bus.subscribe(SystemEvents.WHATSAPP_MESSAGE_RECEIVED, on_whatsapp_event)
+    event_bus.subscribe(SystemEvents.WHATSAPP_MESSAGE_SENT, on_whatsapp_event)
+
     @socketio.on('connect')
     def on_connect():
         logger.info(f"Client connected: {request.sid}")

@@ -1,192 +1,272 @@
 <!-- REPORTS VIEW (WITH STATISTICS) -->
 <div id="reports-view" class="view content-view" style="display: none;">
-    <div class="view-header"
-        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
-        <div>
-            <h1 class="page-title">Reportes y Estadísticas</h1>
-            <p class="page-subtitle">Análisis financiero y métricas de rendimiento</p>
-        </div>
-    </div>
+    <style>
+        #report-data-table {
+            border-collapse: collapse !important;
+            width: 100% !important;
+        }
 
-    <!-- Toolbar for Reports - Enhanced Premium -->
-    <div class="glass-panel"
-        style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%); border: 1px solid rgba(99, 102, 241, 0.1); box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08);">
-        <div style="display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap;">
-            <div class="filter-item" style="flex: 1; min-width: 180px;">
-                <label
-                    style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">
-                    <i class="fas fa-calendar-alt" style="margin-right: 6px; color: #6366f1;"></i>Desde
-                </label>
-                <input type="date" id="filter-date-start" class="input-premium"
-                    onchange="app.modules.payments.applyFilters()"
-                    style="border: 2px solid #e2e8f0; transition: all 0.3s ease;">
+        #report-data-table td {
+            padding: 1px 4px !important;
+            height: 24px !important;
+            vertical-align: middle !important;
+            border-bottom: 1px solid #f1f5f9 !important;
+        }
+
+        #report-data-table th {
+            padding: 4px 6px !important;
+            font-size: 0.6rem !important;
+        }
+
+        .premium-row {
+            height: auto !important;
+            min-height: 0 !important;
+        }
+
+        .client-report-checkbox {
+            transform: scale(0.8) !important;
+            margin: 0 !important;
+        }
+
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            .printable-report {
+                padding: 0 !important;
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+
+            #report-detailed-analysis>div {
+                border: 1px solid #cbd5e1 !important;
+                box-shadow: none !important;
+            }
+
+            #status-chart-container {
+                height: 200px !important;
+                /* Slightly larger for print */
+                page-break-inside: avoid;
+            }
+
+            /* Ensure grids don't collapse too much */
+            div[style*="display: grid"] {
+                display: flex !important;
+                flex-wrap: wrap !important;
+                gap: 15px !important;
+            }
+
+            div[style*="grid-template-columns: 1fr 1fr"]>div {
+                flex: 1 1 45% !important;
+            }
+
+            /* Summary Cards in Print */
+            div[style*="grid-template-columns: repeat(auto-fit"]>div {
+                flex: 1 1 20% !important;
+                min-width: 150px !important;
+                border: 1px solid #e2e8f0 !important;
+                background-color: #f8fafc !important;
+                /* Force background */
+            }
+
+            /* Fix Analysis Text in Print */
+            #report-detailed-analysis p {
+                font-size: 9pt !important;
+                color: #1e293b !important;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+
+    <!-- Unified Premium Header & Control Center (Hidden on Print) -->
+    <div class="no-print"
+        style="background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 15px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); position: relative; z-index: 100;">
+
+        <!-- View Title Section + Action Buttons -->
+        <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9;">
+            <div style="display: flex; flex-direction: column;">
+                <div style="display: flex; align-items: baseline; gap: 10px;">
+                    <h1 style="margin: 0; font-size: 1rem; font-weight: 900; color: #0f172a; letter-spacing: -0.01em;">
+                        Reportes</h1>
+                    <p style="margin: 0; color: #94a3b8; font-size: 0.65rem; font-weight: 500;">Auditoría y Recaudación
+                    </p>
+                </div>
+                <!-- Screen Stats Container -->
+                <div id="report-screen-stats" style="display: none; gap: 15px; margin-top: 15px;"></div>
             </div>
-            <div class="filter-item" style="flex: 1; min-width: 180px;">
-                <label
-                    style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">
-                    <i class="fas fa-calendar-check" style="margin-right: 6px; color: #6366f1;"></i>Hasta
-                </label>
-                <input type="date" id="filter-date-end" class="input-premium"
-                    onchange="app.modules.payments.applyFilters()"
-                    style="border: 2px solid #e2e8f0; transition: all 0.3s ease;">
+
+            <!-- Global Action Bar -->
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <!-- Financial OK -->
+                <button class="btn-primary" onclick="app.modules.payments.loadAdvancedFinancialReport()"
+                    style="height: 28px; padding: 0 12px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; background: #6366f1; color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    <i class="fas fa-chart-pie"></i> ANALIZAR FINANZAS
+                </button>
+
+                <!-- Audit LISTAR -->
+                <button class="btn-primary" onclick="app.modules.payments.loadClientsStatusReport()"
+                    style="height: 28px; padding: 0 12px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; background: #10b981; color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    <i class="fas fa-list-ul"></i> GENERAR LISTADO
+                </button>
+
+                <!-- Print Button -->
+                <button class="btn-secondary" onclick="window.print()"
+                    style="height: 28px; padding: 0 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; display: flex; align-items: center; gap: 5px; transition: all 0.2s;">
+                    <i class="fas fa-print"></i> Imprimir
+                </button>
             </div>
-            <div class="filter-item" style="flex: 1; min-width: 180px;">
-                <label
-                    style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">
-                    <i class="fas fa-credit-card" style="margin-right: 6px; color: #6366f1;"></i>Método
+        </div>
+
+        <!-- Toolbar Section (Filters only) -->
+        <div class="clients-toolbar" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+
+            <!-- Global Filters (Router) -->
+            <div class="filter-item"
+                style="flex: 1.2; min-width: 150px; background: #f8fafc; padding: 4px 10px; border-radius: 8px; border: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px;">
+                <label style="white-space: nowrap; font-weight: 850; color: #475569; text-transform: uppercase;">
+                    <i class="fas fa-server"></i> Router:
                 </label>
-                <select id="filter-method" class="select-premium" onchange="app.modules.payments.applyFilters()"
-                    style="border: 2px solid #e2e8f0; transition: all 0.3s ease;">
-                    <option value="">Todos los Métodos</option>
-                    <option value="efectivo">💵 Efectivo</option>
-                    <option value="transferencia">🏦 Transferencia</option>
-                    <option value="pago_movil">📱 Pago Móvil</option>
-                    <option value="zelle">💲 Zelle</option>
-                    <option value="binance">₿ Binance</option>
+                <select id="report-router-id" class="select-premium"
+                    style="flex: 1; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                    <option value="">TODOS (Gen)</option>
                 </select>
             </div>
-            <div style="display: flex; gap: 12px; margin-left: auto;">
-                <button class="btn-primary" onclick="app.modules.payments.openReportModal()"
-                    style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white !important; padding: 12px 24px; font-weight: 600; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3); border: none; transition: all 0.3s ease;">
-                    <i class="fas fa-file-invoice-dollar"></i> Generar Reporte
-                </button>
-                <button class="btn-secondary" onclick="app.modules.payments.exportDebtors()"
-                    style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white !important; padding: 12px 24px; font-weight: 600; box-shadow: 0 4px 16px rgba(239, 68, 68, 0.2); border: none; transition: all 0.3s ease;">
-                    <i class="fas fa-user-clock"></i> Morosos
-                </button>
+
+            <!-- Financial Analysis Control -->
+            <div class="filter-item"
+                style="flex: 1; min-width: 150px; background: #f8fafc; padding: 4px 10px; border-radius: 8px; border: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px;">
+                <label style="white-space: nowrap; font-weight: 850; color: #6366f1; text-transform: uppercase;">
+                    <i class="fas fa-calendar-alt"></i> Periodo:
+                </label>
+                <select id="report-financial-period" class="select-premium"
+                    style="flex: 1; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                    <option value="annual" selected>Balance Anual</option>
+                    <option value="semester">Semestral</option>
+                    <option value="quarter">Trimestral</option>
+                </select>
+            </div>
+
+            <!-- Auditor Lists Control -->
+            <div class="filter-item"
+                style="flex: 2; min-width: 250px; background: #f8fafc; padding: 4px 10px; border-radius: 8px; border: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px;">
+                <label style="white-space: nowrap; font-weight: 850; color: #10b981; text-transform: uppercase;">
+                    <i class="fas fa-filter"></i> Auditoría:
+                </label>
+                <div style="display: flex; gap: 5px; align-items: center; flex: 1;">
+                    <select id="report-client-type" class="select-premium"
+                        style="flex: 1.5; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                        <option value="paid">Día</option>
+                        <option value="missing">Faltas</option>
+                        <option value="debtors" selected>Morosos</option>
+                        <option value="deleted">Papelera</option>
+                    </select>
+                    <select id="report-audit-day" class="select-premium"
+                        style="width: 55px; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                        <option value="">Hoy</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                        <option value="9">9</option>
+                        <option value="10">10</option>
+                        <option value="11">11</option>
+                        <option value="12">12</option>
+                        <option value="13">13</option>
+                        <option value="14">14</option>
+                        <option value="15">15</option>
+                        <option value="16">16</option>
+                        <option value="17">17</option>
+                        <option value="18">18</option>
+                        <option value="19">19</option>
+                        <option value="20">20</option>
+                        <option value="21">21</option>
+                        <option value="22">22</option>
+                        <option value="23">23</option>
+                        <option value="24">24</option>
+                        <option value="25">25</option>
+                        <option value="26">26</option>
+                        <option value="27">27</option>
+                        <option value="28">28</option>
+                        <option value="29">29</option>
+                        <option value="30">30</option>
+                        <option value="31">31</option>
+                    </select>
+                    <select id="report-audit-month" class="select-premium"
+                        style="flex: 1; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                        <option value="1">Ene</option>
+                        <option value="2">Feb</option>
+                        <option value="3">Mar</option>
+                        <option value="4">Abr</option>
+                        <option value="5">May</option>
+                        <option value="6">Jun</option>
+                        <option value="7">Jul</option>
+                        <option value="8">Ago</option>
+                        <option value="9">Sep</option>
+                        <option value="10">Oct</option>
+                        <option value="11">Nov</option>
+                        <option value="12">Dic</option>
+                    </select>
+                    <select id="report-audit-year" class="select-premium"
+                        style="width: 70px; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                        <option value="2024">24</option>
+                        <option value="2025">25</option>
+                        <option value="2026" selected>26</option>
+                    </select>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Statistics Section (Minimalista) -->
-    <div
-        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px;">
-        <!-- Today Card -->
-        <div class="stat-card-premium"
-            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #667eea; transition: all 0.2s ease;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                <span
-                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #667eea;">Hoy</span>
-            </div>
-            <div id="pay-stat-today" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #667eea;">
-                $0.00</div>
-            <div style="font-size: 0.72rem; opacity: 0.6;">Recaudación del día</div>
-        </div>
+    <!-- Elegant Print Header (Only visible on Print) -->
+    <div class="print-header">
+        <div style="padding-bottom: 20px; margin-bottom: 30px; text-align: center;">
+            <p id="print-report-title"
+                style="margin: 0; font-size: 18pt; color: #0f172a; font-weight: 950; text-transform: uppercase; letter-spacing: 2px;">
+            </p>
+            <div style="width: 80px; height: 4px; background: #6366f1; margin: 15px auto;"></div>
+            <p style="margin: 5px 0 0 0; font-size: 10pt; color: #64748b; font-weight: 600;">GENERADO EL: <span
+                    id="print-current-date"></span></p>
 
-        <!-- Month Card -->
-        <div class="stat-card-premium"
-            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #f5576c; transition: all 0.2s ease;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                <span
-                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #f5576c;">Este
-                    Mes</span>
+            <!-- New Print Stats Header -->
+            <div id="print-stats-header" style="display: flex; gap: 20px; justify-content: center; margin-top: 15px;">
             </div>
-            <div id="pay-stat-month" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #f5576c;">
-                $0.00</div>
-            <div style="font-size: 0.72rem; opacity: 0.6;">Ingreso mensual</div>
-        </div>
-
-        <!-- Pending Card -->
-        <div class="stat-card-premium"
-            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #f59e0b; transition: all 0.2s ease;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                <span
-                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #f59e0b;">Pendiente</span>
-            </div>
-            <div id="pay-stat-pending" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #f59e0b;">
-                $0.00</div>
-            <div style="font-size: 0.72rem; opacity: 0.6;">Por cobrar</div>
-        </div>
-
-        <!-- Total Card -->
-        <div class="stat-card-premium"
-            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #4facfe; transition: all 0.2s ease;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                <span
-                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #4facfe;">Total</span>
-            </div>
-            <div id="pay-stat-total" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #4facfe;">
-                $0.00</div>
-            <div style="font-size: 0.72rem; opacity: 0.6;">Histórico completo</div>
-        </div>
-
-        <!-- Pagos Card -->
-        <div class="stat-card-premium"
-            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #43e97b; transition: all 0.2s ease;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                <span
-                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #43e97b;">Pagos</span>
-            </div>
-            <div id="pay-stat-clients-paid"
-                style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #43e97b;">
-                0</div>
-            <div style="font-size: 0.72rem; opacity: 0.6;">Clientes al día</div>
-        </div>
-
-        <!-- Morosos Card -->
-        <div class="stat-card-premium"
-            style="background: #ffffff; padding: 14px 18px; border-radius: 10px; color: #1e293b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); border-left: 3px solid #ff6b6b; transition: all 0.2s ease;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                <span
-                    style="font-size: 0.58rem; font-weight: 700; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.08em; color: #ff6b6b;">Morosos</span>
-            </div>
-            <div id="pay-stat-clients-pending"
-                style="font-size: 1.1rem; font-weight: 800; margin-bottom: 3px; color: #ff6b6b;">
-                0</div>
-            <div style="font-size: 0.72rem; opacity: 0.6;">Con deuda pendiente</div>
         </div>
     </div>
 
-    <!-- Charts Section - Enhanced -->
-    <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; margin-bottom: 24px;">
-        <!-- Payment Methods Breakdown -->
-        <div class="glass-panel"
-            style="padding: 24px; background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%); border: 1px solid rgba(99, 102, 241, 0.1); box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08); border-radius: 16px;">
-            <h3
-                style="margin: 0 0 20px 0; font-size: 1.1rem; color: #1e293b; font-weight: 800; display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-chart-pie" style="color: #6366f1;"></i>
-                Resumen por Método de Pago
-            </h3>
-            <div id="method-breakdown" style="display: flex; gap: 12px; flex-direction: column;"><!-- JS Rendered -->
-            </div>
+    <!-- Results Section -->
+    <div id="report-results-container" class="printable-report"
+        style="padding: 15px; background: white; border-radius: 12px; min-height: 400px; margin-bottom: 24px;">
+
+        <div id="report-initial-placeholder" class="no-print"
+            style="text-align: center; padding: 80px 0; color: #94a3b8;">
+            <i class="fas fa-file-invoice-dollar"
+                style="font-size: 3rem; opacity: 0.2; margin-bottom: 15px; display: block;"></i>
+            <h4 style="font-weight: 700; color: #64748b;">Seleccione un reporte para analizar</h4>
+            <p style="font-size: 0.8rem;">Los resultados se mostrarán listos para impresión.</p>
         </div>
 
-        <!-- Revenue Trend Chart -->
-        <div class="glass-panel"
-            style="padding: 24px; background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%); border: 1px solid rgba(99, 102, 241, 0.1); box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08); border-radius: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3
-                    style="margin: 0; font-size: 1.1rem; color: #1e293b; font-weight: 800; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-chart-line" style="color: #6366f1;"></i>
-                    Tendencia de Recaudación
-                </h3>
+        <div id="report-data-content" style="display: none;">
+            <div id="report-table-header" style="margin-bottom: 15px;"></div>
+
+            <div class="table-responsive-premium">
+                <table class="premium-table" id="report-data-table" style="width: 100%; border-collapse: collapse;">
+                    <thead id="report-table-head"></thead>
+                    <tbody id="report-table-body"></tbody>
+                </table>
             </div>
-            <div style="height: 280px; position: relative;">
-                <canvas id="revenue-chart"></canvas>
-            </div>
+
+            <div id="report-footer-stats" style="margin-top: 20px; padding-top: 15px;"></div>
         </div>
     </div>
+
 </div>
-
-<style>
-    .stat-card-premium:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15) !important;
-    }
-
-    .input-premium:focus,
-    .select-premium:focus {
-        border-color: #6366f1 !important;
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4) !important;
-    }
-
-    .btn-secondary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 24px rgba(239, 68, 68, 0.3) !important;
-    }
-</style>

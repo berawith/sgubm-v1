@@ -5,15 +5,38 @@ Endpoints CRUD para gestión de routers con sincronización MikroTik
 from flask import Blueprint, jsonify, request
 from datetime import datetime
 from src.infrastructure.database.db_manager import get_db
-from src.infrastructure.database.models import NetworkSegment, Router
+from src.infrastructure.database.models import NetworkSegment, Router, Invoice, InvoiceItem, InternetPlan
 from src.infrastructure.mikrotik.adapter import MikroTikAdapter
 from src.application.services.audit_service import AuditService
 from ipaddress import ip_network, ip_address
+from src.application.services.report_service import ReportService
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 routers_bp = Blueprint('routers', __name__, url_prefix='/api/routers')
+
+def _get_next_subscriber_code(client_repo, prefix='CLI-'):
+    """Genera el siguiente código de suscriptor basado en el máximo actual en BD"""
+    try:
+        existing_clients = client_repo.get_all()
+        max_num = 0
+        for c in existing_clients:
+            if c.subscriber_code and c.subscriber_code.startswith(prefix):
+                match = re.search(f"{prefix}(\\d+)", c.subscriber_code)
+                if match:
+                    try:
+                        num = int(match.group(1))
+                        if num > max_num:
+                            max_num = num
+                    except:
+                        pass
+        return f"{prefix}{max_num + 1:04d}"
+    except Exception as e:
+        logger.error(f"Error generating subscriber code: {e}")
+        # fallback seguro
+        return f"{prefix}{len(client_repo.get_all()) + 1:04d}"
 
 
 @routers_bp.route('', methods=['GET'])
@@ -189,7 +212,7 @@ def test_connection(router_id):
             return jsonify({
                 'success': False,
                 'message': 'No se pudo conectar al router'
-            }), 400
+            }), 200
             
     except Exception as e:
         logger.error(f"Error testing connection: {str(e)}")
@@ -197,7 +220,7 @@ def test_connection(router_id):
         return jsonify({
             'success': False,
             'message': f'Error de conexión: {str(e)}'
-        }), 400
+        }), 200
 
 
 @routers_bp.route('/<int:router_id>/billing', methods=['PUT'])
@@ -252,7 +275,9 @@ def sync_router(router_id):
     - confirm=True: Ejecuta el aprovisionamiento real
     """
     # Obtener parámetro de confirmación del body
-    confirm = request.json.get('confirm', False) if request.json else False
+    data = request.json if request.json else {}
+    confirm = data.get('confirm', False)
+    selected_keys = set(data.get('selected_candidates', []))
     
     db = get_db()
     router_repo = db.get_router_repository()
@@ -276,7 +301,7 @@ def sync_router(router_id):
             return jsonify({
                 'success': False,
                 'message': 'No se pudo conectar al router. Verifica la IP y que tengas acceso a la red.'
-            }), 400
+            }), 200
 
         # Descubrir configuración
         config = adapter.discover_configuration()
@@ -296,7 +321,7 @@ def sync_router(router_id):
         
         # ----------------------------------------------------------------------
         # NUEVO: AUTO-PROVISIONING (Descubrimiento y creación automática)
-        # Con soporte para confirmación en dos pasos
+        # Con soporte para confirmación en dos pasos y selección
         # ----------------------------------------------------------------------
         provisioned_count = 0
         candidates_count = 0
@@ -314,7 +339,7 @@ def sync_router(router_id):
         logger.info(f"Sync sync_router: Start auto-provisioning. router={router_id}, segments_found={len(allowed_networks)}")
 
         def is_ip_allowed(ip_str):
-            if not has_segments_filter: return True # FIXED: Default to True if no whitelist defined
+            if not has_segments_filter: return True 
             clean_ip = ip_str.split('/')[0] if ip_str else ''
             if not clean_ip or clean_ip == '0.0.0.0': return False
             try:
@@ -332,24 +357,9 @@ def sync_router(router_id):
             
             # Patrones de equipos de gestión a excluir
             management_patterns = [
-                'GESTION',
-                'GESTION-AP',
-                'AP-',
-                'ROUTER-',
-                'MIKROTIK',
-                'SWITCH',
-                'CORE',
-                'BACKBONE',
-                'INFRAESTRUCTURA',
-                'ADMIN',
-                'MANAGEMENT',
-                'UBIQUITI',
-                'TOWER',
-                'TORRE',
-                'PTP',
-                'ENLACE',
-                'APB'
-                # 'STA' removed (caused false positives for names like Costa/Acosta)
+                'GESTION', 'GESTION-AP', 'AP-', 'ROUTER-', 'MIKROTIK', 'SWITCH',
+                'CORE', 'BACKBONE', 'INFRAESTRUCTURA', 'ADMIN', 'MANAGEMENT',
+                'UBIQUITI', 'TOWER', 'TORRE', 'PTP', 'ENLACE', 'APB'
             ]
             
             # Verificar si el nombre contiene algún patrón
@@ -358,182 +368,223 @@ def sync_router(router_id):
                     return True
             return False
 
-        existing_clients = client_repo.get_all()
-        existing_usernames = {c.username.lower() for c in existing_clients}
-        existing_ips = {c.ip_address for c in existing_clients if c.ip_address}
+        # Obtener clientes existentes GLOBALES para verificar IP duplicada real
+        all_clients = client_repo.get_all()
+        # Mapa global de IPs: IP -> (ClientName, RouterID)
+        global_ip_map = {c.ip_address: {'name': c.legal_name, 'router': c.router_id} for c in all_clients if c.ip_address}
+        
+        # Mapa local (este router) para nombres de usuario y demas
+        existing_clients_in_router = [c for c in all_clients if c.router_id == router_id]
+        existing_usernames = {c.username.lower() for c in existing_clients_in_router}
 
-        # 2. Escanear estado actual del Router
+            # 2. Escanear estado actual del Router
         try:
+            # Obtener recursos CRUDOS
             ppp_active = adapter.get_active_pppoe_sessions()
             ppp_secrets = adapter.get_all_pppoe_secrets()
-            all_profiles = adapter.get_ppp_profiles()
             all_pools = adapter.get_ip_pools()
             existing_queues = adapter._api_connection.get_resource('/queue/simple').get()
+            dhcp_leases = adapter.get_dhcp_leases()
+            arp_table = adapter.get_arp_table()
             
-            # Mapa de pools y perfiles permitidos para PPPoE
-            pool_map = {p.get('name'): p.get('ranges') for p in all_pools}
-            allowed_profiles = set()
-            for p in all_profiles:
-                remote = p.get('remote-address')
-                if remote and is_ip_allowed(remote):
-                    allowed_profiles.add(p.get('name'))
-                elif pool_map.get(remote):
-                    first = pool_map[remote].split(',')[0].split('-')[0]
-                    if is_ip_allowed(first):
-                        allowed_profiles.add(p.get('name'))
-
-            logger.info(f"Sync sync_router: Scanning router sources. ppp_active={len(ppp_active)}, ppp_secrets={len(ppp_secrets)}, queues={len(existing_queues)}")
+            # Construir Sets de validación
             
-            seen_ips = set()
-            seen_mikrotik_usernames = set()
-            management_ips = set() # IPs identificadas como gestión (para excluir de ARP)
-            
-            for name, data in ppp_active.items():
-                # FILTRO: Excluir equipos de gestión (nombre y comentario)
-                comment = data.get('comment', '')
-                if is_management_equipment(name) or is_management_equipment(comment):
-                    if data.get('ip'): management_ips.add(data['ip'])
-                    continue
-
-                seen_mikrotik_usernames.add(name.lower())
-                if data.get('ip'): seen_ips.add(data['ip'])
-                
+            # A. IPs que YA tienen Simple Queue (Ya están limitados/gestionados)
+            ips_with_queues = set()
             for q in existing_queues:
-                q_name = q.get('name', '')
-                target = q.get('target', '').split('/')[0]
+                target = q.get('target', '')
+                # Target puede ser "192.168.1.10/32" o "192.168.1.10"
+                clean_target = target.split('/')[0]
+                if clean_target:
+                    ips_with_queues.add(clean_target)
+
+            # B. IPs activas en ARP (Para validar vs DHCP)
+            ips_in_arp = set()
+            for arp in arp_table:
+                if arp.get('address'):
+                    ips_in_arp.add(arp.get('address'))
+            
+            logger.info(f"Sync Logic: Queues found={len(ips_with_queues)}, ARP entries={len(ips_in_arp)}, DHCP Leases={len(dhcp_leases)}")
+            
+            candidates = {} # Identificador único -> Info del candidato
+
+            # ------------------------------------------------------------
+            # ESTRATEGIA DE SINCRONIZACIÓN REFINADA (Solicitud Usuario)
+            # 1. Recorrer DHCP Leases
+            # 2. Validar coincidencia con ARP
+            # 3. Validar que NO tenga Simple Queue (Si tiene, ya está gestionado)
+            # 4. Validar que NO esté en BD local (existing_usernames / existing_ips)
+            # ------------------------------------------------------------
+
+            for lease in dhcp_leases:
+                ip = lease.get('address')
+                mac = lease.get('mac-address', '')
+                host_name = lease.get('host-name', '')
+                comment = lease.get('comment', '')
                 
-                # FILTRO: Excluir equipos de gestión (nombre y comentario)
-                comment = q.get('comment', '')
-                if is_management_equipment(q_name) or is_management_equipment(comment):
-                    if target: management_ips.add(target)
+                # --- Filtros de Exclusión ---
+
+                # 1. IP Válida y Permitida
+                if not ip or not is_ip_allowed(ip): 
+                    continue
+                
+                # 2. Gestión/Infraestructura
+                if is_management_equipment(host_name) or is_management_equipment(comment):
                     continue
 
-                if q_name: seen_mikrotik_usernames.add(q_name.lower())
-                if target: seen_ips.add(target)
+                # 3. Validar con ARP (Debe estar activo/presente en la red física)
+                if ip not in ips_in_arp:
+                    # Si tiene lease pero no está en ARP, probablemente no está conectado
+                    continue
 
-            # 3. Descubrir Candidatos (PPPoE Secrets + DHCP/ARP)
-            candidates = {} # Identificador único -> Info del candidato
-            
-            # A. Candidatos PPPoE Secrets (Fuera de BD)
+                # 4. Validar Simple Queues (Si ya tiene queue, NO es candidato a "Nuevo")
+                if ip in ips_with_queues:
+                    continue
+
+                # 5. Local DB Check (Si ya está en BD de este router)
+                # Check IP
+                if ip in existing_ips:
+                    continue
+                
+                # Nombre propuesto
+                host = host_name or comment or f"User-{ip.split('.')[-1]}"
+                
+                # Check Username Local
+                if host.lower() in existing_usernames:
+                    continue
+
+                # --- Si pasa todo, es un CLIENTE "DETECTADO (No Queue)" ---
+                
+                # Check Global Dupes
+                ip_status = 'ok'
+                dup_info = ''
+                if ip in global_ip_map:
+                    dup_client = global_ip_map[ip]
+                    is_same_router = dup_client['router'] == router_id
+                    # Si está en el mismo router en la BD, deberia haber caído en 'existing_ips' check
+                    # Pero si la IP cambió...
+                    ip_status = 'conflict' if is_same_router else 'warning'
+                    dup_info = f"Asignada a: {dup_client['name']}"
+
+                candidates[f"dhcp_{ip}"] = {
+                    'key': f"dhcp_{ip}",
+                    'host': host,
+                    'ip': ip,
+                    'mac': mac,
+                    'source': 'DHCP+ARP Verified',
+                    'type': 'simple_queue', # Default type for new syncs
+                    'profile': '15M', # Default
+                    'ip_status': ip_status,
+                    'dup_info': dup_info
+                }
+
+            # También podríamos querer importar PPPoE Secrets que NO estén en BD?
+            # El usuario mencionó especificamente DHCP -> ARP -> Queue.
+            # Pero mantenemos la importación de secrets si no están en BD, pues son config válida.
             for s in ppp_secrets:
                 name = s.get('name', '')
                 ip = s.get('remote_address', '')
                 profile = s.get('profile', '')
                 
-                if name.lower() in existing_usernames or name.lower() in seen_mikrotik_usernames:
-                    continue
+                if not is_ip_allowed(ip): continue
+                if name.lower() in existing_usernames: continue
+                if is_management_equipment(name): continue
                 
-                # Si está en segmento permitido por IP o Perfil
-                if is_ip_allowed(ip) or profile in allowed_profiles:
-                    candidates[name] = {
-                        'host': name,
-                        'ip': ip if ip and ip != '0.0.0.0' else '',
-                        'mac': '',
-                        'source': 'MikroTik Secret',
-                        'type': 'pppoe',
-                        'profile': profile,
-                        'password': s.get('password', '')
-                    }
-
-            # B. Candidatos Simple Queues (NUEVO: Escanear Queues para descubrir clientes que no son PPPoE)
-            for q in existing_queues:
-                q_name = q.get('name', '')
-                target = q.get('target', '').split('/')[0]
-                q_profile = q.get('max-limit', '')
-
-                if not q_name or q_name.lower() in existing_usernames or q_name.lower() in seen_mikrotik_usernames:
-                    continue
-                
-                if is_ip_allowed(target):
-                    candidates[f"q_{q_name}"] = {
-                        'host': q_name,
-                        'ip': target,
-                        'mac': '',
-                        'source': 'Simple Queue',
-                        'type': 'simple_queue',
-                        'profile': q_profile
-                    }
-
-            # C. Candidatos DHCP
-            dhcp_leases = adapter.get_dhcp_leases()
-            for lease in dhcp_leases:
-                ip = lease.get('address')
-                host_name = lease.get('host-name', '')
-                comment = lease.get('comment', '')
-                if is_management_equipment(host_name) or is_management_equipment(comment):
-                    if ip: management_ips.add(ip)
-                    continue
-                if not ip or not is_ip_allowed(ip): continue
-                if ip in seen_ips: continue
-                
-                # Evitar duplicar si ya lo capturamos por Secret o Queue
-                if not any(c.get('ip') == ip for c in candidates.values()):
-                    host = lease.get('host-name') or lease.get('comment') or f"User-{ip.split('.')[-1]}"
-                    candidates[f"dhcp_{ip}"] = {
-                        'host': host,
-                        'ip': ip,
-                        'mac': lease.get('mac-address', ''),
-                        'source': 'DHCP',
-                        'type': 'simple_queue'
-                    }
-
-            # D. Candidatos ARP
-            arp_table = adapter.get_arp_table()
-            for arp in arp_table:
-                ip = arp.get('address')
-                comment = arp.get('comment', '')
-                if is_management_equipment(comment):
-                    if ip: management_ips.add(ip)
-                    continue
-                if not ip or not is_ip_allowed(ip): continue
-                if ip in seen_ips or ip in management_ips: continue
-                if any(c.get('ip') == ip for c in candidates.values()): continue
-                
-                candidates[f"arp_{ip}"] = {
-                    'host': arp.get('comment', f"User-{ip.split('.')[-1]}"),
-                    'mac': arp.get('mac-address', ''),
-                    'source': 'ARP',
-                    'type': 'simple_queue'
+                # Si es un secret, es un candidato válido aunque ya tenga queue (dynamic) o no.
+                # Lo tratamos como "Importar configuración existente"
+                candidates[name] = {
+                    'key': name,
+                    'host': name,
+                    'ip': ip,
+                    'mac': '',
+                    'source': 'MikroTik Secret',
+                    'type': 'pppoe',
+                    'profile': profile,
+                    'password': s.get('password', ''),
+                    'ip_status': 'ok',
+                    'dup_info': ''
                 }
 
-            logger.info(f"Sync sync_router: Valid provisioning candidates={len(candidates)}")
+
             candidates_count = len(candidates)
+            logger.info(f"Sync sync_router: Valid provisioning candidates={candidates_count}")
 
             # 4. PROVISIONAR (Solo si confirm=True)
             if confirm:
-                for cid, info in candidates.items():
-                    # El usuario quiere nombres con espacios según la captura de WinBox
+                # Si confirm=True, filtramos por selected_keys si se enviaron
+                # Si selected_keys está vacío pero confirm=True, asumimos TODOS? 
+                # Mejor seguridad: Si selected_keys existe, usarlo. Si no (legacy), todos.
+                # El frontend enviará selected_candidates siempre. 
+                
+                final_candidates = []
+                if 'selected_candidates' in data:
+                    # Validar explicitamente contra selected_keys
+                    for k, cand in candidates.items():
+                        if k in selected_keys:
+                            final_candidates.append(cand)
+                else:
+                    # Legacy behavior: All
+                     final_candidates = list(candidates.values())
+
+                for info in final_candidates:
                     original_host = info['host']
                     username = original_host 
                     ip = info.get('ip', '')
                     c_type = info.get('type', 'simple_queue')
                     
-                    # Evitar colisión de nombres
+                    # Evitar colisión de nombres (generación de unicos)
                     base_username = username
                     counter = 1
-                    while username.lower() in seen_mikrotik_usernames or username.lower() in existing_usernames:
-                        suffix = ip.split('.')[-1] if ip else counter
-                        username = f"{base_username} ({suffix})"
-                        if counter > 1 and ip:
-                            username = f"{base_username} ({suffix}-{counter})"
-                        counter += 1
+                    while username.lower() in existing_usernames: # Check local DB only for naming collision
+                         suffix = ip.split('.')[-1] if ip else counter
+                         username = f"{base_username} ({suffix})"
+                         if counter > 1 and ip:
+                             username = f"{base_username} ({suffix}-{counter})"
+                         counter += 1
                     
                     # A. Crear Registro en BD
-                    total_db_clients = len(client_repo.get_all())
-                    subscriber_code = f"CLI-{total_db_clients + 1:04d}"
-                    legal_name = username # Ya no quitamos espacios
+                    subscriber_code = _get_next_subscriber_code(client_repo)
+                    legal_name = username 
+                    
+                    # Determine Plan Information
+                    plan_name = ReportService.format_bandwidth(info.get('profile', '15M/15M'))
+                    monthly_fee = 70000.0 if router_id == 2 else 90000.0
+                    download_val = '15M'
+                    upload_val = '15M'
+                    
+                    # Logic: Try default_plan_id first, then map profile to plan name, else default
+                    selected_plan_id = data.get('default_plan_id')
+                    try:
+                        plan_obj = None
+                        if selected_plan_id:
+                            plan_obj = InternetPlan.query.get(selected_plan_id)
+                        
+                        if not plan_obj:
+                             mikrotik_profile = info.get('profile', '')
+                             if mikrotik_profile:
+                                plan_obj = InternetPlan.query.filter_by(name=mikrotik_profile).first()
+
+                        if plan_obj:
+                            plan_name = plan_obj.name
+                            monthly_fee = plan_obj.monthly_price
+                            # Convert kbps to M string format for display/storage if needed, or keeping raw if schema changed
+                            # Schema seems to store strings like '15M' based on previous code
+                            download_val = f"{int(plan_obj.download_speed/1000)}M"
+                            upload_val = f"{int(plan_obj.upload_speed/1000)}M"
+                    except Exception as e:
+                        logger.error(f"Error mapping plan for {username}: {e}")
                     
                     client_data = {
                         'router_id': router_id,
                         'subscriber_code': subscriber_code,
                         'legal_name': legal_name,
-                        'username': username,
+                        'username': username, # Username unico generado
                         'password': info.get('password', 'N/A'),
                         'ip_address': ip,
-                        'plan_name': info.get('profile', '15M/15M'),
-                        'monthly_fee': 70000.0 if router_id == 2 else 90000.0,
-                        'download_speed': '15M',
-                        'upload_speed': '15M',
+                        'plan_name': plan_name,
+                        'monthly_fee': monthly_fee,
+                        'download_speed': download_val,
+                        'upload_speed': upload_val,
                         'service_type': c_type,
                         'status': 'active',
                         'mikrotik_id': ''
@@ -549,7 +600,7 @@ def sync_router(router_id):
                                 'queue_name': username,
                                 'target_address': f"{ip}/32",
                                 'max_limit': '15M/15M',
-                                'comment': "" # Vacío por solicitud del usuario
+                                'comment': ""
                             }
                             result = adapter._create_queue_client(queue_payload)
                             if result.get('success'):
@@ -561,10 +612,120 @@ def sync_router(router_id):
                             provisioned_count += 1
                             logger.info(f"Imported existing PPPoE Secret {username} to DB")
 
+                        # --- SMART IMPORT LOGIC ---
+                        # Procesar opciones financieras (Deuda Inicial, Prorrateo, etc.)
+                        import_strategy = data.get('import_strategy')
+                        
+                        if import_strategy == 'debt':
+                            try:
+                                initial_debt = float(data.get('initial_debt', 0))
+                                if initial_debt > 0:
+                                    inv = Invoice(
+                                        client_id=db_client.id,
+                                        issue_date=datetime.now(),
+                                        due_date=datetime.now(),
+                                        total_amount=initial_debt,
+                                        status='overdue',
+                                        notes="Deuda Inicial (Migración - Smart Import)"
+                                    )
+                                    db.session.add(inv)
+                                    db.session.flush()
+                                    
+                                    item = InvoiceItem(
+                                        invoice_id=inv.id,
+                                        description="Saldo Anterior Pendiente",
+                                        quantity=1,
+                                        unit_price=initial_debt,
+                                        total=initial_debt
+                                    )
+                                    db.session.add(item)
+                                    db.session.commit()
+                                    logger.info(f"Smart Import: Created initial debt invoice for {username}: {initial_debt}")
+                            except Exception as fin_ex:
+                                logger.error(f"Error creating debt invoice for {username}: {fin_ex}")
+
+                        elif import_strategy == 'clean':
+                            clean_type = data.get('clean_type')
+                            if clean_type == 'prorate':
+                                try:
+                                    # Obtener billing_day del router actual
+                                    router_obj = Router.query.get(router_id)
+                                    billing_day = router_obj.billing_day if router_obj and router_obj.billing_day else 1
+                                    today_day = datetime.now().day
+                                    
+                                    # Calculo simplificado de días comerciales (30 dias)
+                                    days_remaining = 0
+                                    if billing_day > today_day:
+                                        days_remaining = billing_day - today_day
+                                    else:
+                                        # Próximo mes
+                                        days_remaining = (30 - today_day) + billing_day
+                                    
+                                    # Cap at 30
+                                    if days_remaining > 30: days_remaining = 30
+                                    if days_remaining < 0: days_remaining = 0
+                                    
+                                    if days_remaining > 0:
+                                        plan_price = client_data['monthly_fee']
+                                        daily_rate = plan_price / 30
+                                        prorated_amount = daily_rate * days_remaining
+                                        
+                                        inv = Invoice(
+                                            client_id=db_client.id,
+                                            issue_date=datetime.now(),
+                                            due_date=datetime.now(),
+                                            total_amount=prorated_amount,
+                                            status='pending',
+                                            notes=f"Prorrateo ({days_remaining} días hasta corte)"
+                                        )
+                                        db.session.add(inv)
+                                        db.session.flush()
+                                        
+                                        item = InvoiceItem(
+                                            invoice_id=inv.id,
+                                            description=f"Servicio Proporcional ({days_remaining} días)",
+                                            quantity=1,
+                                            unit_price=prorated_amount,
+                                            total=prorated_amount
+                                        )
+                                        db.session.add(item)
+                                        db.session.commit()
+                                        logger.info(f"Smart Import: Created prorated invoice for {username}: {prorated_amount}")
+                                except Exception as fin_ex:
+                                    logger.error(f"Error creating prorated invoice for {username}: {fin_ex}")
+                            
+                            elif clean_type == 'full':
+                                try:
+                                    full_amount = client_data['monthly_fee']
+                                    inv = Invoice(
+                                        client_id=db_client.id,
+                                        issue_date=datetime.now(),
+                                        due_date=datetime.now(),
+                                        total_amount=full_amount,
+                                        status='pending',
+                                        notes="Factura Mes Inicial (Completo)"
+                                    )
+                                    db.session.add(inv)
+                                    db.session.flush()
+                                    
+                                    item = InvoiceItem(
+                                        invoice_id=inv.id,
+                                        description="Servicio de Internet (Mes Completo)",
+                                        quantity=1,
+                                        unit_price=full_amount,
+                                        total=full_amount
+                                    )
+                                    db.session.add(item)
+                                    db.session.commit()
+                                except Exception as fin_ex:
+                                     logger.error(f"Error creating full invoice for {username}: {fin_ex}")
+
                         # Añadir a vistos para evitar duplicados en la misma ejecución
-                        seen_mikrotik_usernames.add(username.lower())
-                        if ip: seen_ips.add(ip)
+                        existing_usernames.add(username.lower())
+                        
                     except Exception as ex:
+                        # IMPORTANTE: Rollback para evitar bloqueo de sesión
+                        db.session.rollback()
                         logger.error(f"Error provisioning client {username} at {ip}: {ex}")
 
         except Exception as e:
@@ -584,22 +745,22 @@ def sync_router(router_id):
         adapter.disconnect()
         
         # Auditoría de sincronización masiva
-        AuditService.log(
-            operation='router_sync',
-            category='system',
-            entity_type='router',
-            entity_id=router_id,
-            description=f"Sincronización de router {router.alias}. Candidatos: {candidates_count}, Provisionados: {provisioned_count}"
-        )
-        
-        logger.info(f"Router sincronizado: {router.alias}. Confirmed: {confirm}, Candidates: {candidates_count}, Provisioned: {provisioned_count}")
+        if confirm and provisioned_count > 0:
+             AuditService.log(
+                operation='router_sync',
+                category='system',
+                entity_type='router',
+                entity_id=router_id,
+                description=f"Sincronización de router {router.alias}. Candidatos: {candidates_count}, Provisionados: {provisioned_count}"
+            )
         
         return jsonify({
             'success': True,
-            'requires_confirmation': not confirm and candidates_count > 0,
+            'requires_confirmation': not confirm,
             'current_queues': current_queues_count,
             'candidates_to_add': candidates_count,
-            'message': f'Sincronización completada. {provisioned_count} nuevos clientes provisionados.' if confirm else f'Descubiertos {candidates_count} candidatos para aprovisionar.',
+            'candidates': list(candidates.values()) if not confirm else [],
+            'message': f'Sincronización completada. {provisioned_count} clientes importados.' if confirm else f'Descubiertos {candidates_count} nuevos candidatos.',
             'details': {
                 'methods_detected': config['methods'],
                 'clients_in_db': clients_in_db,
@@ -613,7 +774,7 @@ def sync_router(router_id):
         return jsonify({
             'success': False,
             'message': f'Error de sincronización: {str(e)}'
-        }), 400
+        }), 200
 @routers_bp.route('/<int:router_id>/setup-cutoff', methods=['POST'])
 def setup_cutoff(router_id):
     """
@@ -641,12 +802,12 @@ def setup_cutoff(router_id):
                 return jsonify({
                     'success': False,
                     'message': 'No se pudieron configurar algunas reglas. Verifica los permisos del usuario API.'
-                }), 400
+                }), 200
         else:
             return jsonify({
                 'success': False,
                 'message': 'No se pudo conectar al router'
-            }), 400
+            }), 200
     except Exception as e:
         logger.error(f"Error in setup-cutoff: {e}")
         return jsonify({
@@ -827,7 +988,7 @@ def monitor_routers():
                         }
                         
                         if res['status'] == 'online':
-                            update_data['last_online_at'] = datetime.utcnow()
+                            update_data['last_online_at'] = datetime.now()
                         
                         # Actualizar en DB
                         router_repo.update(res['id'], update_data)
@@ -1005,7 +1166,7 @@ def discover_clients(router_id):
         return jsonify({
             'success': False,
             'message': f'Error al descubrir clientes: {str(e)}'
-        }), 400
+        }), 200
 
 
 
@@ -1039,8 +1200,8 @@ def import_clients(router_id):
     skipped = []
     errors = []
     
-    # Obtener clientes existentes para detectar duplicados
-    existing_clients = client_repo.get_all()
+    # Obtener clientes existentes SOLO de este router para detectar duplicados locales
+    existing_clients = client_repo.get_filtered(router_id=router_id)
     existing_usernames = {c.username.lower(): c for c in existing_clients}
     existing_ips = {c.ip_address: c for c in existing_clients if c.ip_address}
     
@@ -1049,8 +1210,7 @@ def import_clients(router_id):
         if code_format == 'username':
             return None  # Se usará el username
         else:  # auto
-            total = len(client_repo.get_all())
-            return f"CLT-{total + 1:04d}"
+            return _get_next_subscriber_code(client_repo)
     
     # Importar Simple Queues
     for queue in simple_queues:
@@ -1211,9 +1371,9 @@ def reboot_router(router_id):
                 
                 return jsonify({'success': True, 'message': 'Comando de reinicio enviado. El router se reiniciará en breve.'})
             else:
-                return jsonify({'success': False, 'message': 'No se pudo enviar el comando de reinicio'}), 500
+                return jsonify({'success': False, 'message': 'No se pudo enviar el comando de reinicio'}), 200
         else:
-            return jsonify({'success': False, 'message': 'No se pudo conectar al router'}), 400
+            return jsonify({'success': False, 'message': 'No se pudo conectar al router'}), 200
             
     except Exception as e:
         logger.error(f"Error rebooting router: {e}")
@@ -1251,11 +1411,33 @@ def get_router_interfaces(router_id):
                 
             return jsonify(interfaces)
         else:
-            return jsonify({'error': 'No se pudo conectar al router'}), 400
-            
+            return jsonify([]), 200
     except Exception as e:
         logger.error(f"Error getting interfaces: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify([]), 200
+
+@routers_bp.route('/<int:router_id>/logs', methods=['GET'])
+def get_router_logs(router_id):
+    """Obtiene logs recientes del router"""
+    db = get_db()
+    router_repo = db.get_router_repository()
+    
+    router = router_repo.get_by_id(router_id)
+    if not router:
+        return jsonify({'error': 'Router no encontrado'}), 404
+        
+    limit = request.args.get('limit', 50, type=int)
+    adapter = MikroTikAdapter()
+    try:
+        if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
+            logs = adapter.get_logs(limit=limit)
+            adapter.disconnect()
+            return jsonify(logs)
+        else:
+            return jsonify([]), 200
+    except Exception as e:
+        logger.error(f"Error getting logs API: {e}")
+        return jsonify([]), 200
 
 @routers_bp.route('/<int:router_id>/interface/<path:interface_name>/traffic', methods=['GET'])
 def get_interface_traffic(router_id, interface_name):
@@ -1313,6 +1495,55 @@ def save_monitoring_preferences(router_id):
     except Exception as e:
         logger.error(f"Error saving monitoring preferences: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+@routers_bp.route('/<int:router_id>/clients/export', methods=['GET'])
+def export_router_clients(router_id):
+    """Exporta el listado de clientes de un router a PDF o Excel"""
+    format_type = request.args.get('format', 'pdf').lower()
+    
+    db = get_db()
+    router = db.get_router_repository().get_by_id(router_id)
+    if not router:
+        return jsonify({'error': 'Router no encontrado'}), 404
+        
+    clients = db.get_client_repository().get_by_router(router_id)
+    
+    # Convertir a dicts con campos requeridos por el reporte
+    client_list = []
+    for c in clients:
+        client_list.append({
+            'subscriber_code': c.subscriber_code,
+            'legal_name': c.legal_name,
+            'dni': c.identity_document,
+            'ip_address': c.ip_address,
+            'phone': c.phone,
+            'plan_name': c.plan_name,
+            'status': c.status
+        })
+    
+    # Ordenar alfabéticamente
+    client_list.sort(key=lambda x: x['legal_name'].lower())
+    
+    from src.application.services.report_service import ReportService
+    from flask import send_file
+    
+    report_service = ReportService()
+    
+    if format_type == 'excel':
+        output = report_service.generate_clients_excel(client_list, router.alias)
+        filename = f"Clientes_{router.alias}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    else:
+        output = report_service.generate_clients_pdf(client_list, router.alias)
+        filename = f"Clientes_{router.alias}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        mimetype = 'application/pdf'
+        
+    return send_file(
+        output,
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=filename
+    )
+
 @routers_bp.route('/dashboard/monitored-traffic', methods=['GET'])
 def get_dashboard_monitored_traffic():
     """Obtiene el tráfico acumulado de todas las interfaces marcadas para el dashboard"""

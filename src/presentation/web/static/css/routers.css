@@ -1,8 +1,7 @@
-/* Stealth Minimal Theme for Routers Module */
-
+﻿/* Ultra-Premium Theme for Routers Module */
 :root {
-    --card-bg: #ffffff;
-    --card-border: rgba(0, 0, 0, 0.08);
+    --card-bg: rgba(255, 255, 255, 0.7);
+    --card-border: rgba(255, 255, 255, 0.3);
     --text-primary: #0f172a;
     --text-secondary: #64748b;
     --accent-blue: #4f46e5;
@@ -19,24 +18,44 @@
     padding: 0.5rem 0;
 }
 
-/* Stealth Card */
+/* Premium Glass Card */
 .router-card {
-    background: #ffffff;
+    background: var(--card-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--card-border);
-    border-radius: 8px;
+    border-radius: 16px;
     padding: 0;
     position: relative;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
 }
 
 .router-card:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    border-color: rgba(79, 70, 229, 0.2);
+    transform: translateY(-5px);
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+    border-color: rgba(79, 70, 229, 0.4);
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.router-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 50%);
+    opacity: 0;
+    transition: opacity 0.4s;
+    pointer-events: none;
+}
+
+.router-card:hover::after {
+    opacity: 0.2;
 }
 
 /* Status Bar & Indication */

@@ -2,21 +2,26 @@
  * Plans Manager Module - Frontend para gestión de planes
  */
 export class PlansManagerModule {
-    constructor(api, eventBus, viewManager) {
+    constructor(api, eventBus, viewManager, modalManager = null) {
         this.api = api;
         this.eventBus = eventBus;
         this.viewManager = viewManager;
+        this.modalManager = modalManager;
         this.currentPlanId = null;
+        this.sortState = { column: 'name', direction: 'asc' };
+        this.clientSortState = { column: 'legal_name', direction: 'asc' };
         console.log('📦 Plans Manager Module initialized');
 
         // Bind methods to this instance
         this.loadPlans = this.loadPlans.bind(this);
-        this.openPlanModal = this.openPlanModal.bind(this);
-        this.closePlanModal = this.closePlanModal.bind(this);
-        this.handlePlanSubmit = this.handlePlanSubmit.bind(this);
         this.deletePlan = this.deletePlan.bind(this);
         this.showPlanClients = this.showPlanClients.bind(this);
         this.closePlanClientsModal = this.closePlanClientsModal.bind(this);
+
+        // Listen for modal events if modalManager is present
+        if (this.modalManager) {
+            document.addEventListener('modal:plan:plan-saved', () => this.loadPlans());
+        }
     }
 
     async load() {
@@ -24,24 +29,18 @@ export class PlansManagerModule {
         this.showView();
 
         // Attach global functions for HTML onclick events
-        window.openPlanModal = this.openPlanModal;
-        window.closePlanModal = this.closePlanModal;
-        window.handlePlanSubmit = this.handlePlanSubmit;
+        window.openPlanModal = () => this.openPlanModal();
         window.deletePlan = this.deletePlan;
         window.showPlanClients = this.showPlanClients;
         window.closePlanClientsModal = this.closePlanClientsModal;
+        window.sortPlansBy = (col) => this.sortBy(col);
+        window.sortPlanClientsBy = (col) => this.sortByClients(col);
         window.editPlanById = (id) => {
             const plan = this.plans.find(p => p.id === id);
             if (plan) this.openPlanModal(plan);
         };
 
         await this.loadPlans();
-
-        // Listen for type changes
-        const typeSelect = document.getElementById('planType');
-        if (typeSelect) {
-            typeSelect.addEventListener('change', () => this.togglePPPoEFields());
-        }
     }
 
     showView() {
@@ -51,83 +50,193 @@ export class PlansManagerModule {
     async loadPlans() {
         try {
             const plans = await this.api.get('/api/plans');
-            this.plans = plans; // Guardar localmente
-
-            const tbody = document.getElementById('plansTableBody');
-            if (!tbody) return;
-
-            tbody.innerHTML = '';
-
-            plans.forEach(plan => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="padding-left: 24px;">
-                        <div class="user-info-cell">
-                            <strong style="font-size: 1.05rem; color: #1e293b;">${plan.name}</strong>
-                        </div>
-                    </td>
-                    <td>
-                        <div style="display: flex; flex-direction: column; gap: 2px;">
-                            <div style="display: flex; gap: 6px; align-items: center;">
-                                <span class="badge-speed down">
-                                    <i class="fas fa-arrow-down"></i> ${this.formatMbps(plan.download_speed)}
-                                </span>
-                                <span class="badge-speed up">
-                                    <i class="fas fa-arrow-up"></i> ${this.formatMbps(plan.upload_speed)}
-                                </span>
-                            </div>
-                        </div>
-                    </td>
-                    <td>
-                        <div style="display: flex; flex-direction: column;">
-                            <span style="font-weight: 700; color: #334155; font-size: 1rem;">$${plan.monthly_price.toLocaleString()}</span>
-                            <span style="font-size: 0.7rem; color: #64748b; font-weight: 600; text-transform: uppercase;">${plan.currency} / MES</span>
-                        </div>
-                    </td>
-                    <td>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 32px; height: 32px; border-radius: 8px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; color: #64748b;">
-                                <i class="fas fa-server" style="font-size: 0.9rem;"></i>
-                            </div>
-                            <div style="display: flex; flex-direction: column;">
-                                <span style="font-weight: 600; color: #475569; font-size: 0.9rem;">${plan.router_name || 'Global'}</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td>
-                        <span class="badge-premium ${plan.service_type}">
-                            ${plan.service_type.toUpperCase()}
-                        </span>
-                    </td>
-                    <td>
-                        <div onclick="window.showPlanClients(${plan.id}, '${plan.name}')" class="clients-counter-premium" style="cursor: pointer;" title="Ver Clientes">
-                            <i class="fas fa-users"></i>
-                            <span>${plan.clients_count || 0}</span>
-                        </div>
-                    </td>
-                    <td style="text-align: right; padding-right: 24px;">
-                        <div style="display: flex; justify-content: flex-end; gap: 10px;">
-                            <button onclick='window.editPlanById(${plan.id})' class="btn-icon-action edit" title="Editar Plan">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button onclick="window.deletePlan(${plan.id})" class="btn-icon-action delete ${plan.clients_count > 0 ? 'disabled' : ''}" 
-                                    title="${plan.clients_count > 0 ? 'No se puede eliminar: tiene clientes' : 'Eliminar Plan'}"
-                                    ${plan.clients_count > 0 ? 'disabled' : ''}>
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
+            this.plans = plans || []; // Guardar localmente
+            this.renderPlansTable();
 
             const totalEl = document.getElementById('totalPlans');
-            if (totalEl) totalEl.textContent = plans.length;
-
+            if (totalEl) totalEl.textContent = this.plans.length;
         } catch (error) {
             console.error('Error loading plans:', error);
             if (window.toast) window.toast.error('Error cargando planes');
         }
+    }
+
+    sortBy(column) {
+        if (this.sortState.column === column) {
+            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortState.column = column;
+            this.sortState.direction = 'asc';
+        }
+        this.renderPlansTable();
+    }
+
+    renderPlansTable() {
+        // Find containers via ID
+        const view = document.getElementById('plans-view');
+        const tbody = document.getElementById('plansTableBody');
+
+        if (!tbody || !this.plans) return;
+
+        // Upgrade container class if exists (Safer selection relative to table)
+        const table = tbody.closest('table');
+        if (table) {
+            const container = table.parentElement;
+            // Verificar si es el div contenedor viejo (bg-white/70...)
+            if (container && container.tagName === 'DIV' && !container.classList.contains('plans-wrapper')) {
+                container.className = 'plans-wrapper';
+                table.className = 'premium-plans-table';
+            }
+        }
+
+        const dir = this.sortState.direction === 'asc' ? 1 : -1;
+        const col = this.sortState.column;
+
+        const sorted = [...this.plans].sort((a, b) => {
+            let valA = a[col];
+            let valB = b[col];
+
+            if (col === 'download_speed' || col === 'monthly_price' || col === 'clients_count') {
+                return (parseFloat(valA || 0) - parseFloat(valB || 0)) * dir;
+            }
+
+            return (valA || '').toString().localeCompare((valB || '').toString()) * dir;
+        });
+
+        tbody.innerHTML = '';
+        sorted.forEach(plan => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="padding-left: 24px;">
+                    <div class="plan-name-cell">
+                        <span class="plan-name">${plan.name}</span>
+                        <span class="plan-id">ID: ${plan.id}</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="speed-badge-group">
+                        <span class="speed-badge down" title="Descarga">
+                            <i class="fas fa-arrow-down"></i> ${this.formatMbps(plan.download_speed)}
+                        </span>
+                        <span class="speed-badge up" title="Subida">
+                             ${this.formatMbps(plan.upload_speed)} <i class="fas fa-arrow-up"></i>
+                        </span>
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; flex-direction: column;">
+                        <span class="price-display">$${plan.monthly_price.toLocaleString()}<span class="currency-tag">${plan.currency}</span></span>
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 32px; height: 32px; border-radius: 8px; background: #e0f2fe; display: flex; align-items: center; justify-content: center; color: #0284c7;">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <span style="font-weight: 600; color: #475569; font-size: 0.85rem;">${plan.router_name || 'Global'}</span>
+                    </div>
+                </td>
+                <td>
+                    <span class="service-badge ${plan.service_type}">
+                         <i class="fas fa-network-wired" style="font-size: 0.6rem;"></i> ${plan.service_type.toUpperCase()}
+                    </span>
+                </td>
+                <td>
+                    <div onclick="window.showPlanClients(${plan.id}, '${plan.name}')" class="clients-counter-pill ${plan.clients_count > 0 ? 'has-clients' : ''}" title="Ver Clientes">
+                        <i class="fas fa-users"></i>
+                        <span>${plan.clients_count || 0} Clientes</span>
+                    </div>
+                </td>
+                <td style="text-align: right; padding-right: 24px;">
+                    <div class="plan-actions-cell">
+                        <button onclick='window.editPlanById(${plan.id})' class="btn-icon-soft edit" title="Editar Plan">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button onclick="window.deletePlan(${plan.id})" class="btn-icon-soft delete ${plan.clients_count > 0 ? 'disabled' : ''}" 
+                                title="${plan.clients_count > 0 ? 'No se puede eliminar: tiene clientes' : 'Eliminar Plan'}"
+                                ${plan.clients_count > 0 ? 'disabled' : ''}>
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        this.renderSortIcons('plans-view', this.sortState);
+    }
+
+    renderSortIcons(viewId, state) {
+        const view = document.getElementById(viewId);
+        if (!view) return;
+
+        const headers = view.querySelectorAll('th.sortable');
+        headers.forEach(th => {
+            const icon = th.querySelector('i');
+            th.classList.remove('active-sort');
+            if (icon) icon.className = 'fas fa-sort';
+
+            const onClickAttr = th.getAttribute('onclick');
+            if (onClickAttr && onClickAttr.includes(`'${state.column}'`)) {
+                th.classList.add('active-sort');
+                if (icon) {
+                    icon.className = state.direction === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+                }
+            }
+        });
+    }
+
+    sortByClients(column) {
+        if (this.clientSortState.column === column) {
+            this.clientSortState.direction = this.clientSortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.clientSortState.column = column;
+            this.clientSortState.direction = 'asc';
+        }
+        this.renderPlanClientsTable();
+    }
+
+    renderPlanClientsTable() {
+        const tbody = document.getElementById('planClientsTableBody');
+        const emptyState = document.getElementById('planClientsEmpty');
+        if (!tbody || !this.currentClients) return;
+
+        const dir = this.clientSortState.direction === 'asc' ? 1 : -1;
+        const col = this.clientSortState.column;
+
+        const sorted = [...this.currentClients].sort((a, b) => {
+            let valA = a[col] || '';
+            let valB = b[col] || '';
+            return valA.toString().localeCompare(valB.toString(), undefined, { numeric: true }) * dir;
+        });
+
+        tbody.innerHTML = '';
+        if (sorted.length === 0) {
+            if (emptyState) emptyState.style.display = 'block';
+            return;
+        }
+        if (emptyState) emptyState.style.display = 'none';
+
+        sorted.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="padding-left: 20px;">
+                    <div style="font-weight: 600; color: #1e293b;">${c.legal_name}</div>
+                    <small style="color: #64748b;">${c.subscriber_code}</small>
+                </td>
+                <td><span style="font-family: monospace; font-size: 0.85rem;">${c.username}</span></td>
+                <td><span style="color: #4f46e5; font-weight: 600; font-family: monospace;">${c.ip_address || '-'}</span></td>
+                <td>
+                    <span class="status-badge-table ${c.status === 'active' ? 'active' : (c.status === 'suspended' ? 'suspended' : 'cortado')}" 
+                          style="font-size: 0.65rem; padding: 2px 8px;">
+                        ${c.status.toUpperCase()}
+                    </span>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        this.renderSortIcons('planClientsModal', this.clientSortState);
     }
 
     formatMbps(kbps) {
@@ -160,97 +269,10 @@ export class PlansManagerModule {
         return colors[type] || 'bg-gray-100 text-gray-800';
     }
     openPlanModal(plan = null) {
-        const modal = document.getElementById('planModal');
-        const form = document.getElementById('planForm');
-
-        this.currentPlanId = plan ? plan.id : null;
-        document.getElementById('modalTitle').textContent = plan ? 'Editar Plan' : 'Nuevo Plan';
-
-        if (plan) {
-            document.getElementById('planId').value = plan.id;
-            document.getElementById('planName').value = plan.name;
-            document.getElementById('planDownload').value = plan.download_speed;
-            document.getElementById('planUpload').value = plan.upload_speed;
-            document.getElementById('planPrice').value = plan.monthly_price;
-            document.getElementById('planCurrency').value = plan.currency;
-            document.getElementById('planType').value = plan.service_type;
-            document.getElementById('planProfile').value = plan.mikrotik_profile || '';
-            document.getElementById('planRouter').value = plan.router_id || '';
-            document.getElementById('planLocalAddress').value = plan.local_address || '';
-            document.getElementById('planRemoteAddress').value = plan.remote_address || '';
+        if (this.modalManager) {
+            this.modalManager.open('plan', { plan });
         } else {
-            form.reset();
-            document.getElementById('planId').value = '';
-            document.getElementById('planRouter').value = '';
-            document.getElementById('planLocalAddress').value = '';
-            document.getElementById('planRemoteAddress').value = '';
-        }
-
-        // Load routers if not loaded
-        this.populateRouters();
-        this.togglePPPoEFields();
-
-        modal.classList.add('active');
-    }
-
-    togglePPPoEFields() {
-        const type = document.getElementById('planType').value;
-        const pppoeContainer = document.getElementById('pppoe-fields');
-        if (pppoeContainer) {
-            pppoeContainer.style.display = type === 'pppoe' ? 'grid' : 'none';
-        }
-    }
-
-    async populateRouters() {
-        try {
-            const routers = await this.api.get('/api/routers');
-            const select = document.getElementById('planRouter');
-            if (!select) return;
-
-            const currentVal = select.value;
-            select.innerHTML = '<option value="">Global (Todos los routers)</option>' +
-                routers.map(r => `<option value="${r.id}">${r.alias}</option>`).join('');
-
-            if (currentVal) select.value = currentVal;
-        } catch (e) { console.error("Error populating routers in plan modal", e); }
-    }
-
-    closePlanModal() {
-        document.getElementById('planModal').classList.remove('active');
-    }
-
-    async handlePlanSubmit(e) {
-        e.preventDefault();
-
-        const data = {
-            name: document.getElementById('planName').value,
-            download_speed: parseInt(document.getElementById('planDownload').value),
-            upload_speed: parseInt(document.getElementById('planUpload').value),
-            monthly_price: parseFloat(document.getElementById('planPrice').value),
-            currency: document.getElementById('planCurrency').value,
-            service_type: document.getElementById('planType').value,
-            mikrotik_profile: document.getElementById('planProfile').value,
-            router_id: document.getElementById('planRouter').value ? parseInt(document.getElementById('planRouter').value) : null,
-            local_address: document.getElementById('planLocalAddress').value,
-            remote_address: document.getElementById('planRemoteAddress').value
-        };
-
-        const method = this.currentPlanId ? 'PUT' : 'POST';
-        const url = this.currentPlanId ? `/api/plans/${this.currentPlanId}` : '/api/plans';
-
-        try {
-            // Using direct fetch wrapper via this.api
-            let response;
-            if (method === 'POST') response = await this.api.post(url, data);
-            else response = await this.api.put(url, data);
-
-            this.closePlanModal();
-            this.loadPlans();
-            if (window.toast) window.toast.success('Plan guardado exitosamente');
-
-        } catch (error) {
-            console.error('Error saving plan:', error);
-            if (window.toast) window.toast.error('Error guardando plan');
+            console.error('ModalManager not available for Plan Modal');
         }
     }
 
@@ -279,35 +301,16 @@ export class PlansManagerModule {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">Cargando clientes...</td></tr>';
         emptyState.style.display = 'none';
 
-        modal.classList.add('active');
+        if (this.modalManager) {
+            this.modalManager.open('plan-clients');
+        } else {
+            modal.classList.add('active');
+        }
 
         try {
             const clients = await this.api.get(`/api/clients?plan_id=${planId}`);
-
-            tbody.innerHTML = '';
-            if (!clients || clients.length === 0) {
-                emptyState.style.display = 'block';
-                return;
-            }
-
-            clients.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="padding-left: 20px;">
-                        <div style="font-weight: 600; color: #1e293b;">${c.legal_name}</div>
-                        <small style="color: #64748b;">${c.subscriber_code}</small>
-                    </td>
-                    <td><span style="font-family: monospace; font-size: 0.85rem;">${c.username}</span></td>
-                    <td><span style="color: #4f46e5; font-weight: 600; font-family: monospace;">${c.ip_address || '-'}</span></td>
-                    <td>
-                        <span class="badge ${c.status === 'active' ? 'online' : (c.status === 'suspended' ? 'warning' : 'danger')}" 
-                              style="font-size: 0.65rem; padding: 2px 8px;">
-                            ${c.status.toUpperCase()}
-                        </span>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
+            this.currentClients = clients || [];
+            this.renderPlanClientsTable();
 
         } catch (error) {
             console.error('Error fetching plan clients:', error);
@@ -316,7 +319,11 @@ export class PlansManagerModule {
     }
 
     closePlanClientsModal() {
-        const modal = document.getElementById('planClientsModal');
-        if (modal) modal.classList.remove('active');
+        if (this.modalManager) {
+            this.modalManager.close('plan-clients');
+        } else {
+            const modal = document.getElementById('planClientsModal');
+            if (modal) modal.classList.remove('active');
+        }
     }
 }

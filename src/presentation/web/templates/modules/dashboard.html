@@ -1,89 +1,72 @@
 <!-- Dashboard Content -->
 <div id="dashboard-view" class="content-view active">
-    <div class="view-header"
-        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: flex-start; gap: 24px;">
-        <div class="header-left" style="flex-shrink: 0;">
-            <h1 class="page-title">Dashboard</h1>
-            <p class="page-subtitle">Visión general del sistema</p>
+    <!-- View Header: Minimalist & Spaced -->
+    <div class="view-header">
+        <div class="header-left">
+            <h1 class="page-title">Bienvenido de nuevo</h1>
+            <p class="page-subtitle">Esto es lo que está pasando en tu red hoy.</p>
+        </div>
+    </div>
+
+    <!-- Stats Grid: Balanced & Clear -->
+    <div class="stats-grid">
+        <div class="stat-card premium-card glass">
+            <div class="stat-icon-circle premium-gradient"><i class="fas fa-server"></i></div>
+            <div class="stat-content">
+                <span class="stat-label">Routers</span>
+                <span class="stat-value" id="stat-servers">0</span>
+            </div>
         </div>
 
-        <!-- Stats Cards integrated into Header -->
-        <div class="stats-grid" style="margin-bottom: 0;">
-            <div class="stat-card server">
-                <div class="stat-info">
-                    <span class="stat-value" id="stat-servers">0</span>
-                    <span class="stat-label">Servidores</span>
-                    <div class="stat-trend positive">
-                        <i class="fas fa-check-circle"></i> <span>Activos</span>
-                    </div>
-                </div>
-                <div class="stat-icon-circle">
-                    <i class="fas fa-server"></i>
-                </div>
-                <div class="stat-actions-minimal">
-                    <button class="action-btn-xs" onclick="app.modules.routers.showCreateModal()"><i
-                            class="fas fa-plus"></i></button>
+        <div class="stat-card premium-card glass">
+            <div class="stat-icon-circle"><i class="fas fa-users"></i></div>
+            <div class="stat-content">
+                <span class="stat-label">Clientes</span>
+                <span class="stat-value" id="stat-total-clients">0</span>
+                <div class="stat-sub-info">
+                    <span class="sub-pill success" title="Activos"><i class="fas fa-check"></i> <span
+                            id="stat-active-clients">0</span></span>
+                    <span class="sub-pill danger" title="Corte"><i class="fas fa-user-slash"></i> <span
+                            id="stat-suspended-clients">0</span></span>
                 </div>
             </div>
+        </div>
 
-            <div class="stat-card client">
-                <div class="stat-info">
-                    <span class="stat-value" id="stat-clients">0</span>
-                    <span class="stat-label">Clientes</span>
-                    <div class="stat-trend positive" id="stat-clients-trend">
-                        <i class="fas fa-users"></i> <span id="stat-clients-subtext">Cargando...</span>
-                    </div>
+        <div class="stat-card premium-card glass">
+            <div class="stat-icon-circle text-primary"><i class="fas fa-signal"></i></div>
+            <div class="stat-content">
+                <span class="stat-label">Conexión</span>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span class="stat-value" id="stat-online-clients">0</span>
+                    <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">ONLINE</span>
                 </div>
-                <div class="stat-icon-circle">
-                    <i class="fas fa-user-check"></i>
-                </div>
-                <div class="stat-actions-minimal">
-                    <button class="action-btn-xs" onclick="window.clientModal.showCreate()"><i
-                            class="fas fa-plus"></i></button>
+                <div class="stat-sub-info">
+                    <span class="sub-pill muted" title="Desconectados"><i class="fas fa-plug"></i> <span
+                            id="stat-offline-clients">0</span> Offline</span>
                 </div>
             </div>
+        </div>
 
-            <div class="stat-card suspended">
-                <div class="stat-info">
-                    <span class="stat-value" id="stat-suspended">0</span>
-                    <span class="stat-label">Suspendidos</span>
-                    <div class="stat-trend negative">
-                        <i class="fas fa-user-slash"></i> <span>Mora: <span id="stat-mora-clients"
-                                style="font-weight: 850;">0</span> pendientes</span>
-                    </div>
-                </div>
-                <div class="stat-icon-circle">
-                    <i class="fas fa-ban"></i>
+        <div class="stat-card premium-card glass">
+            <div class="stat-icon-circle text-success"><i class="fas fa-wallet"></i></div>
+            <div class="stat-content">
+                <span class="stat-label">Recaudado</span>
+                <span class="stat-value" id="stat-revenue">$0</span>
+                <div class="stat-sub-info">
+                    <span class="sub-pill success" title="Clientes al día"><i class="fas fa-heart"></i> <span
+                            id="stat-paid-clients">0</span> Al Día</span>
                 </div>
             </div>
+        </div>
 
-            <div class="stat-card revenue">
-                <div class="stat-info">
-                    <span class="stat-value" id="stat-revenue">$0</span>
-                    <span class="stat-label">Recaudación</span>
-                    <div class="stat-trend positive">
-                        <i class="fas fa-dollar-sign"></i> <span id="stat-revenue-subtext">Este Mes</span>
-                    </div>
-                </div>
-                <div class="stat-icon-circle">
-                    <i class="fas fa-chart-line"></i>
-                </div>
-                <div class="stat-actions-minimal">
-                    <button class="action-btn-xs success" onclick="app.modules.payments.showNewPaymentModal()"><i
-                            class="fas fa-plus"></i></button>
-                </div>
-            </div>
-
-            <div class="stat-card debt">
-                <div class="stat-info">
-                    <span class="stat-value" id="stat-debt">$0</span>
-                    <span class="stat-label">Por Cobrar</span>
-                    <div class="stat-trend warning">
-                        <i class="fas fa-exclamation-triangle"></i> <span id="stat-debt-clients">0</span> clientes
-                    </div>
-                </div>
-                <div class="stat-icon-circle">
-                    <i class="fas fa-wallet"></i>
+        <div class="stat-card premium-card glass">
+            <div class="stat-icon-circle text-warning"><i class="fas fa-exclamation-triangle"></i></div>
+            <div class="stat-content">
+                <span class="stat-label">Morosos</span>
+                <span class="stat-value" id="stat-debt-clients">0</span>
+                <div class="stat-sub-info">
+                    <span style="font-weight: 700; color: #f59e0b; font-size: 0.875rem;" id="stat-debt">$0 en
+                        mora</span>
                 </div>
             </div>
         </div>

@@ -1,0 +1,17 @@
+/* Plan Modal Specific Styles */
+
+#plan-modal-title {
+    margin: 0;
+}
+
+.form-text-premium {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.input-with-addon .addon {
+    font-family: inherit;
+    pointer-events: none;
+}

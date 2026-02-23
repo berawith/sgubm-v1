@@ -1,0 +1,102 @@
+<!-- EXPENSES VIEW -->
+<div id="expenses-view" class="view content-view" style="display: none;">
+    <div class="view-header"
+        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <button class="btn-text" onclick="app.modules.payments.switchTab('overview')"
+                style="padding: 8px; font-size: 1.2rem; color: #64748b;">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <div>
+                <h1 class="page-title">Gastos y Deducibles</h1>
+                <p class="page-subtitle">Registro y control de gastos operativos</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
+        <div class="toolbar-group">
+            <div class="filter-item" style="min-width: 250px;">
+                <label>Buscar Gasto</label>
+                <div class="input-with-icon">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="expense-search" class="input-premium" placeholder="Descripción o nota..."
+                        oninput="app.modules.payments.loadExpenses()">
+                </div>
+            </div>
+            <div class="filter-item">
+                <label>Mes</label>
+                <input type="month" id="expense-filter-month" class="input-premium"
+                    onchange="app.modules.payments.loadExpenses()">
+            </div>
+            <div class="filter-item">
+                <label>Categoría</label>
+                <select id="expense-filter-category" class="select-premium"
+                    onchange="app.modules.payments.loadExpenses()">
+                    <option value="">Todas</option>
+                    <option value="fixed">Gastos Fijos</option>
+                    <option value="variable">Variables / Deducibles</option>
+                </select>
+            </div>
+        </div>
+        <div class="toolbar-actions">
+            <button class="btn-secondary btn-icon" onclick="app.modules.payments.loadExpenses()" title="Recargar">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="btn-premium" onclick="app.modules.payments.showNewExpenseModal()">
+                <i class="fas fa-plus-circle"></i> Nuevo Gasto
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="financial-stats" style="margin-bottom: 24px;">
+        <div class="payment-stat-card clients-paid"> <!-- Using existing class for style reuse -->
+            <div class="payment-stat-info">
+                <div class="payment-stat-value" id="exp-stat-fixed">$0.00</div>
+                <h4>Gastos Fijos</h4>
+            </div>
+            <div class="payment-stat-icon">
+                <i class="fas fa-building"></i>
+            </div>
+        </div>
+
+        <div class="payment-stat-card clients-pending"> <!-- Using existing class for style reuse -->
+            <div class="payment-stat-info">
+                <div class="payment-stat-value" id="exp-stat-variable">$0.00</div>
+                <h4>Variables</h4>
+            </div>
+            <div class="payment-stat-icon">
+                <i class="fas fa-receipt"></i>
+            </div>
+        </div>
+
+        <div class="payment-stat-card total">
+            <div class="payment-stat-info">
+                <div class="payment-stat-value" id="exp-stat-total">$0.00</div>
+                <h4>Total Gastos</h4>
+            </div>
+            <div class="payment-stat-icon">
+                <i class="fas fa-chart-line"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container-premium glass-panel">
+        <table class="premium-data-table">
+            <thead>
+                <tr>
+                    <th width="120">FECHA</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th width="150">CATEGORÍA</th>
+                    <th width="150" style="text-align: right;">MONTO</th>
+                    <th>NOTAS</th>
+                    <th width="100" style="text-align: right;">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody id="expenses-detailed-table-body">
+                <!-- Dynamic Rows -->
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -1,0 +1,152 @@
+<!-- Clients Actions View (Bulk Operations) -->
+<div id="clients-actions-view" class="view content-view">
+    <div class="view-header">
+        <div class="header-left">
+            <h1 class="page-title">Acciones Masivas</h1>
+            <p class="page-subtitle">Operaciones en lote sobre clientes</p>
+        </div>
+        <div class="header-actions">
+            <div class="premium-search-container">
+                <div class="search-glass-wrapper">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="client-search-actions" placeholder="Buscar suscriptor..."
+                        oninput="app.modules.clients.onSearchInputActions(this.value)">
+                    <button id="clear-search-actions" class="clear-btn"
+                        onclick="document.getElementById('client-search-actions').value=''; app.modules.clients.onSearchInputActions('')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toolbar de Filtros -->
+    <div class="clients-toolbar glass-panel">
+        <div class="toolbar-group">
+            <div class="filter-item">
+                <label>Router</label>
+                <select id="filter-router-actions" class="select-premium"
+                    onchange="app.modules.clients.applyFiltersActions()">
+                    <option value="">Todos los Routers</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label>Estado Servicio</label>
+                <select id="filter-status-actions" class="select-premium"
+                    onchange="app.modules.clients.applyFiltersActions()">
+                    <option value="all">Todos</option>
+                    <option value="active">Activos</option>
+                    <option value="suspended">Suspendidos</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label>Estado Financiero</label>
+                <select id="filter-balance-actions" class="select-premium"
+                    onchange="app.modules.clients.applyFiltersActions()">
+                    <option value="all">Todos</option>
+                    <option value="pending">Pendientes</option>
+                    <option value="uptodate">Al Día</option>
+                </select>
+            </div>
+        </div>
+        <div class="toolbar-actions">
+            <button class="btn-secondary btn-icon" onclick="app.modules.clients.loadClientsActions()" title="Recargar">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div id="client-stats-bar-actions" class="client-stats-bar compact">
+        <div class="stat-pill total">
+            <i class="fas fa-users"></i>
+            <span id="count-total-actions">0</span> Total
+        </div>
+        <div class="stat-pill suspended">
+            <i class="fas fa-ban"></i>
+            <span id="count-suspended-actions">0</span> Suspendidos
+        </div>
+        <div class="stat-pill warning" style="background: #fef3c7; color: #f59e0b;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span id="count-pending-actions">0</span> Pendientes
+        </div>
+        <div class="stat-pill online" style="background: #d1fae5; color: #10b981;">
+            <i class="fas fa-check-circle"></i>
+            <span id="count-selected-actions">0</span> Seleccionados
+        </div>
+    </div>
+
+    <!-- Quick Actions - Single Row Layout -->
+    <div class="glass-panel" style="padding: 20px; margin-bottom: 20px;">
+        <div style="display: flex; gap: 12px; flex-wrap: nowrap; align-items: center; justify-content: space-between;">
+            <!-- Acciones Masivas -->
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span
+                    style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 4px;">
+                    <i class="fas fa-bolt" style="color: #f59e0b;"></i> Acción:
+                </span>
+                <!-- Contador -->
+                <div
+                    style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #f1f5f9; border-radius: 6px; margin-right: 4px;">
+                    <i class="fas fa-check-circle" style="color: #10b981; font-size: 0.85rem;"></i>
+                    <span style="color: #1e293b; font-weight: 600; font-size: 0.8rem;">
+                        <span id="selected-count-display-actions">0</span>
+                    </span>
+                </div>
+
+                <!-- Botones de acciones -->
+                <div id="bulk-actions-buttons-actions"
+                    style="display: flex; gap: 8px; opacity: 0.5; pointer-events: none; transition: opacity 0.2s ease;">
+                    <button class="btn-icon-action btn-success-icon"
+                        onclick="app.modules.clients.processBulkCashPayment()" title="Pago Efectivo (Activar)">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </button>
+                    <button class="btn-icon-action btn-premium-icon"
+                        onclick="app.modules.clients.bulkTemporaryActivation()" title="Promesa de Pago (5 días)">
+                        <i class="fas fa-play-circle"></i>
+                    </button>
+                    <!-- Botón "Revertir Pagos" movido a módulo de Pagos → Pestaña "Revertir" -->
+                    <button class="btn-icon-action btn-danger-icon" onclick="app.modules.clients.bulkSuspend()"
+                        title="Suspender Seleccionados">
+                        <i class="fas fa-ban"></i>
+                    </button>
+                    <button class="btn-icon-action btn-danger-icon" onclick="app.modules.clients.suspendAllPending()"
+                        title="Suspender Pendientes">
+                        <i class="fas fa-bolt"></i>
+                    </button>
+                    <button class="btn-icon-action btn-secondary-icon"
+                        onclick="app.modules.clients.clearSelectionActions()" title="Limpiar Selección">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Clientes (Similar a list.html) -->
+    <div class="table-container-premium glass-panel">
+        <table class="premium-data-table clients-table">
+            <thead>
+                <tr>
+                    <th width="30"><input type="checkbox" id="select-all-clients-actions"
+                            onclick="app.modules.clients.toggleSelectAllActions(this)"></th>
+                    <th width="40">ID</th>
+                    <th>Cliente</th>
+                    <th>IP / MAC</th>
+                    <th>Router / Zona</th>
+                    <th>Balance / Estado</th>
+                    <th>Plan / Servicio</th>
+                    <th>Tráfico</th>
+                </tr>
+            </thead>
+            <tbody id="clients-table-body-actions">
+                <tr>
+                    <td colspan="7" class="loading-cell">
+                        <div class="spinner"></div>
+                        <p>Cargando Clientes...</p>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

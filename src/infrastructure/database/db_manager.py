@@ -51,15 +51,30 @@ class DatabaseManager:
         from src.infrastructure.database.repositories import DeletedPaymentRepository
         return DeletedPaymentRepository(self.session)
 
-    def get_sync_repository(self) -> 'SyncRepository': # type: ignore
-        """Retorna repositorio de sincronización"""
-        from src.infrastructure.database.repositories import SyncRepository
-        return SyncRepository(self.session)
-
     def get_traffic_repository(self) -> 'TrafficRepository': # type: ignore
         """Retorna repositorio de historial de tráfico"""
         from src.infrastructure.database.repositories import TrafficRepository
         return TrafficRepository(self.session)
+
+    def get_invoice_repository(self) -> 'InvoiceRepository': # type: ignore
+        """Retorna repositorio de facturas"""
+        from src.infrastructure.database.repositories import InvoiceRepository
+        return InvoiceRepository(self.session)
+
+    def get_whatsapp_repository(self) -> 'WhatsAppRepository': # type: ignore
+        """Retorna repositorio de historial de WhatsApp"""
+        from src.infrastructure.database.repositories import WhatsAppRepository
+        return WhatsAppRepository(self.session)
+
+    def get_system_setting_repository(self) -> 'SystemSettingRepository': # type: ignore
+        """Retorna repositorio de configuración del sistema"""
+        from src.infrastructure.database.repositories import SystemSettingRepository
+        return SystemSettingRepository(self.session)
+
+    def get_expense_repository(self) -> 'ExpenseRepository': # type: ignore
+        """Retorna repositorio de gastos"""
+        from src.infrastructure.database.repositories import ExpenseRepository
+        return ExpenseRepository(self.session)
 
     
     def remove_session(self):

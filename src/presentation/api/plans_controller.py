@@ -147,7 +147,9 @@ def update_plan(plan_id):
 
         # Propagar cambios a todos los clientes que usan este plan
         clients = db.session.query(Client).filter(Client.plan_id == plan.id).all()
-        sync_repo = db.get_sync_repository()
+        from src.application.services.sync_service import SyncService
+        sync_service = SyncService(db)
+        
         for c in clients:
             c.plan_name = plan.name
             c.monthly_fee = plan.monthly_price
@@ -157,11 +159,11 @@ def update_plan(plan_id):
             
             # Encolar Sincronización
             if c.router_id:
-                sync_repo.add_task(
-                    router_id=c.router_id,
+                sync_service.queue_operation(
                     client_id=c.id,
-                    operation='update',
-                    payload={'old_username': c.username, 'data': c.to_dict()}
+                    router_id=c.router_id,
+                    operation_type='update',
+                    operation_data={'old_username': c.username, 'data': c.to_dict()}
                 )
         
         db.session.commit() # Commit client changes
