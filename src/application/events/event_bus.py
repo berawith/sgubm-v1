@@ -9,7 +9,7 @@ Ejemplo de uso:
     # Módulo B se suscribe al evento (sin conocer a A)
     event_bus.subscribe("client.suspended", handle_suspension)
 """
-from typing import Dict, List, Callable, Any
+from typing import Dict, List, Callable, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass, field
 import logging
