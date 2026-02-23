@@ -1426,27 +1426,25 @@ Esta acción es seria y debe usarse con precaución.`;
                             <span class="data-item-label">Balance</span>
                             <span class="data-item-value ${isPositive ? 'ok' : 'debt'}">$${balanceText}</span>
                         </div>
-                    </div>
-                    
-                    <div class="card-mobile-footer">
-                        <div class="card-mobile-traffic">
-                            <div class="traffic-pill up">
-                                <i class="fas fa-upload"></i> <span class="val-up">0K</span>
-                            </div>
-                            <div class="traffic-pill down">
-                                <i class="fas fa-download"></i> <span class="val-down">0K</span>
+                        
+                        <!-- Tráfico reubicado al cuerpo de la tarjeta (Recuadro Rojo) -->
+                        <div class="card-mobile-data-item" style="grid-column: span 2; background: rgba(255,255,255,0.5); padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.05); margin-top: 4px;">
+                            <span class="data-item-label" style="margin-bottom: 4px;">Tráfico en Vivo</span>
+                            <div class="card-mobile-traffic" style="font-family: monospace; font-size: 0.95rem; font-weight: 700; display: flex; gap: 20px; align-items: center;">
+                                <div style="color: #10b981; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-upload"></i> <span class="val-up">0K</span>
+                                </div>
+                                <div style="color: #3b82f6; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-download"></i> <span class="val-down">0K</span>
+                                </div>
                             </div>
                         </div>
-                        
+                    </div>
+                    
+                    <div class="card-mobile-footer" style="display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px dashed rgba(0,0,0,0.1);">
                         <div class="card-mobile-actions">
-                            <button class="mobile-action-btn pay" onclick="app.modules.clients.registerPayment(${client.id})">
-                                <i class="fas fa-dollar-sign"></i>
-                            </button>
-                            <button class="mobile-action-btn edit" onclick="app.modules.clients.editClient(${client.id})">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="mobile-action-btn more" onclick="app.modules.clients.showMobileActionMenu(${client.id})">
-                                <i class="fas fa-ellipsis-h"></i>
+                            <button class="mobile-action-btn more" onclick="app.modules.clients.showMobileActionMenu(${client.id})" style="background: #f1f5f9; color: #475569; border-radius: 8px; width: 44px; height: 44px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                <i class="fas fa-ellipsis-h" style="font-size: 1.2rem;"></i>
                             </button>
                         </div>
                     </div>
@@ -1703,21 +1701,17 @@ Esta acción es seria y debe usarse con precaución.`;
         Object.keys(data).forEach(clientId => {
             this.onlineStatusMap[clientId] = data[clientId].status;
 
-            // Get element from cache or DOM (works for tr or cards)
-            let row = this.rowCache.get(clientId);
-            if (!row) {
-                row = document.querySelector(`[data-client-id="${clientId}"]`);
-                if (row) this.rowCache.set(clientId, row);
-            }
+            // En móviles las filas de desktop están ocultas pero en el DOM. Necesitamos actualizar TODAS.
+            const rows = document.querySelectorAll(`[data-client-id="${clientId}"]`);
 
-            if (row) {
+            rows.forEach(row => {
                 const info = data[clientId];
                 const isOnline = info.status === 'online';
 
                 // Update Status Badge
                 const badge = row.querySelector('.status-badge-table');
                 if (badge && !badge.classList.contains('suspended')) { // Don't override suspended status
-                    badge.className = `status - badge - table ${isOnline ? 'active' : 'grey'}`;
+                    badge.className = `status-badge-table ${isOnline ? 'active' : 'grey'}`;
                     badge.textContent = isOnline ? 'Online' : 'Offline';
 
                     // Fix "Detected (No Queue)" on the fly if status changes
@@ -1766,7 +1760,7 @@ Esta acción es seria y debe usarse con precaución.`;
                         downEl.parentElement.style.opacity = '0.5';
                     }
                 }
-            }
+            });
         });
 
         // 3. Update Global Counters
@@ -1995,8 +1989,14 @@ Esta acción es seria y debe usarse con precaución.`;
 
         const html = `
             <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+                <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.registerPayment(${clientId}), 300)" style="width: 100%; padding: 14px; background: #10b981; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i class="fas fa-dollar-sign"></i> Registrar Pago
+                </button>
                 <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.showClientHistory(${clientId}), 300)" style="width: 100%; padding: 14px; background: #3b82f6; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
-                    <i class="fas fa-history"></i> Historial y Pagos
+                    <i class="fas fa-history"></i> Historial / Edo. Cuenta
+                </button>
+                <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.editClient(${clientId}), 300)" style="width: 100%; padding: 14px; background: #6366f1; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i class="fas fa-edit"></i> Editar Cliente
                 </button>
                 <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.${isSuspended ? 'activateClient' : 'suspendClient'}(${clientId}), 300)" style="width: 100%; padding: 14px; background: ${stColor}; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
                     <i class="fas ${stIcon}"></i> ${stText}
