@@ -1022,89 +1022,97 @@ class MikroTikAdapter(INetworkService):
             logger.error(f"Error getting active sessions: {e}")
             return {}
 
-    def get_bulk_traffic(self, interfaces: List[str]) -> Dict[str, Dict[str, int]]:
+    def get_bulk_traffic(self, targets: List[str]) -> Dict[str, Dict[str, int]]:
         """
-        Obtiene tráfico en tiempo real procesando en ráfagas (chunks) para no saturar la API.
-        Capta tanto Simple Queues como Interfaces (PPPoE/Ethernet).
+        Obtiene tráfico en tiempo real procesando en ráfagas (chunks).
+        Capta tanto Interfaces (PPPoE/Ethernet) usando monitor-traffic,
+        como Simple Queues usando el atributo 'rate' que es lo más eficiente.
         """
-        if not self._is_connected or not interfaces:
+        if not self._is_connected or not targets:
             return {}
             
         try:
-            valid_requested = [i for i in interfaces if i]
+            valid_requested = [t for t in targets if t]
             if not valid_requested: return {}
             
-            # 1. Obtener lista REAL de interfaces rápido O(N)
-            resource_iface = self._api_connection.get_resource('/interface')
-            all_ifaces = resource_iface.get()
-            
-            # Tabla de búsqueda insensible a mayúsculas: { lower_name: original_name }
-            existing_names_map = {i.get('name').lower(): i.get('name') for i in all_ifaces if i.get('name')}
-
-            # 2. Filtrar y mapear interfaces válidas
-            final_interfaces = []
-            mapping = {} 
-            for user in valid_requested:
-                user_l = user.lower()
-                # Priorizar coincidencia exacta (Simple Queues suelen usar el username)
-                # Luego probar patrones PPPoE comunes
-                patterns_l = [user_l, f"<{user_l}>", f"pppoe-{user_l}", f"<pppoe-{user_l}>"]
-                
-                target_l = next((p for p in patterns_l if p in existing_names_map), None)
-                
-                if target_l:
-                    target_real = existing_names_map[target_l]
-                    final_interfaces.append(target_real)
-                    mapping[target_real] = user
-
-            if not final_interfaces:
-                return {}
-
-            # 3. Procesar en CHUNKS para evitar límites de MikroTik
             results = {}
-            chunk_size = 40 
             
-            for i in range(0, len(final_interfaces), chunk_size):
-                chunk = final_interfaces[i:i + chunk_size]
-                iface_str = ",".join(chunk)
-                
-                try:
-                    # monitor-traffic es la forma más eficiente de obtener bps instantáneos
-                    # Si falla un chunk, puede ser por una interfaz borrada en el micro-segundo
-                    response = resource_iface.call('monitor-traffic', {
-                        'interface': iface_str,
-                        'once': 'true'
-                    })
-                    
-                    if not response:
-                        logger.debug(f"Monitor: No data returned for chunk on interfaces: {iface_str}")
-                        continue
+            # 1. IDENTIFICAR QUÉ ES INTERFAZ Y QUÉ ES COLA
+            # Obtener todas las interfaces y colas una sola vez para mapear
+            resource_iface = self._api_connection.get_resource('/interface')
+            resource_queue = self._api_connection.get_resource('/queue/simple')
+            
+            all_ifaces = resource_iface.get()
+            all_queues = resource_queue.get()
+            
+            # Tablas de búsqueda (lower_case -> exact_name)
+            iface_map = {i.get('name').lower(): i.get('name') for i in all_ifaces if i.get('name')}
+            queue_map = {q.get('name').lower(): q for q in all_queues if q.get('name')}
+            
+            interfaces_to_monitor = []
+            queue_stats_found = {}
 
-                    for item in response:
-                        name = item.get('name')
-                        if name in mapping:
-                            original_user = mapping[name]
-                            # Normalizar: rx = upload (entrada al router), tx = download (salida del router)
-                            try:
+            for target in valid_requested:
+                target_l = target.lower()
+                patterns = [target_l, f"<{target_l}>", f"pppoe-{target_l}", f"<pppoe-{target_l}>"]
+                
+                # A. Priorizar Interface (PPPoE activo suele tener interface dinámica)
+                found_iface = next((p for p in patterns if p in iface_map), None)
+                if found_iface:
+                    real_iface_name = iface_map[found_iface]
+                    interfaces_to_monitor.append((real_iface_name, target))
+                
+                # B. Buscar en Simple Queues (Fallback o para clientes estáticos)
+                found_queue_key = next((p for p in patterns if p in queue_map), None)
+                if found_queue_key:
+                    q_data = queue_map[found_queue_key]
+                    rate_str = q_data.get('rate', '0/0')
+                    try:
+                        u, d = rate_str.split('/')
+                        queue_stats_found[target] = {
+                            'upload': int(u),
+                            'download': int(d)
+                        }
+                    except:
+                        pass
+
+            # 2. PROCESAR INTERFACES CON MONITOR-TRAFFIC (Para datos de ráfaga precisos)
+            if interfaces_to_monitor:
+                chunk_size = 40
+                iface_real_names = [pair[0] for pair in interfaces_to_monitor]
+                name_to_target_map = {pair[0]: pair[1] for pair in interfaces_to_monitor}
+                
+                for i in range(0, len(iface_real_names), chunk_size):
+                    chunk = iface_real_names[i:i + chunk_size]
+                    try:
+                        response = resource_iface.call('monitor-traffic', {
+                            'interface': ",".join(chunk),
+                            'once': 'true'
+                        })
+                        
+                        for item in response:
+                            name = item.get('name')
+                            target = name_to_target_map.get(name)
+                            if target:
                                 rx = int(item.get('rx-bits-per-second', 0))
                                 tx = int(item.get('tx-bits-per-second', 0))
-                                
-                                results[original_user] = {
+                                results[target] = {
                                     'upload': rx,
-                                    'download': tx,
-                                    'rx': rx,
-                                    'tx': tx
+                                    'download': tx
                                 }
-                            except (ValueError, TypeError) as e:
-                                logger.warning(f"Error parsing traffic values for {name}: {e}")
-                except Exception as e:
-                    logger.warning(f"Error in traffic chunk (Interfaces: {iface_str}): {e}")
-                    continue
+                    except Exception as e:
+                        logger.warning(f"Error monitoring traffic chunk: {e}")
+
+            # 3. MERGE CON DATOS DE QUEUES
+            # Si una interfaz no reportó tráfico (o no existe), usar el dato de la cola
+            for target, stats in queue_stats_found.items():
+                if target not in results or (results[target]['upload'] == 0 and results[target]['download'] == 0):
+                    results[target] = stats
             
             return results
             
         except Exception as e:
-            logger.error(f"Error bulk traffic logic: {e}")
+            logger.error(f"Error in get_bulk_traffic: {e}")
             return {}
 
     def get_bulk_interface_stats(self, usernames: List[str]) -> Dict[str, Dict[str, int]]:
