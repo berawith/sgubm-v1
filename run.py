@@ -62,6 +62,14 @@ def create_app() -> Flask:
     
     from src.presentation.api.health_controller import health_bp
     app.register_blueprint(health_bp)
+
+    # Manejador de errores para SPA: redirigir rutas no-API a index.html
+    @app.errorhandler(404)
+    def handle_404(e):
+        from flask import request, render_template
+        if not request.path.startswith('/api/'):
+            return render_template('index.html')
+        return e
     
     return app
 
@@ -169,47 +177,9 @@ if __name__ == '__main__':
         last_activity_time = time.time()
         logger.info(f"🔴 Client disconnected. Active: {active_connections}")
 
-    # Manejador de errores para SPA: redirigir rutas no-API a index.html
-    @app.errorhandler(404)
-    def handle_404(e):
-        from flask import request, render_template
-        if not request.path.startswith('/api/'):
-            return render_template('index.html')
-        return e
-
-    return app
-
-if __name__ == '__main__':
-    app = create_app()
-    config = get_config()
-
-    # Iniciar Automatización (Solo una vez, no en hilos de request)
-    AutomationManager.get_instance().start()
-
-    # AUTO-APAGADO DESHABILITADO - El servidor permanece activo indefinidamente
-    # Si deseas reactivar el auto-apagado, descomenta las siguientes líneas:
-    # shutdown_thread = threading.Thread(target=idle_shutdown_checker, daemon=True)
-    # shutdown_thread.start()
-
-    @app.socketio.on('connect')
-    def handle_connect():
-        global active_connections, last_activity_time, ever_had_connection
-        active_connections += 1
-        last_activity_time = time.time()
-        ever_had_connection = True  # Marcar que hubo al menos una conexión
-        logger.info(f"🟢 Client connected. Active: {active_connections}")
-
-    @app.socketio.on('disconnect')
-    def handle_disconnect():
-        global active_connections, last_activity_time
-        active_connections = max(0, active_connections - 1)
-        last_activity_time = time.time()
-        logger.info(f"🔴 Client disconnected. Active: {active_connections}")
-
     if config.system.debug_mode:
         logger.info(f"🚀 Real-Time Server starting at http://0.0.0.0:5000 (Debug Mode)")
         app.socketio.run(app, host='0.0.0.0', port=5000, debug=True, use_reloader=True)
     else:
         logger.info(f"🚀 Real-Time Server starting at http://0.0.0.0:5000")
         app.socketio.run(app, host='0.0.0.0', port=5000)
-
