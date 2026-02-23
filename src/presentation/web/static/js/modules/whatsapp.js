@@ -21,6 +21,7 @@ export class WhatsAppModule {
         console.log('📱 WhatsApp Module initialized');
         this.attachEvents();
         this.setupEventListeners();
+        this.setupMobileNavigation();
         this.initSocket();
     }
 
@@ -476,6 +477,10 @@ export class WhatsAppModule {
         if (chatWindow) {
             chatWindow.style.display = 'flex';
             chatWindow.classList.add('viewport-entered');
+
+            // Mobile navigation
+            const container = document.querySelector('.whatsapp-container-premium');
+            if (container) container.classList.add('chat-open');
         }
 
         const isClient = name && name !== 'Unknown' && name !== 'undefined';
@@ -607,6 +612,19 @@ export class WhatsAppModule {
         console.log('💎 Loading Super Agent Console...');
         this.showView();
         this.loadConversations();
+    }
+
+    setupMobileNavigation() {
+        const backBtn = document.querySelector('.chat-top-bar');
+        if (backBtn) {
+            backBtn.addEventListener('click', (e) => {
+                // Si hacemos click en el pseudoelemento ::before (flecha), cerramos
+                if (window.innerWidth <= 900 && e.offsetX < 40) {
+                    const container = document.querySelector('.whatsapp-container-premium');
+                    if (container) container.classList.remove('chat-open');
+                }
+            });
+        }
     }
 
     showView() {

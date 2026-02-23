@@ -1,0 +1,141 @@
+/* ============================================================================
+   SGUBM - Payments Mobile Styles
+   Premium Card View for Financial Transactions
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+
+    /* Hide the traditional table */
+    #payments-list-view .table-container-premium {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
+
+    #payments-list-view .premium-data-table thead {
+        display: none;
+    }
+
+    #payments-list-view .premium-data-table,
+    #payments-list-view .premium-data-table tbody,
+    #payments-list-view .premium-data-table tr,
+    #payments-list-view .premium-data-table td {
+        display: block;
+        width: 100%;
+    }
+
+    /* Transform rows into Cards */
+    #payments-list-view .premium-data-table tr {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 16px;
+        margin-bottom: 16px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        position: relative;
+        transition: transform 0.2s ease;
+    }
+
+    #payments-list-view .premium-data-table tr:hover {
+        transform: translateY(-2px);
+        border-color: #cbd5e1;
+    }
+
+    /* Custom layout within the card */
+    #payments-list-view .premium-data-table td {
+        padding: 4px 0;
+        border: none !important;
+        text-align: left !important;
+    }
+
+    /* Identify specific cells */
+    #payments-list-view .premium-data-table td:nth-child(1) {
+        /* NRO */
+        font-size: 0.75rem;
+        color: #94a3b8;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    #payments-list-view .premium-data-table td:nth-child(2) {
+        /* CLIENTE */
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #1e293b;
+        margin-bottom: 4px;
+    }
+
+    #payments-list-view .premium-data-table td:nth-child(3) {
+        /* FECHA */
+        font-size: 0.85rem;
+        color: #64748b;
+        display: inline-block;
+        width: auto;
+        margin-right: 15px;
+    }
+
+    #payments-list-view .premium-data-table td:nth-child(4) {
+        /* MONTO */
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: #059669;
+        margin-top: 10px;
+        display: block;
+    }
+
+    #payments-list-view .premium-data-table td:nth-child(5),
+    /* METODO */
+    #payments-list-view .premium-data-table td:nth-child(6) {
+        /* REFERENCIA */
+        display: inline-block;
+        width: auto;
+        font-size: 0.8rem;
+        color: #94a3b8;
+        background: #f8fafc;
+        padding: 4px 10px;
+        border-radius: 20px;
+        margin-right: 8px;
+        margin-top: 8px;
+    }
+
+    #payments-list-view .premium-data-table td:nth-child(7) {
+        /* ESTADO */
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: auto;
+    }
+
+    #payments-list-view .premium-data-table td:nth-child(8) {
+        /* ACCIONES */
+        border-top: 1px solid #f1f5f9 !important;
+        margin-top: 12px;
+        padding-top: 12px !important;
+        display: flex;
+        justify-content: flex-end;
+        gap: 15px;
+    }
+
+    /* Toolbar responsiveness */
+    #payments-list-view .clients-toolbar {
+        flex-direction: column !important;
+        gap: 12px !important;
+        padding: 15px !important;
+    }
+
+    #payments-list-view .toolbar-group {
+        width: 100% !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+    }
+
+    #payments-list-view .date-range-minimalist {
+        width: 100% !important;
+        justify-content: space-between !important;
+    }
+
+    #payments-list-view .filter-item {
+        width: 100% !important;
+    }
+}
