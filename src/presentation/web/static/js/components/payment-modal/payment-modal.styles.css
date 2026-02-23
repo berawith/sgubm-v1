@@ -316,4 +316,42 @@
     .payment-modal-card {
         padding: 15px;
     }
+
+    /* Fix hardcoded inline grids for mobile */
+    .form-grid[style*="grid-template-columns: repeat(3, 1fr)"] {
+        grid-template-columns: 1fr !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    .form-group.span-2[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    .form-group.span-full[style*="grid-template-columns: 1fr 1fr 1fr 1fr"] {
+        grid-template-columns: 1fr 1fr !important;
+    }
+
+    #payment-client-search-step {
+        padding: 20px 10px !important;
+    }
+
+    .search-input-group-ultra {
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .search-action-btn {
+        width: 100%;
+        justify-content: center;
+        margin-left: 0 !important;
+    }
+
+    #fiscal-summary-container>div {
+        flex-direction: column;
+        gap: 12px !important;
+    }
 }
