@@ -61,6 +61,9 @@ export class ClientsModule {
 
         // Throttling
         this.isUpdatePending = false;
+        this.trafficBuffer = {};
+        this.lastTrafficUpdate = 0;
+        this.trafficUpdateInterval = 1000;
 
         // Mobile View Detection
         this.isMobile = window.innerWidth < 1024;
