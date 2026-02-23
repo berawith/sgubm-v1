@@ -1696,20 +1696,6 @@ Esta acción es seria y debe usarse con precaución.`;
     updateTrafficUI(data) {
         if (!this.onlineStatusMap) this.onlineStatusMap = {};
 
-        // PERFORMANCE: Only update UI if we are in the clients view AND the tab is visible
-        const currentView = this.viewManager.currentSubView;
-        const isOperationalView = (currentView === 'clients' || currentView === 'clients-actions') && !document.hidden;
-
-        if (!isOperationalView) {
-            // Still update internal state even if not visible
-            Object.keys(data).forEach(clientId => {
-                if (clientId !== '__stats__') {
-                    this.onlineStatusMap[clientId] = data[clientId].status;
-                }
-            });
-            return;
-        }
-
         // Remove global stats if present
         if (data['__stats__']) delete data['__stats__'];
 
