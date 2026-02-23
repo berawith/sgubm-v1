@@ -1442,7 +1442,7 @@ Esta acción es seria y debe usarse con precaución.`;
                             <button class="mobile-action-btn edit" onclick="app.modules.clients.editClient(${client.id})">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            <button class="mobile-action-btn more" onclick="app.modules.clients.showClientHistory(${client.id})">
+                            <button class="mobile-action-btn more" onclick="app.modules.clients.showMobileActionMenu(${client.id})">
                                 <i class="fas fa-ellipsis-h"></i>
                             </button>
                         </div>
@@ -1717,7 +1717,7 @@ Esta acción es seria y debe usarse con precaución.`;
             // Get element from cache or DOM (works for tr or cards)
             let row = this.rowCache.get(clientId);
             if (!row) {
-                row = document.querySelector(`[data - client - id= "${clientId}"]`);
+                row = document.querySelector(`[data-client-id="${clientId}"]`);
                 if (row) this.rowCache.set(clientId, row);
             }
 
@@ -1993,6 +1993,42 @@ Esta acción es seria y debe usarse con precaución.`;
         } finally {
             this.clientToDelete = null;
         }
+    }
+
+    async showMobileActionMenu(clientId) {
+        const client = this.clients.find(c => c.id === clientId) || (this.allClients && this.allClients.find(c => c.id === clientId));
+        if (!client) return;
+
+        const isSuspended = (client.status || '').toLowerCase() === 'suspended';
+        const stColor = isSuspended ? '#10b981' : '#f59e0b';
+        const stText = isSuspended ? 'Activar Servicio' : 'Suspender Servicio';
+        const stIcon = isSuspended ? 'fa-play' : 'fa-pause';
+
+        const html = `
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+                <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.showClientHistory(${clientId}), 300)" style="width: 100%; padding: 14px; background: #3b82f6; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i class="fas fa-history"></i> Historial y Pagos
+                </button>
+                <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.${isSuspended ? 'activateClient' : 'suspendClient'}(${clientId}), 300)" style="width: 100%; padding: 14px; background: ${stColor}; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i class="fas ${stIcon}"></i> ${stText}
+                </button>
+                <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.deleteClient(${clientId}), 300)" style="width: 100%; padding: 14px; background: #ef4444; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i class="fas fa-trash-alt"></i> Eliminar Cliente
+                </button>
+            </div>
+        `;
+
+        Swal.fire({
+            title: '<span style="font-size: 1.2rem; color: #1e293b;">Opciones de Cliente</span>',
+            html: html,
+            showConfirmButton: false,
+            showCloseButton: true,
+            background: '#ffffff',
+            customClass: {
+                popup: 'premium-compact-modal',
+                title: 'premium-modal-title'
+            }
+        });
     }
 
     async restoreClient(clientId) {
