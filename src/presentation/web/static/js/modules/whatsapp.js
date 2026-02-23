@@ -615,14 +615,11 @@ export class WhatsAppModule {
     }
 
     setupMobileNavigation() {
-        const backBtn = document.querySelector('.chat-top-bar');
+        const backBtn = document.getElementById('whatsapp-mobile-back');
         if (backBtn) {
-            backBtn.addEventListener('click', (e) => {
-                // Si hacemos click en el pseudoelemento ::before (flecha), cerramos
-                if (window.innerWidth <= 900 && e.offsetX < 40) {
-                    const container = document.querySelector('.whatsapp-container-premium');
-                    if (container) container.classList.remove('chat-open');
-                }
+            backBtn.addEventListener('click', () => {
+                const container = document.querySelector('.whatsapp-container-premium');
+                if (container) container.classList.remove('chat-open');
             });
         }
     }

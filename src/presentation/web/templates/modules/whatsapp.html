@@ -57,6 +57,9 @@
 
             <div id="chat-window" class="chat-viewport" style="display: none;">
                 <div class="chat-top-bar">
+                    <button class="chat-back-btn" id="whatsapp-mobile-back" title="Volver">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
                     <div class="client-identity">
                         <div class="avatar-quantum" id="chat-avatar">U</div>
                         <div class="identity-info">
@@ -692,16 +695,22 @@
         }
 
         /* Back button for mobile */
-        .chat-top-bar::before {
-            content: '\f060';
-            font-family: 'Font Awesome 5 Free';
-            font-weight: 900;
+        .chat-back-btn {
+            display: none;
+            background: transparent;
+            border: none;
             color: white;
+            font-size: 1.2rem;
             margin-right: 15px;
             cursor: pointer;
-            font-size: 1.2rem;
-            display: flex;
             align-items: center;
+            justify-content: center;
+        }
+
+        @media (max-width: 900px) {
+            .chat-back-btn {
+                display: flex;
+            }
         }
     }
 </style>
