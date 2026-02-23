@@ -1422,6 +1422,7 @@ export class PaymentsModule {
                     <span style="font-family:'JetBrains Mono'; font-size:0.7rem; color:#64748b;">${payment.reference || '---'}</span>
                 </td>
                 <td>
+                <td>
                     <span class="premium-status-badge ${statusClass}" style="font-size:0.6rem; padding: 4px 8px;">
                         <i class="fas ${statusClass === 'success' ? 'fa-check-circle' : 'fa-clock'}" style="font-size:0.7rem;"></i> ${statusName}
                     </span>
@@ -1445,7 +1446,7 @@ export class PaymentsModule {
                     </div>
                 </td>
             </tr>
-    `;
+            `;
         }).join('');
     }
 
