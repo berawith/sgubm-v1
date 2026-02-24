@@ -1392,22 +1392,27 @@ export class PaymentsModule {
                     </div>
                 </div>
 
-                <div class="card-mobile-footer">
-                    <div class="card-mobile-actions" style="width:100%; justify-content: space-around;">
-                        <button onclick="app.modules.payments.printReceipt(${payment.id})" class="mobile-action-btn edit" title="Imprimir">
-                            <i class="fas fa-print"></i>
+                <div class="card-mobile-footer" style="justify-content: flex-end; border-top: 1px dashed rgba(0, 0, 0, 0.05); padding-top: 10px;">
+                    <div class="mobile-dropdown-container">
+                        <button class="mobile-action-btn" onclick="this.nextElementSibling.classList.toggle('show')" onblur="setTimeout(() => this.nextElementSibling?.classList.remove('show'), 200)" title="Opciones" style="background: transparent; border: none; font-size: 1.1rem; color: #94a3b8; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-ellipsis-v"></i>
                         </button>
-                        <button onclick="app.modules.payments.showEditPaymentModal(${payment.id})" class="mobile-action-btn more" title="Editar">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        ${payment.status !== 'cancelled' ? `
-                        <button onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')" class="mobile-action-btn delete" title="Revertir">
-                            <i class="fas fa-undo"></i>
-                        </button>
-                        ` : ''}
-                        <button onclick="app.modules.payments.voidPayment(${payment.id})" class="mobile-action-btn delete" title="Eliminar">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        <div class="mobile-dropdown-menu">
+                            <button onclick="app.modules.payments.printReceipt(${payment.id})" class="dropdown-item">
+                                <i class="fas fa-print" style="color: #64748b; width: 16px; text-align: center;"></i> Imprimir Recibo
+                            </button>
+                            <button onclick="app.modules.payments.showEditPaymentModal(${payment.id})" class="dropdown-item">
+                                <i class="fas fa-edit" style="color: #6366f1; width: 16px; text-align: center;"></i> Editar Pago
+                            </button>
+                            ${payment.status !== 'cancelled' ? `
+                            <button onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')" class="dropdown-item">
+                                <i class="fas fa-undo" style="color: #eab308; width: 16px; text-align: center;"></i> Revertir Pago
+                            </button>
+                            ` : ''}
+                            <button onclick="app.modules.payments.voidPayment(${payment.id})" class="dropdown-item" style="color: #dc2626;">
+                                <i class="fas fa-trash" style="width: 16px; text-align: center;"></i> Eliminar Pago
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
