@@ -762,6 +762,100 @@ class MikroTikAdapter(INetworkService):
             logger.error(f"Error suspendiendo cliente en MikroTik: {e}")
             return False
 
+    def bulk_suspend_clients(self, clients: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Ejecuta la suspensión masiva de clientes usando una sola conexión.
+        Optimizado para evitar reconexiones.
+        Retorna: {'suspended': int, 'errors': int, 'successful_ids': list}
+        """
+        if not self._is_connected or not clients:
+            return {'suspended': 0, 'errors': 0, 'successful_ids': []}
+
+        logger.info(f"⚡ Iniciando suspensión masiva de {len(clients)} clientes en MikroTik...")
+
+        # 0. Asegurar firewall (una sola vez)
+        self.ensure_cutoff_firewall_rules()
+
+        # 1. Pre-cargar datos para reducir llamadas
+        try:
+            active_sessions = self.get_active_pppoe_sessions()
+            addr_lists = self._api_connection.get_resource('/ip/firewall/address-list')
+
+            # Pre-cargar lista de bloqueados para no re-insertar
+            existing_blocked = {
+                entry.get('address')
+                for entry in addr_lists.get(list='IPS_BLOQUEADAS')
+                if entry.get('address')
+            }
+        except Exception as e:
+            logger.warning(f"Error pre-loading MikroTik data: {e}")
+            active_sessions = {}
+            existing_blocked = set()
+
+        suspended_count = 0
+        errors_count = 0
+        successful_ids = []
+
+        for client in clients:
+            try:
+                username = client.get('username')
+                client_db_id = client.get('id')
+                ip_address = client.get('ip_address')
+                legal_name = client.get('legal_name', username)
+                service_type = client.get('service_type', 'pppoe')
+
+                # A. Obtener IP Real
+                real_ip = ip_address
+                if service_type == 'pppoe' or not ip_address or ip_address in ['Dinámica', '0.0.0.0']:
+                    if username in active_sessions:
+                        session_ip = active_sessions[username].get('ip')
+                        if session_ip: real_ip = session_ip
+
+                # B. Deshabilitar Secret/Queue
+                item_resource = None
+                if service_type == 'pppoe':
+                    item_resource = self._api_connection.get_resource('/ppp/secret')
+                else:
+                    item_resource = self._api_connection.get_resource('/queue/simple')
+
+                # Buscar y deshabilitar
+                try:
+                    items = item_resource.get(name=username)
+                    if items:
+                        target_id = items[0].get('.id') or items[0].get('id')
+                        if target_id:
+                            # Solo si no es dinámico
+                            if items[0].get('dynamic') != 'true':
+                                item_resource.set(id=target_id, disabled='yes', comment="")
+                except Exception as e_dis:
+                    logger.debug(f"Could not disable {service_type} for {username}: {e_dis}")
+
+                # C. Agregar a Address List (Si no existe ya)
+                target_ip_to_block = real_ip or ip_address
+                if target_ip_to_block and target_ip_to_block not in ['Dinámica', '0.0.0.0']:
+                    clean_ip = target_ip_to_block.split('/')[0]
+                    if clean_ip not in existing_blocked:
+                        try:
+                            addr_lists.add(list='IPS_BLOQUEADAS', address=clean_ip, comment=legal_name)
+                            existing_blocked.add(clean_ip) # Actualizar cache local
+                        except Exception as e_list:
+                            logger.error(f"Error adding to block list: {e_list}")
+
+                # D. Kick PPPoE
+                if service_type == 'pppoe':
+                    self.kick_ppp_active_session(username)
+
+                suspended_count += 1
+                if client_db_id:
+                    successful_ids.append(client_db_id)
+
+            except Exception as e:
+                logger.error(f"Error suspending {client.get('username')}: {e}")
+                errors_count += 1
+
+        logger.info(f"✅ Suspensión masiva finalizada. Éxitos: {suspended_count}, Errores: {errors_count}")
+        return {'suspended': suspended_count, 'errors': errors_count, 'successful_ids': successful_ids}
+
     def kick_ppp_active_session(self, username: str) -> bool:
         """
         Elimina la sesión activa de un usuario PPPoE para forzar reconexión o corte.

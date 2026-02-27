@@ -9,9 +9,10 @@ from src.application.services.sync_service import SyncService
 logger = logging.getLogger(__name__)
 
 
-def safe_suspend_client(db, client, router, audit_service=None, audit_details=None, commit: bool = True):
+def safe_suspend_client(db, client, router, audit_service=None, audit_details=None, commit: bool = True, adapter=None):
     """
     Suspende un cliente con manejo de router offline Y validación de address list
+    Permite reutilizar una conexión existente (adapter) para operaciones en lote.
     
     Args:
         db: Database manager
@@ -20,6 +21,7 @@ def safe_suspend_client(db, client, router, audit_service=None, audit_details=No
         audit_service: Servicio de auditoría (opcional) 
         audit_details: Detalles para auditoría (opcional)
         commit: Si debe realizar commit inmediato (default True)
+        adapter: Instancia opcional de MikroTikAdapter conectada
         
     Returns:
         Dict con status, message y details
@@ -30,11 +32,15 @@ def safe_suspend_client(db, client, router, audit_service=None, audit_details=No
     client_dict = client.to_dict()
     client_repo = db.get_client_repository()
     
+    should_disconnect = False
+
     try:
-        # Intentar conectar a MikroTik
-        adapter = MikroTikAdapter()
-        if not adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
-            raise Exception(f"No se pudo conectar al router {router.host_address}")
+        # Usar adaptador proporcionado o crear uno nuevo
+        if adapter is None:
+            adapter = MikroTikAdapter()
+            if not adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
+                raise Exception(f"No se pudo conectar al router {router.host_address}")
+            should_disconnect = True
         
         # Usar método del adaptador que maneja toda la lógica de suspensión
         adapter.suspend_client_service(client_dict)
@@ -42,7 +48,8 @@ def safe_suspend_client(db, client, router, audit_service=None, audit_details=No
         message = "Cliente bloqueado en MikroTik y sistema"
         already_blocked = False 
         
-        adapter.disconnect()
+        if should_disconnect:
+            adapter.disconnect()
         
         # Actualizar estado en BD usando repositorio
         client_repo.update(client_id, {'status': 'suspended'}, commit=commit)
@@ -98,9 +105,10 @@ def safe_suspend_client(db, client, router, audit_service=None, audit_details=No
         }
 
 
-def safe_activate_client(db, client, router, audit_service=None, audit_details=None, commit: bool = True):
+def safe_activate_client(db, client, router, audit_service=None, audit_details=None, commit: bool = True, adapter=None):
     """
     Activa un cliente con manejo de router offline Y validación de address list
+    Permite reutilizar una conexión existente (adapter) para operaciones en lote.
     
     Args:
         db: Database manager
@@ -109,6 +117,7 @@ def safe_activate_client(db, client, router, audit_service=None, audit_details=N
         audit_service: Servicio de auditoría (opcional)
         audit_details: Detalles para auditoría (opcional)
         commit: Si debe realizar commit inmediato (default True)
+        adapter: Instancia opcional de MikroTikAdapter conectada
         
     Returns:
         Dict con status, message y details
@@ -119,11 +128,15 @@ def safe_activate_client(db, client, router, audit_service=None, audit_details=N
     client_dict = client.to_dict()
     client_repo = db.get_client_repository()
     
+    should_disconnect = False
+
     try:
-        # Intentar conectar a MikroTik
-        adapter = MikroTikAdapter()
-        if not adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
-            raise Exception(f"No se pudo conectar al router {router.host_address}")
+        # Usar adaptador proporcionado o crear uno nuevo
+        if adapter is None:
+            adapter = MikroTikAdapter()
+            if not adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
+                raise Exception(f"No se pudo conectar al router {router.host_address}")
+            should_disconnect = True
         
         # Verificar y restaurar servicio
         adapter.restore_client_service(client_dict)
@@ -131,7 +144,8 @@ def safe_activate_client(db, client, router, audit_service=None, audit_details=N
         message = "Cliente desbloqueado de MikroTik y activado"
         was_blocked = True 
         
-        adapter.disconnect()
+        if should_disconnect:
+            adapter.disconnect()
         
         # Actualizar estado en BD usando repositorio (seguro)
         client_repo.update(client_id, {'status': 'active'}, commit=commit)

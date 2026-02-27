@@ -3,7 +3,10 @@ Test de Arquitectura Modular
 Verifica que los módulos están correctamente desacoplados
 """
 import sys
-sys.path.insert(0, 'c:/SGUBM-V1')
+import os
+
+# Agrega el directorio raíz del proyecto al sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 def test_imports():
     """Verifica que todos los módulos se importan correctamente"""
@@ -11,7 +14,7 @@ def test_imports():
     
     # Test 1: Core Domain (sin dependencias)
     try:
-        from src.core.domain import Client, Node, ServicePlan, ManagementMethod
+        from src.core.domain.entities import Client, Node, ServicePlan, ManagementMethod
         print("✅ Core Domain imports successfully (no external dependencies)")
     except Exception as e:
         print(f"❌ Core Domain import failed: {e}")
@@ -27,7 +30,7 @@ def test_imports():
     
     # Test 3: Event Bus
     try:
-        from src.application.events import get_event_bus, SystemEvents
+        from src.application.events.event_bus import get_event_bus, SystemEvents
         print("✅ Event Bus imports successfully")
     except Exception as e:
         print(f"❌ Event Bus import failed: {e}")
@@ -35,7 +38,7 @@ def test_imports():
     
     # Test 4: Configuration
     try:
-        from src.infrastructure.config import get_config
+        from src.infrastructure.config.settings import get_config
         config = get_config()
         print(f"✅ Configuration loaded successfully (Environment: {config.system.environment})")
     except Exception as e:
@@ -44,7 +47,7 @@ def test_imports():
     
     # Test 5: MikroTik Adapter
     try:
-        from src.infrastructure.mikrotik import MikroTikAdapter
+        from src.infrastructure.mikrotik.adapter import MikroTikAdapter
         print("✅ MikroTik Adapter implements INetworkService")
     except Exception as e:
         print(f"❌ MikroTik Adapter import failed: {e}")
@@ -57,7 +60,7 @@ def test_domain_entities():
     """Verifica que las entidades de dominio funcionan sin dependencias"""
     print("\n🧪 Testing Domain Entities...\n")
     
-    from src.core.domain import Client, Node, ServicePlan, BurstConfig
+    from src.core.domain.entities import Client, Node, ServicePlan, BurstConfig, ManagementMethod
     from datetime import datetime
     
     # Test Client
@@ -78,7 +81,6 @@ def test_domain_entities():
         host_address="192.168.1.1"
     )
     
-    from src.core.domain import ManagementMethod
     node.enable_capability(ManagementMethod.PPPOE)
     assert node.supports_pppoe == True, "Node should support PPPoE"
     print("✅ Node entity works correctly")
@@ -102,7 +104,7 @@ def test_event_bus():
     """Verifica que el Event Bus funciona para comunicación desacoplada"""
     print("\n🧪 Testing Event Bus (Decoupled Communication)...\n")
     
-    from src.application.events import get_event_bus, SystemEvents
+    from src.application.events.event_bus import get_event_bus, SystemEvents
     
     event_bus = get_event_bus()
     
@@ -188,7 +190,7 @@ def test_configuration():
     """Verifica que la configuración centralizada funciona"""
     print("\n🧪 Testing Centralized Configuration...\n")
     
-    from src.infrastructure.config import get_config
+    from src.infrastructure.config.settings import get_config
     
     config = get_config()
     
