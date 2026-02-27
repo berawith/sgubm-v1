@@ -2,8 +2,10 @@ import logging
 import calendar
 from datetime import datetime, timedelta
 from sqlalchemy import extract, and_
+from sqlalchemy.orm import joinedload
 from src.infrastructure.database.db_manager import get_db
-from src.infrastructure.database.models import Client, Invoice, InvoiceItem, InternetPlan, PaymentPromise
+from src.infrastructure.database.models import Client, Invoice, InvoiceItem, InternetPlan, PaymentPromise, Router
+from src.infrastructure.mikrotik.adapter import MikroTikAdapter
 from src.application.services.audit_service import AuditService
 from src.application.services.mikrotik_operations import safe_suspend_client
 from src.domain.services.tax_engine import TaxEngine
@@ -48,8 +50,20 @@ class BillingService:
         logger.info(f"📊 Iniciando Facturación Masiva: {target_year}-{target_month}")
         
         try:
+            # 0. Precargar configuraciones de todos los routers para evitar N+1 queries
+            routers = session.query(Router).all()
+            router_configs = {
+                r.id: {
+                    'billing_day': r.billing_day or 1,
+                    'grace_period': r.grace_period or 5,
+                    'cut_day': r.cut_day or 5,
+                    'non_cumulative_debt': False # Default, could be extended from router model
+                } for r in routers
+            }
+
             # 1. Obtener clientes activos o suspendidos
-            query = session.query(Client).filter(
+            # OPTIMIZACIÓN: Eager loading de InternetPlan para evitar N+1
+            query = session.query(Client).options(joinedload(Client.internet_plan)).filter(
                 Client.status.in_(['active', 'suspended'])
             )
             
@@ -59,41 +73,41 @@ class BillingService:
                 query = query.filter(Client.id.in_(client_ids))
                 
             clients = query.all()
-            
-            # Cache de configuraciones de router para evitar consultas repetitivas
-            router_configs = {}
+
+            # Pre-fetch facturas existentes del mes en una sola consulta
+            existing_invoices_ids = set()
+            existing_query = session.query(Invoice.client_id).filter(
+                extract('year', Invoice.issue_date) == target_year,
+                extract('month', Invoice.issue_date) == target_month
+            )
+            if router_id:
+                existing_query = existing_query.join(Client).filter(Client.router_id == router_id)
+
+            existing_invoices_ids = {row[0] for row in existing_query.all()}
             
             created_count = 0
             skipped_count = 0
             errors_count = 0
             
+            # 1.4. Datos ERP (Moneda y Tasa) - Cargar una vez fuera del bucle
+            settings_repo = db.get_system_setting_repository()
+            currency_service = CurrencyService(settings_repo)
+
+            erp_currency = settings_repo.get_value('ERP_REPORTING_CURRENCY', 'COP') # Moneda de facturación
+            base_currency = settings_repo.get_value('ERP_BASE_CURRENCY', 'USD')
+
+            # Tasa en el momento de la facturación
+            erp_rate = currency_service.get_rate(erp_currency, base_currency)
+
             for client in clients:
                 try:
-                    # Verificar si ya tiene factura este mes
-                    existing = session.query(Invoice).filter(
-                        Invoice.client_id == client.id,
-                        extract('year', Invoice.issue_date) == target_year,
-                        extract('month', Invoice.issue_date) == target_month
-                    ).first()
-                    
-                    if existing:
+                    # Verificar si ya tiene factura este mes (en memoria)
+                    if client.id in existing_invoices_ids:
                         skipped_count += 1
                         continue
                     
-                    # Determinar configuración de vencimiento según el Router
-                    if client.router_id not in router_configs:
-                        from src.infrastructure.database.models import Router
-                        router = session.query(Router).get(client.router_id)
-                        if router:
-                            router_configs[client.router_id] = {
-                                'billing_day': router.billing_day or 1,
-                                'grace_period': router.grace_period or 5,
-                                'cut_day': router.cut_day or 5
-                            }
-                        else:
-                            router_configs[client.router_id] = {'billing_day': 1, 'grace_period': 5, 'cut_day': 5}
-                    
-                    config = router_configs[client.router_id]
+                    # Determinar configuración de vencimiento según el Router (en memoria)
+                    config = router_configs.get(client.router_id, {'billing_day': 1, 'grace_period': 5, 'cut_day': 5})
                     billing_day = config['billing_day']
                     grace_period = config['grace_period']
                     
@@ -124,31 +138,20 @@ class BillingService:
                     due_date = due_date.replace(hour=17, minute=0, second=0)
                     
                     # Determinar precio
+                    # OPTIMIZACIÓN: Usar la relación eager loaded
                     amount = client.monthly_fee or 0.0
                     plan_name = f"Plan Internet: {client.plan_name or 'Básico'}"
                     
-                    if client.plan_id:
-                        plan = session.query(InternetPlan).get(client.plan_id)
-                        if plan:
-                            amount = plan.monthly_price
-                            plan_name = f"Plan Internet: {plan.name}"
+                    if client.internet_plan:
+                         amount = client.internet_plan.monthly_price
+                         plan_name = f"Plan Internet: {client.internet_plan.name}"
                     
                     if amount <= 0:
                         logger.warning(f"⚠️ Cliente {client.legal_name} ({client.id}) tiene costo 0. Saltando.")
                         errors_count += 1
                         continue
                         
-                    # 1.4. Datos ERP (Moneda y Tasa)
-                    settings_repo = db.get_system_setting_repository()
-                    currency_service = CurrencyService(settings_repo)
-                    
-                    currency = settings_repo.get_value('ERP_REPORTING_CURRENCY', 'COP') # Moneda de facturación
-                    base_currency = settings_repo.get_value('ERP_BASE_CURRENCY', 'USD')
-                    
-                    # Tasa en el momento de la facturación
-                    # Esta es la que se usará para Diferencia en Cambio al cobrar
-                    rate = currency_service.get_rate(currency, base_currency)
-                    base_amount = amount * rate
+                    base_amount = amount * erp_rate
 
                     # Crear Factura
                     new_invoice = Invoice(
@@ -156,8 +159,8 @@ class BillingService:
                         issue_date=issue_date,
                         due_date=due_date,
                         total_amount=amount,
-                        currency=currency,
-                        exchange_rate=rate,
+                        currency=erp_currency,
+                        exchange_rate=erp_rate,
                         subtotal_amount=amount, # Simplificación: subtotal = total si no hay IVA explícito aquí
                         base_amount=base_amount,
                         status='unpaid'
@@ -186,7 +189,7 @@ class BillingService:
                         # Si tiene promesa, la deuda es acumulativa (Anterior + Nueva)
                         client.account_balance = current_balance + amount
                         operation_type = "accumulated_with_promise"
-                    elif is_suspended or config.billing.non_cumulative_debt:
+                    elif is_suspended or config.get('non_cumulative_debt'):
                         # "Borrón y cuenta nueva": Se ignora deuda anterior, empieza nuevo ciclo
                         client.account_balance = amount
                         operation_type = "reset_cycle"
@@ -198,7 +201,7 @@ class BillingService:
                     client.due_date = due_date
                     
                     # Registrar ajuste en Auditoría (Kardex)
-                    if operation_type == "reset_non_cumulative" and old_balance > 0:
+                    if operation_type == "reset_cycle" and old_balance > 0:
                         AuditService.log(
                             operation='balance_reset_cycle',
                             category='accounting',
@@ -359,12 +362,16 @@ class BillingService:
                 
         overdue_invoices = query.all()
         
-        # 2. PROCESAR CORTES
+        # 2. PROCESAR CORTES (Optimizado con Bulk Suspend)
         client_ids_to_suspend = set([inv.client_id for inv in overdue_invoices])
-        suspended_count = 0
+
+        # Diccionario para agrupar clientes por router
+        clients_by_router = {} # { router_id: [client_obj, ...] }
+
         skipped_promise_count = 0
         skipped_paid_count = 0
         
+        # Fase 1: Filtrado y Agrupación (Sin IO de red)
         for client_id in client_ids_to_suspend:
             client = session.query(Client).get(client_id)
             if not client or client.status != 'active':
@@ -373,7 +380,6 @@ class BillingService:
             # FILTRO CRÍTICO: Verificar Balance real (Problema 1 y 2)
             if (client.account_balance or 0) <= 0:
                 logger.info(f"🛡️ BillingService: Saltando suspensión accidental de {client.legal_name}. Balance: {client.account_balance} (Ya pagó)")
-                # Corregir estatus de facturas vencidas si el balance es 0
                 for inv in overdue_invoices:
                     if inv.client_id == client.id:
                         inv.status = 'paid'
@@ -386,7 +392,7 @@ class BillingService:
                 skipped_promise_count += 1
                 continue
             
-            # Si el cliente tenía una promesa vencida, marcarla como INCUMPLIDA
+            # Gestión de Promesas Incumplidas
             if client.promise_date and client.promise_date < now:
                 broken_promises = session.query(PaymentPromise).filter(
                     PaymentPromise.client_id == client.id,
@@ -396,36 +402,95 @@ class BillingService:
                     bp.status = 'broken'
                     bp.notes = (bp.notes or "") + f" | Incumplida el {now.strftime('%Y-%m-%d')}"
                 
-                # Incrementar contador de promesas incumplidas consecutivas
                 client.broken_promises_count = (client.broken_promises_count or 0) + 1
                 logger.warning(f"💔 Promesa INCUMPLIDA por {client.legal_name}. Contador: {client.broken_promises_count}")
-                
-            logger.warning(f"🚫 Suspendiendo cliente {client.legal_name} por deuda acumulada (${client.account_balance}).")
             
-            # Ejecutar suspensión técnica de forma segura
+            # Agrupar para ejecución en lote
             if client.router_id:
-                router = db.get_router_repository().get_by_id(client.router_id)
-                if router:
-                    result = safe_suspend_client(
-                        db=db,
-                        client=client,
-                        router=router,
-                        audit_service=AuditService,
-                        audit_details=f"Suspensión automática por deuda: ${client.account_balance}"
-                    )
-                    if result['status'] in ['success', 'queued']:
-                        suspended_count += 1
+                if client.router_id not in clients_by_router:
+                    clients_by_router[client.router_id] = []
+                clients_by_router[client.router_id].append(client)
 
-            # Auditoría de Suspensión
-            AuditService.log(
-                operation='client_suspended',
-                category='client',
-                entity_type='client',
-                entity_id=client.id,
-                description=f"Suspensión automática por deuda: ${client.account_balance}",
-                previous_state={'status': 'active'},
-                new_state={'status': 'suspended'}
-            )
+        # Fase 2: Ejecución Masiva por Router (IO Optimizado)
+        suspended_count = 0
+        router_repo = db.get_router_repository()
+
+        for r_id, clients_list in clients_by_router.items():
+            router = router_repo.get_by_id(r_id)
+            if not router: continue
+
+            logger.info(f"🔌 Conectando a Router {router.alias} para suspender {len(clients_list)} clientes...")
+
+            # Preparar datos para el adaptador
+            clients_data = [c.to_dict() for c in clients_list]
+
+            try:
+                # Intento de conexión y bulk suspend
+                adapter = MikroTikAdapter()
+                if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port):
+
+                    results = adapter.bulk_suspend_clients(clients_data)
+                    adapter.disconnect()
+
+                    # Procesar resultados exitosos basado en IDs devueltos
+                    successful_ids = set(results.get('successful_ids', []))
+
+                    for client in clients_list:
+                        if client.id in successful_ids:
+                            # Éxito: Actualizar estado en BD
+                            client.status = 'suspended'
+                            suspended_count += 1
+
+                            # Auditoría
+                            AuditService.log(
+                                operation='client_suspended',
+                                category='client',
+                                entity_type='client',
+                                entity_id=client.id,
+                                description=f"Suspensión automática (Bulk) por deuda: ${client.account_balance}",
+                                previous_state={'status': 'active'},
+                                new_state={'status': 'suspended'}
+                            )
+                        else:
+                            # Fallo Individual: Encolar en SyncService
+                            from src.application.services.sync_service import SyncService
+                            sync = SyncService(db)
+                            # Marcar como suspendido en BD para evitar reintentos infinitos en este ciclo,
+                            # pero encolar la tarea técnica para que se reintente luego.
+                            client.status = 'suspended'
+                            sync.queue_operation(
+                                operation_type='suspend',
+                                client_id=client.id,
+                                router_id=router.id,
+                                ip_address=client.ip_address,
+                                target_status='suspended',
+                                commit=False
+                            )
+                            # Contamos como "procesado" (encolado) para el reporte
+                            suspended_count += 1
+                else:
+                    raise Exception("Connection failed")
+
+            except Exception as e:
+                logger.error(f"❌ Falló suspensión masiva en Router {router.alias}: {e}")
+                # Fallback: Encolar individualmente o marcar error
+                # Por simplicidad en este paso, registramos error.
+                # En producción idealmente se usaría SyncService.queue_operation por cada cliente fallido.
+                from src.application.services.sync_service import SyncService
+                sync = SyncService(db)
+                for client in clients_list:
+                    # Marcar como suspendido en BD para no reintentar infinitamente en el mismo ciclo
+                    # pero encolar la tarea técnica
+                    client.status = 'suspended'
+                    sync.queue_operation(
+                        operation_type='suspend',
+                        client_id=client.id,
+                        router_id=router.id,
+                        ip_address=client.ip_address,
+                        target_status='suspended',
+                        commit=False
+                    )
+                    suspended_count += 1 # Contamos como procesado (encolado)
 
         # 3. PROCESAR RESTAURACIONES (Auto-fix para clientes que ya pagaron pero siguen cortados)
         restored_count = 0
