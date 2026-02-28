@@ -1,0 +1,144 @@
+/* ============================================================================
+   Premium Table Sorting & Pagination
+   ============================================================================ */
+.premium-data-table th.sortable {
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.premium-data-table th.sortable:hover {
+    background: var(--primary-light);
+    color: var(--primary-solid);
+}
+
+.premium-data-table th.sortable .sort-icon {
+    margin-left: 8px;
+    font-size: 0.75rem;
+    opacity: 0.3;
+    transition: all 0.2s ease;
+}
+
+.premium-data-table th.sortable:hover .sort-icon {
+    opacity: 0.6;
+}
+
+.premium-data-table th.sortable.active {
+    color: var(--primary-solid);
+    background: var(--primary-light);
+}
+
+.premium-data-table th.sortable.active .sort-icon {
+    opacity: 1;
+    color: var(--primary-solid);
+}
+
+/* Pagination Modernization */
+.pagination-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background: white;
+    border-radius: 0 0 20px 20px;
+    border-top: 1px solid #f1f5f9;
+}
+
+.pagination-info {
+    font-size: 0.875rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.pagination-info span {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.pagination-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-pagination {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    color: #64748b;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.btn-pagination:hover:not(:disabled) {
+    border-color: var(--primary-solid);
+    color: var(--primary-solid);
+    background: var(--primary-light);
+    transform: translateY(-1px);
+}
+
+.btn-pagination:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: #f8fafc;
+}
+
+.btn-pagination.active {
+    background: var(--primary-solid);
+    color: white;
+    border-color: var(--primary-solid);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+}
+
+/* Status Dot Animation (Super Premium) */
+.status-dot-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    position: relative;
+    margin-right: 6px;
+}
+
+.status-dot-pulse.online {
+    background: #10b981;
+}
+
+.status-dot-pulse.offline {
+    background: #94a3b8;
+}
+
+.status-dot-pulse.online::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    background: inherit;
+    border-radius: 50%;
+    animation: pulse-status 2s infinite;
+}
+
+@keyframes pulse-status {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+
+    70% {
+        transform: scale(3);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 0;
+    }
+}

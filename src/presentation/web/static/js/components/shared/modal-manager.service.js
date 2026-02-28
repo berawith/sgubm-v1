@@ -55,7 +55,7 @@ export class ModalManager {
             }
 
             if (closeTrigger && this.currentModal) {
-                console.log(`🔌 [ModalManager] Global close triggered for: ${this.currentModal}`);
+                console.log(`🔌 [ModalManager] Global close triggered for: ${this.currentModal} by:`, closeTrigger);
                 e.preventDefault();
                 e.stopPropagation();
                 this.close(this.currentModal);
@@ -91,6 +91,27 @@ export class ModalManager {
         this.modals.set(name, modalInstance);
         console.log(`📦 Modal registrado: ${name}`);
 
+        const modalId = modalInstance.modalId || name;
+
+        // 🛡️ ESCUCHAR CIERRE INTERNO:
+        // Si el modal se cierra a sí mismo (p.ej. tras guardar), el manager debe saberlo
+        // para ocultar el overlay y liberar el estado.
+        const handleInternalClose = () => {
+            if (this.currentModal === name) {
+                console.log(`🔌 [ModalManager] Detectado cierre interno de: ${name}`);
+                this.currentModal = null;
+                if (this.overlay) {
+                    this.overlay.classList.remove('active');
+                }
+            }
+        };
+
+        // Escuchar por modalId y por nombre de registro para máxima compatibilidad
+        document.addEventListener(`modal:${modalId}:closed`, handleInternalClose);
+        if (modalId !== name) {
+            document.addEventListener(`modal:${name}:closed`, handleInternalClose);
+        }
+
         return this;
     }
 
@@ -100,6 +121,7 @@ export class ModalManager {
     unregister(name) {
         const modal = this.modals.get(name);
         if (modal) {
+            // Nota: En un sistema real deberíamos remover los listeners aquí
             modal.destroy();
             this.modals.delete(name);
             console.log(`🗑️ Modal eliminado: ${name}`);
@@ -138,6 +160,14 @@ export class ModalManager {
         }
     }
 
+    closeUnregistered() {
+        // Enforce cleanup if a modal was destroyed but overlay remained
+        if (this.overlay) {
+            this.overlay.classList.remove('active');
+        }
+        this.currentModal = null;
+    }
+
     /**
      * Cierra un modal por nombre
      */
@@ -145,22 +175,31 @@ export class ModalManager {
         const modal = this.modals.get(name);
 
         if (!modal) {
-            console.warn(`⚠️ Modal '${name}' no encontrado para cerrar`);
+            console.warn(`⚠️ Modal '${name}' no encontrado para cerrar. Forzando limpieza...`);
+            this.closeUnregistered();
             return;
         }
 
-        modal.close();
+        try {
+            modal.close();
+            console.log(`❌ Modal cerrado: ${name}`);
+        } catch (error) {
+            console.error(`❌ Error al cerrar modal '${name}':`, error);
+        } finally {
+            if (this.currentModal === name) {
+                this.currentModal = null;
+            }
 
-        if (this.currentModal === name) {
-            this.currentModal = null;
+            // Ocultar overlay si no hay modales abiertos o si forzamos limpieza
+            if (this.overlay) {
+                // Verificación extra: ¿hay algún modal con clase 'active' en el DOM?
+                const activeModals = document.querySelectorAll('.modal.active');
+                if (activeModals.length === 0 || !this.currentModal) {
+                    this.overlay.classList.remove('active');
+                    console.log('🔌 [ModalManager] Overlay forzado a inactivo (Safe Close)');
+                }
+            }
         }
-
-        // Ocultar overlay si no hay modales abiertos
-        if (this.overlay && !this.currentModal) {
-            this.overlay.classList.remove('active');
-        }
-
-        console.log(`❌ Modal cerrado: ${name}`);
     }
 
     /**

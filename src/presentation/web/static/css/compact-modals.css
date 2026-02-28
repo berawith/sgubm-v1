@@ -394,3 +394,37 @@
 .password-toggle-icon:hover {
     color: #4f46e5;
 }
+
+/* Large Sized Premium Modal (Router Details) */
+.premium-modal-large {
+    max-width: 900px !important;
+    width: 95%;
+    border-radius: 24px;
+    background: #ffffff;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    font-family: 'Inter', sans-serif;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+}
+
+/* Enhancing Strategy Switcher for more tabs */
+.strategy-switcher .switch-option span {
+    display: inline-block;
+}
+
+@media (max-width: 640px) {
+    .strategy-switcher .switch-option span {
+        display: none;
+    }
+    .strategy-switcher .switch-option i {
+        font-size: 1.2rem;
+    }
+}
+
+.premium-row:hover {
+    background: rgba(79, 70, 229, 0.02);
+}

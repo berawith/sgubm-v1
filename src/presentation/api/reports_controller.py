@@ -7,12 +7,14 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from src.infrastructure.database.db_manager import get_db
 from src.infrastructure.database.models import ClientStatus, Client, Payment
+from src.application.services.auth import login_required, admin_required, UserRole, permission_required
 import logging
 
 logger = logging.getLogger(__name__)
 
 reports_bp = Blueprint('reports', __name__, url_prefix='/api/reports')
 @reports_bp.route('/financial', methods=['GET'])
+@permission_required('finance:reports', 'view')
 def get_financial_reports():
     """
     Análisis financiero avanzado: Trimestral, Semestral, Anual.
@@ -26,10 +28,34 @@ def get_financial_reports():
     payment_repo = db.get_payment_repository()
     client_repo = db.get_client_repository()
     
+    from flask import g
+    user = g.user
+    is_restricted_role = user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]
+    
+    # Obtener routers autorizados para el usuario si es restringido
+    allowed_router_ids = []
+    if is_restricted_role:
+        if user.assigned_router_id:
+            allowed_router_ids.append(user.assigned_router_id)
+        if hasattr(user, 'assignments') and user.assignments:
+            for a in user.assignments:
+                if a.router_id not in allowed_router_ids:
+                    allowed_router_ids.append(a.router_id)
+        
+        # Si se solicitó un router_id específico, verificar que esté en los permitidos
+        if router_id:
+            if router_id not in allowed_router_ids:
+                # No autorizado para este router
+                return jsonify({'success': False, 'message': 'No autorizado para este router'}), 403
+        else:
+            # Si no se solicitó uno, usar todos los permitidos
+            router_id = allowed_router_ids
+    
     try:
         now = datetime.now()
         
         # 1. Obtener todos los clientes operativos
+        # client_repo.get_filtered soporta router_id como int o list[int]
         all_clients = client_repo.get_filtered(router_id=router_id, status='ALL') if router_id else client_repo.get_all()
         working_clients = [c for c in all_clients if str(c.status).lower() in ['active', 'suspended', 'deleted']]
         
@@ -164,7 +190,7 @@ def get_financial_reports():
                 'retired': len([c for c in all_clients if str(c.status).lower() == 'deleted']),
                 'offline': len([c for c in all_clients if str(c.status).lower() == 'active' and not c.is_online])
             },
-            'loss_by_router': _calculate_loss_by_router(db, results, working_clients, router_id)
+            'loss_by_router': _calculate_loss_by_router(db, results, working_clients, router_id, is_restricted_role, allowed_router_ids)
         }
         
         # Limpiar/Convertir datetimes para JSON
@@ -181,9 +207,9 @@ def get_financial_reports():
         
     except Exception as e:
         logger.exception("Error in get_financial_reports")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-def _calculate_loss_by_router(db, period_results, working_clients, filtered_router_id):
+def _calculate_loss_by_router(db, period_results, working_clients, filtered_router_id, is_restricted_role=False, allowed_router_ids=None):
     """Calcula el desglose de pérdida por router."""
     router_stats = {}
     payment_repo = db.get_payment_repository()
@@ -192,13 +218,24 @@ def _calculate_loss_by_router(db, period_results, working_clients, filtered_rout
     clients_by_router = {}
     for c in working_clients:
         rid = c.router_id
+        
+        # Filtrar si es restringido
+        if is_restricted_role and allowed_router_ids is not None:
+            if rid not in allowed_router_ids:
+                continue
+                
         if rid not in clients_by_router:
             clients_by_router[rid] = {'alias': c.router.alias if c.router else f"Router {rid}", 'clients': []}
         clients_by_router[rid]['clients'].append(c)
 
     for rid, data in clients_by_router.items():
-        if filtered_router_id and rid != filtered_router_id:
-            continue
+        # Este filtro es para cuando el usuario selecciona un router específico en el dropdown del frontend
+        if filtered_router_id:
+            if isinstance(filtered_router_id, list):
+                if rid not in filtered_router_id:
+                    continue
+            elif rid != filtered_router_id:
+                continue
             
         total_theoretical = 0
         total_collected = 0
@@ -242,17 +279,41 @@ def _calculate_loss_by_router(db, period_results, working_clients, filtered_rout
     return router_stats
 
 @reports_bp.route('/clients-status', methods=['GET'])
+@login_required
 def get_clients_status_report():
     """
     Listado detallado de clientes según su estado para impresión/gestión.
     Tipos: 'paid', 'missing', 'debtors', 'deleted'
     """
+    from flask import g
     report_type = request.args.get('type', 'debtors')
     router_id = request.args.get('router_id', type=int)
     audit_day = request.args.get('day', type=int)
     audit_month = request.args.get('month', datetime.now().month, type=int)
     audit_year = request.args.get('year', datetime.now().year, type=int)
     
+    user = g.user
+    is_restricted_role = user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]
+    
+    # Obtener routers autorizados
+    allowed_router_ids = []
+    if is_restricted_role:
+        if user.assigned_router_id:
+            allowed_router_ids.append(user.assigned_router_id)
+        if hasattr(user, 'assignments') and user.assignments:
+            for a in user.assignments:
+                if a.router_id not in allowed_router_ids:
+                    allowed_router_ids.append(a.router_id)
+        
+        if not allowed_router_ids:
+            return jsonify({'error': 'Cobrador sin ruta asignada'}), 403
+            
+        if router_id:
+            if router_id not in allowed_router_ids:
+                return jsonify({'error': 'No autorizado para este router'}), 403
+        else:
+            router_id = allowed_router_ids
+            
     db = get_db()
     client_repo = db.get_client_repository()
     payment_repo = db.get_payment_repository()
@@ -311,6 +372,10 @@ def get_clients_status_report():
         # Preparar data final
         clients_data = []
         for c in results_list:
+            # Obtener ID del último pago para acceso rápido (impresión)
+            last_p = db.session.query(Payment.id).filter(Payment.client_id == c.id).order_by(Payment.payment_date.desc()).first()
+            last_payment_id = last_p[0] if last_p else None
+            
             clients_data.append({
                 'id': c.id,
                 'name': c.legal_name,
@@ -318,6 +383,7 @@ def get_clients_status_report():
                 'balance': float(c.account_balance or 0),
                 'fee': float(c.monthly_fee or 0),
                 'paid_amount': float(paid_map.get(c.id, 0)),
+                'last_payment_id': last_payment_id,
                 'status': str(c.status),
                 'address': c.address,
                 'phone': c.phone,
@@ -341,9 +407,10 @@ def get_clients_status_report():
         
     except Exception as e:
         logger.exception("Error in get_clients_status_report")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @reports_bp.route('/performance', methods=['GET'])
+@permission_required('finance:reports', 'view')
 def get_performance_report():
     """
     Reporte de métricas de crecimiento, eficiencia y churn.
@@ -420,4 +487,4 @@ def get_performance_report():
         })
     except Exception as e:
         logger.error(f"Error in performance report: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500

@@ -35,8 +35,27 @@ logs/
 server_log.txt
 startup_debug.log
 reactivation.log
+current_server_error.txt
+current_server_log.txt
+debug_*.txt
+server_*.log
+server_log_v*.txt
+app.log
+billing_job.log
+build_debug.txt
+build_error.log
+
+# Temporary Scripts
+tmp_*.py
+scripts/temp/
+*.xlsx
+*.png
+*.zip
+*.tar.gz
+*.bak
 
 # Build / Distribution
 dist/
 build/
 .cache/
+.pytest_cache/

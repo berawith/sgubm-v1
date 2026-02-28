@@ -8,43 +8,44 @@
         </div>
     </div>
 
-    <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
-        <div class="toolbar-group">
-            <div class="filter-item" style="min-width: 250px;">
+    <div class="clients-toolbar glass-panel" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px;">
+        <div class="toolbar-group" style="flex: 1; min-width: 280px; display: flex; flex-wrap: wrap; gap: 10px;">
+            <div class="filter-item" style="flex: 1; min-width: 200px;">
                 <label>Buscar Factura</label>
                 <div class="input-with-icon">
                     <i class="fas fa-search"></i>
                     <input type="text" id="invoice-search" class="input-premium" placeholder="Cliente o Nro..."
-                        oninput="app.modules.payments.loadInvoices()">
+                        oninput="app.modules.payments.loadInvoices()" style="width: 100% !important;">
                 </div>
             </div>
-            <div class="filter-item">
+            <div class="filter-item" style="width: auto;">
                 <label>Mes</label>
                 <input type="month" id="invoice-filter-month" class="input-premium"
                     onchange="app.modules.payments.loadInvoices()">
             </div>
-            <div class="filter-item">
+            <div class="filter-item" style="width: auto;">
                 <label>Estado</label>
                 <select id="invoice-filter-status" class="select-premium"
                     onchange="app.modules.payments.loadInvoices()">
-                    <option value="">Todos los Estados</option>
+                    <option value="">Todos</option>
                     <option value="unpaid">Pendientes</option>
                     <option value="paid">Pagadas</option>
                     <option value="overdue">Vencidas</option>
                 </select>
             </div>
         </div>
-        <div class="toolbar-actions">
+        <div class="toolbar-actions" style="display: flex; gap: 8px;">
             <button class="btn-secondary btn-icon" onclick="app.modules.payments.loadInvoices()" title="Recargar">
                 <i class="fas fa-sync-alt"></i>
             </button>
-            <button class="btn-premium" onclick="app.modules.payments.generateMonthlyInvoices()">
+            <button class="btn-premium" onclick="app.modules.payments.generateMonthlyInvoices()"
+                style="white-space: nowrap;">
                 <i class="fas fa-magic"></i> Generar Mes
             </button>
         </div>
     </div>
 
-    <div class="table-container-premium glass-panel">
+    <div id="invoices-table-view" class="table-container-premium glass-panel">
         <table class="premium-data-table">
             <thead>
                 <tr>
@@ -61,5 +62,10 @@
                 <!-- Dynamic Rows -->
             </tbody>
         </table>
+    </div>
+
+    <!-- Vista de Tarjetas (Móvil) -->
+    <div id="invoices-cards-grid" class="cards-grid-premium" style="display: none;">
+        <!-- Rendered by JS -->
     </div>
 </div>

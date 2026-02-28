@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 from src.infrastructure.database.db_manager import get_db
 from src.application.services.sync_service import SyncService
 from src.application.services.mikrotik_operations import trigger_sync_if_online
+from src.application.services.auth import admin_required, permission_required
 from sqlalchemy import func
 from datetime import datetime, timedelta
 import logging
@@ -15,6 +16,7 @@ sync_bp = Blueprint('sync', __name__, url_prefix='/api/sync')
 
 
 @sync_bp.route('/pending', methods=['GET'])
+@permission_required('routers:monitoring', 'view')
 def get_pending_operations():
     """Obtiene todas las operaciones pendientes"""
     try:
@@ -36,6 +38,7 @@ def get_pending_operations():
 
 
 @sync_bp.route('/pending/<int:operation_id>', methods=['DELETE'])
+@permission_required('routers:monitoring', 'delete')
 def cancel_pending_operation(operation_id):
     """Cancela una operación pendiente"""
     try:
@@ -65,6 +68,7 @@ def cancel_pending_operation(operation_id):
 
 
 @sync_bp.route('/stats', methods=['GET'])
+@permission_required('routers:monitoring', 'view')
 def get_sync_stats():
     """Obtiene estadísticas de sincronización"""
     try:
@@ -136,6 +140,7 @@ def get_sync_stats():
 
 
 @sync_bp.route('/force/<int:router_id>', methods=['POST'])
+@permission_required('routers:monitoring', 'edit')
 def force_sync(router_id):
     """Fuerza la sincronización de operaciones pendientes de un router"""
     try:
@@ -174,6 +179,7 @@ def force_sync(router_id):
 
 
 @sync_bp.route('/force-all', methods=['POST'])
+@permission_required('routers:monitoring', 'edit')
 def force_sync_all():
     """Fuerza la sincronización de TODOS los routers online"""
     try:
@@ -220,6 +226,7 @@ def force_sync_all():
 
 
 @sync_bp.route('/history', methods=['GET'])
+@permission_required('routers:monitoring', 'view')
 def get_sync_history():
     """Obtiene el historial de sincronizaciones (últimas 100)"""
     try:

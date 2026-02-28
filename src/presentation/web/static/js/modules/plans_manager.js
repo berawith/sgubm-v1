@@ -247,57 +247,45 @@ export class PlansManagerModule {
         });
     }
 
-    sortByClients(column) {
-        if (this.clientSortState.column === column) {
-            this.clientSortState.direction = this.clientSortState.direction === 'asc' ? 'desc' : 'asc';
-        } else {
-            this.clientSortState.column = column;
-            this.clientSortState.direction = 'asc';
-        }
-        this.renderPlanClientsTable();
-    }
-
-    renderPlanClientsTable() {
-        const tbody = document.getElementById('planClientsTableBody');
+    renderPlanClients(clients) {
+        const container = document.getElementById('planClientsList');
         const emptyState = document.getElementById('planClientsEmpty');
-        if (!tbody || !this.currentClients) return;
+        const countBadge = document.getElementById('plan-clients-count-badge');
 
-        const dir = this.clientSortState.direction === 'asc' ? 1 : -1;
-        const col = this.clientSortState.column;
+        if (!container) return;
 
-        const sorted = [...this.currentClients].sort((a, b) => {
-            let valA = a[col] || '';
-            let valB = b[col] || '';
-            return valA.toString().localeCompare(valB.toString(), undefined, { numeric: true }) * dir;
-        });
+        if (countBadge) countBadge.textContent = `${clients.length} Clientes`;
 
-        tbody.innerHTML = '';
-        if (sorted.length === 0) {
+        if (clients.length === 0) {
+            container.innerHTML = '';
             if (emptyState) emptyState.style.display = 'block';
             return;
         }
+
         if (emptyState) emptyState.style.display = 'none';
 
-        sorted.forEach(c => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td style="padding-left: 20px;">
-                    <div style="font-weight: 600; color: #1e293b;">${c.legal_name}</div>
-                    <small style="color: #64748b;">${c.subscriber_code}</small>
-                </td>
-                <td><span style="font-family: monospace; font-size: 0.85rem;">${c.username}</span></td>
-                <td><span style="color: #4f46e5; font-weight: 600; font-family: monospace;">${c.ip_address || '-'}</span></td>
-                <td>
-                    <span class="status-badge-table ${c.status === 'active' ? 'active' : (c.status === 'suspended' ? 'suspended' : 'cortado')}" 
-                          style="font-size: 0.65rem; padding: 2px 8px;">
-                        ${c.status.toUpperCase()}
-                    </span>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
+        container.innerHTML = clients.map(client => {
+            const avatar = (client.legal_name || '?').charAt(0).toUpperCase();
+            const statusClass = client.status === 'active' ? 'active' : (client.status === 'suspended' ? 'suspended' : 'cortado');
 
-        this.renderSortIcons('planClientsModal', this.clientSortState);
+            return `
+                <div class="client-detail-card premium-card glass" style="padding: 16px; border: 1px solid rgba(148, 163, 184, 0.1); height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; overflow: hidden;">
+                    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                        <div class="client-avatar" style="width: 36px; height: 36px; font-size: 1rem; flex-shrink: 0; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 700;">${avatar}</div>
+                        <div style="display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 1;">
+                            <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${client.legal_name}">${client.legal_name}</div>
+                            <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${client.subscriber_code || '---'}</div>
+                            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #94a3b8; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${client.ip_address || '---'}</div>
+                        </div>
+                        <div style="flex-shrink: 0;">
+                            <span class="status-badge-table ${statusClass}" style="font-size: 0.65rem; padding: 2px 8px; text-transform: uppercase; font-weight: 800;">
+                                ${client.status}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
     formatMbps(kbps) {
@@ -353,13 +341,14 @@ export class PlansManagerModule {
     async showPlanClients(planId, planName) {
         const modal = document.getElementById('planClientsModal');
         const title = document.getElementById('planClientsModalTitle');
-        const tbody = document.getElementById('planClientsTableBody');
+        const listContainer = document.getElementById('planClientsList');
         const emptyState = document.getElementById('planClientsEmpty');
+        const searchInput = document.getElementById('plan-clients-search');
 
-        if (!modal || !title || !tbody || !emptyState) return;
+        if (!modal || !title || !listContainer || !emptyState) return;
 
         title.textContent = `Clientes - ${planName}`;
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">Cargando clientes...</td></tr>';
+        listContainer.innerHTML = '<div class="loading-cell" style="grid-column: 1/-1; text-align: center; padding: 40px;"><div class="spinner"></div><p style="margin-top: 15px; color: #64748b;">Cargando listado de clientes...</p></div>';
         emptyState.style.display = 'none';
 
         if (this.modalManager) {
@@ -371,11 +360,31 @@ export class PlansManagerModule {
         try {
             const clients = await this.api.get(`/api/clients?plan_id=${planId}`);
             this.currentClients = clients || [];
-            this.renderPlanClientsTable();
+            this.currentPlanName = planName;
+
+            // Setup Search
+            if (searchInput) {
+                searchInput.value = '';
+                // Remove old listeners
+                const newSearch = searchInput.cloneNode(true);
+                searchInput.parentNode.replaceChild(newSearch, searchInput);
+
+                newSearch.addEventListener('input', (e) => {
+                    const term = e.target.value.toLowerCase();
+                    const filtered = this.currentClients.filter(c =>
+                        (c.legal_name && c.legal_name.toLowerCase().includes(term)) ||
+                        (c.subscriber_code && c.subscriber_code.toLowerCase().includes(term)) ||
+                        (c.ip_address && c.ip_address.toLowerCase().includes(term))
+                    );
+                    this.renderPlanClients(filtered);
+                });
+            }
+
+            this.renderPlanClients(this.currentClients);
 
         } catch (error) {
             console.error('Error fetching plan clients:', error);
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #ef4444; padding: 20px;">Error al cargar clientes</td></tr>';
+            listContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #ef4444; padding: 20px;">Error al cargar clientes</div>';
         }
     }
 

@@ -12,12 +12,19 @@ export class ApiService {
     }
 
     async request(endpoint, options = {}) {
-        const url = `${this.baseURL}${endpoint}`;
+        // Asegurar que el endpoint no tenga espacios accidentales
+        const cleanEndpoint = endpoint.trim();
+        const url = `${this.baseURL}${cleanEndpoint}`;
+
+        // Inject Authorization header if token exists
+        const token = localStorage.getItem('auth_token');
+        const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
 
         const config = {
             ...options,
             headers: {
                 ...this.defaultHeaders,
+                ...authHeaders,
                 ...options.headers
             }
         };
@@ -25,26 +32,59 @@ export class ApiService {
         try {
             const response = await fetch(url, config);
 
+            if (response.status === 401) {
+                // Unauthorized: clear token and redirect/trigger login
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user_data');
+                if (!window.location.pathname.includes('/login')) {
+                    window.dispatchEvent(new CustomEvent('auth:required'));
+                }
+            }
+
             if (!response.ok) {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-                try {
-                    const errorBody = await response.json();
-                    if (errorBody) {
-                        errorMessage = errorBody.message || errorBody.error || errorMessage;
-                    }
-                    // Adjuntar datos extra al error si es necesario
-                    const error = new Error(errorMessage);
-                    error.data = errorBody;
-                    throw error;
-                } catch (e) {
-                    if (e.data) throw e; // Si ya es el error procesado
-                    throw new Error(errorMessage); // Fallback si no hay JSON
+                let errorBody = null;
+
+                // Professional RBAC message for 403
+                if (response.status === 403) {
+                    errorMessage = "Este procedimiento no se puede procesar porque no posee los privilegios necesarios.";
                 }
+
+                try {
+                    const contentType = response.headers.get("content-type");
+                    if (contentType && contentType.includes("application/json")) {
+                        errorBody = await response.json();
+                        // Only overwrite errorMessage if it wasn't already set (e.g., for 403)
+                        if (errorBody && response.status !== 403) {
+                            errorMessage = errorBody.message || errorBody.error || errorMessage;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Could not parse error body as JSON");
+                }
+
+                const error = new Error(errorMessage);
+                error.data = errorBody || { message: errorMessage };
+                error.status = response.status;
+                throw error;
             }
 
             return await response.json();
         } catch (error) {
-            console.error(`API Error [${options.method || 'GET'}] ${endpoint}:`, error);
+            // Log for developers, but quiet for expected 403 cases
+            if (error.status !== 403) {
+                console.error(`API Error [${options.method || 'GET'}] ${endpoint}:`, error);
+            }
+
+            // Toast feedback
+            if (typeof toast !== 'undefined') {
+                if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    toast.error('Error de red: No se pudo contactar al servidor.');
+                } else {
+                    // Show a clean error message (like the 403 one or other simplified messages)
+                    toast.error(error.message || 'Error en la petición.');
+                }
+            }
             throw error;
         }
     }

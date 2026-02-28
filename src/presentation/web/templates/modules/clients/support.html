@@ -1,0 +1,370 @@
+<!-- Vista Principal de Soporte (Client Support) -->
+<div id="clients-support-view" class="view content-view animate-fade-in" style="display: none;">
+    <!-- Header -->
+    <div class="page-header"
+        style="margin-bottom: 24px; padding: 28px; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); border-radius: 20px; border: 1px solid rgba(255,255,255,0.5); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);">
+        <div
+            style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px;">
+            <div>
+                <h2
+                    style="font-size: 1.75rem; font-weight: 850; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 14px; letter-spacing: -0.02em;">
+                    <div
+                        style="width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);">
+                        <i class="fas fa-headset"></i>
+                    </div>
+                    Soporte Técnico
+                </h2>
+                <p
+                    style="color: #64748b; margin: 10px 0 0 0; font-size: 1rem; max-width: 600px; font-weight: 450; line-height: 1.6;">
+                    Centro de atención y resolución de incidencias. Reporta fallas y solicita asistencia técnica para
+                    tus clientes en tiempo real.
+                </p>
+            </div>
+
+            <div style="display: flex; gap: 14px;">
+                <button class="btn-premium" onclick="app.modules.clients_support.openNewTicketModal()"
+                    style="background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); border: none; border-radius: 14px; padding: 12px 24px; font-weight: 700; color: white; display: flex; align-items: center; gap: 10px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4); transform: translateY(0);">
+                    <i class="fas fa-plus-circle"></i>
+                    <span>Nuevo Ticket</span>
+                </button>
+                <button class="btn-secondary" onclick="app.modules.clients_support.loadTickets()"
+                    style="background: white; border: 1px solid #e2e8f0; border-radius: 14px; padding: 12px 18px; font-weight: 600; color: #475569; display: flex; align-items: center; gap: 8px; transition: all 0.2s; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                    <i class="fas fa-sync-alt" id="support-refresh-icon"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Summary (V3 Extended) -->
+        <div id="support-stats-container"
+            style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 28px; padding-top: 24px; border-top: 1px solid rgba(226, 232, 240, 0.6);">
+
+            <!-- Resueltos -->
+            <div
+                style="flex: 1; min-width: 140px; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 16px; background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.1);">
+                <div
+                    style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);">
+                </div>
+                <div>
+                    <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; line-height: 1.1;"
+                        id="support-stat-resueltos">0</div>
+                    <div
+                        style="font-size: 0.65rem; color: #166534; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">
+                        Resueltos</div>
+                </div>
+            </div>
+
+            <!-- Pendientes -->
+            <div
+                style="flex: 1; min-width: 140px; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 16px; background: rgba(234, 179, 8, 0.04); border: 1px solid rgba(234, 179, 8, 0.1);">
+                <div
+                    style="width: 8px; height: 8px; border-radius: 50%; background: #eab308; box-shadow: 0 0 10px rgba(234, 179, 8, 0.4);">
+                </div>
+                <div>
+                    <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; line-height: 1.1;"
+                        id="support-stat-abiertos">0</div>
+                    <div
+                        style="font-size: 0.65rem; color: #854d0e; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">
+                        Pendientes</div>
+                </div>
+            </div>
+
+            <!-- Cancelados -->
+            <div
+                style="flex: 1; min-width: 140px; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 16px; background: rgba(100, 116, 139, 0.04); border: 1px solid rgba(100, 116, 139, 0.1);">
+                <div style="width: 8px; height: 8px; border-radius: 50%; background: #64748b;"></div>
+                <div>
+                    <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; line-height: 1.1;"
+                        id="support-stat-cancelados">0</div>
+                    <div
+                        style="font-size: 0.65rem; color: #475569; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">
+                        Cancelados</div>
+                </div>
+            </div>
+
+            <!-- Tiempo Promedio -->
+            <div
+                style="flex: 1.2; min-width: 160px; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 16px; background: rgba(79, 70, 229, 0.04); border: 1px solid rgba(79, 70, 229, 0.1);">
+                <i class="fas fa-clock" style="color: #4f46e5; font-size: 1.1rem; opacity: 0.7;"></i>
+                <div>
+                    <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; line-height: 1.1;"><span
+                            id="support-stat-avg-time">0</span>h</div>
+                    <div
+                        style="font-size: 0.65rem; color: #4338ca; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">
+                        Tiempo Prom.</div>
+                </div>
+            </div>
+
+            <!-- Eficiencia -->
+            <div
+                style="flex: 1; min-width: 140px; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 16px; background: rgba(124, 58, 237, 0.04); border: 1px solid rgba(124, 58, 237, 0.1);">
+                <i class="fas fa-chart-line" style="color: #7c3aed; font-size: 1.1rem; opacity: 0.7;"></i>
+                <div>
+                    <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; line-height: 1.1;"><span
+                            id="support-stat-efficiency">0</span>%</div>
+                    <div
+                        style="font-size: 0.65rem; color: #6d28d9; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">
+                        Eficiencia</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Data Table -->
+    <div class="premium-card"
+        style="background: white; border-radius: 20px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 20px -5px rgba(0,0,0,0.03); overflow: hidden;">
+        <div class="table-responsive" style="overflow-x: auto; width: 100%;">
+            <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+                        <th
+                            style="padding: 18px 28px; text-align: left; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap;">
+                            Ticket / Cliente</th>
+                        <th
+                            style="padding: 18px 28px; text-align: left; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap;">
+                            Reportado por</th>
+                        <th
+                            style="padding: 18px 28px; text-align: center; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap;">
+                            Fecha</th>
+                        <th
+                            style="padding: 18px 28px; text-align: center; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap;">
+                            Estado</th>
+                        <th
+                            style="padding: 18px 28px; text-align: right; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap;">
+                            Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="support-table-body">
+                    <tr>
+                        <td colspan="5" style="padding: 60px; text-align: center; color: #94a3b8;">
+                            <div class="spinner" style="margin: 0 auto 16px;"></div>
+                            <p style="margin: 0; font-weight: 600; font-size: 1rem; color: #64748b;">Sincronizando
+                                incidencias...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="support-empty-state"
+            style="display: none; padding: 80px 20px; text-align: center; background: radial-gradient(circle at center, #ffffff 0%, #f8fafc 100%);">
+            <div
+                style="width: 100px; height: 100px; border-radius: 30px; background: white; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; color: #4f46e5; box-shadow: 0 10px 20px rgba(79, 70, 229, 0.1); border: 1px solid #eef2ff;">
+                <i class="fas fa-check-double fa-3x"></i>
+            </div>
+            <h3 style="font-size: 1.5rem; color: #0f172a; font-weight: 850; margin: 0 0 10px; letter-spacing: -0.01em;">
+                ¡Operación Impecable!</h3>
+            <p
+                style="color: #64748b; margin: 0; max-width: 440px; margin: 0 auto; font-size: 1.05rem; line-height: 1.6;">
+                No se han detectado fallas activas. El sistema de soporte está al día.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Nuevo Ticket de Soporte (MINIMALIST PREMIUM V3) -->
+<div id="new-ticket-modal" class="modal">
+    <div class="modal-content"
+        style="max-width: 460px; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(32px); -webkit-backdrop-filter: blur(32px); border: 1px solid rgba(0, 0, 0, 0.05); border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); transform: translateY(0); transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);">
+
+        <!-- Header Minimalista -->
+        <div class="modal-header"
+            style="padding: 24px 28px; border-bottom: none; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div
+                    style="width: 42px; height: 42px; border-radius: 12px; background: #f8fafc; color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; border: 1px solid #f1f5f9;">
+                    <i class="fas fa-headset"></i>
+                </div>
+                <div>
+                    <h2
+                        style="font-size: 1.35rem; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.02em;">
+                        Soporte Técnico</h2>
+                    <p
+                        style="margin: 0; font-size: 0.75rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                        Nuevo Reporte</p>
+                </div>
+            </div>
+            <button class="close-modal"
+                style="width: 32px; height: 32px; border-radius: 8px; background: transparent; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
+                <i class="fas fa-times" style="font-size: 1rem;"></i>
+            </button>
+        </div>
+
+        <!-- Body Compacto -->
+        <div class="modal-body" style="padding: 0 28px 28px; max-height: 70vh; overflow-y: auto;">
+            <form id="new-ticket-form">
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label
+                        style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">Cliente</label>
+                    <select id="ticket-client" name="client_id" class="form-control" required
+                        style="height: 48px; border-radius: 14px; border: 1px solid #f1f5f9; background: #fdfdfd; font-size: 0.95rem; font-weight: 600;">
+                        <option value="">Seleccione un suscriptor...</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label
+                        style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">Asunto</label>
+                    <input type="text" name="subject" class="form-control" required placeholder="Categoría de falla..."
+                        style="height: 48px; border-radius: 14px; border: 1px solid #f1f5f9; background: #fdfdfd; font-size: 0.95rem; font-weight: 600;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label
+                        style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">Mensaje</label>
+                    <textarea name="description" class="form-control" rows="3" required
+                        placeholder="Descripción rápida..."
+                        style="border-radius: 14px; border: 1px solid #f1f5f9; background: #fdfdfd; font-size: 0.95rem; font-weight: 500; min-height: 100px; padding: 14px !important;"></textarea>
+                </div>
+
+                <!-- Dropzone Minimalista -->
+                <div class="upload-zone"
+                    style="position: relative; border: 1px dashed #e2e8f0; border-radius: 14px; padding: 20px; text-align: center; background: #f8fafc; cursor: pointer; transition: all 0.2s; margin-bottom: 28px;">
+                    <input type="file" name="image" id="ticket-image" accept="image/*"
+                        style="position: absolute; opacity: 0; width: 100%; height: 100%; top: 0; left: 0; cursor: pointer;">
+                    <div
+                        style="display: flex; align-items: center; justify-content: center; gap: 10px; color: #64748b;">
+                        <i class="fas fa-camera"></i>
+                        <span style="font-size: 0.85rem; font-weight: 600;">Adjuntar Evidencia</span>
+                    </div>
+                    <div id="file-name-preview"
+                        style="margin-top: 10px; font-size: 0.75rem; font-weight: 700; color: #4f46e5; display: none;">
+                        <i class="fas fa-check-circle"></i> <span class="text"></span>
+                    </div>
+                </div>
+
+                <!-- Botones Mini-Premium -->
+                <div style="display: flex; gap: 12px;">
+                    <button type="button" class="btn-secondary close-modal"
+                        style="flex: 1; height: 48px; border-radius: 14px; border: 1px solid #f1f5f9; background: white; color: #64748b; font-weight: 700; cursor: pointer;">
+                        Cerrar
+                    </button>
+                    <button type="submit" class="btn-primary"
+                        style="flex: 2; height: 48px; border-radius: 14px; border: none; background: #4f46e5; color: white; font-weight: 700; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);">
+                        Crear Ticket
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Cierre de Ticket (Resolution Closure) -->
+<div id="resolve-ticket-modal" class="modal">
+    <div class="modal-content"
+        style="max-width: 500px; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(32px); border: 1px solid rgba(0, 0, 0, 0.05); border-radius: 24px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);">
+
+        <div class="modal-header"
+            style="padding: 24px 28px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #fafafa;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div
+                    style="width: 38px; height: 38px; border-radius: 10px; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div>
+                    <h2 style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 0;">Cerrar Ticket</h2>
+                    <p
+                        style="margin:0; font-size: 0.7rem; color: #64748b; font-weight: 700; text-transform: uppercase;">
+                        Informe de Resolución</p>
+                </div>
+            </div>
+            <button class="close-modal" style="background:none; border:none; color:#94a3b8; cursor:pointer;"><i
+                    class="fas fa-times"></i></button>
+        </div>
+
+        <div class="modal-body" style="padding: 24px 28px; max-height: 75vh; overflow-y: auto;">
+            <form id="resolve-ticket-form">
+                <input type="hidden" id="resolve-ticket-id" name="id">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+                    <div class="form-group">
+                        <label
+                            style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; display: block;">Falla
+                            Real Detectada</label>
+                        <input type="text" name="actual_failure" class="form-control" required
+                            placeholder="Ej: Conector mal crimpado"
+                            style="height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.9rem; font-weight: 600;">
+                    </div>
+                    <div class="form-group">
+                        <label
+                            style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; display: block;">Fecha
+                            de Visita</label>
+                        <input type="datetime-local" name="support_date" class="form-control" required
+                            style="height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.9rem;">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 18px;">
+                    <label
+                        style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; display: block;">¿Cómo
+                        se resolvió?</label>
+                    <textarea name="resolution_details" class="form-control" rows="2" required
+                        placeholder="Detalles técnicos de la solución..."
+                        style="border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.9rem; padding: 12px !important;"></textarea>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+                    <div class="form-group">
+                        <label
+                            style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; display: block;">Técnicos
+                            Asignados</label>
+                        <input type="text" name="technicians" class="form-control" required placeholder="Nombres..."
+                            style="height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.9rem; font-weight: 500;">
+                    </div>
+                    <div class="form-group">
+                        <label
+                            style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; display: block;">Monto
+                            Soporte ($)</label>
+                        <input type="number" step="0.01" name="support_cost" class="form-control" value="0"
+                            style="height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.9rem; font-weight: 700; color: #22c55e;">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 18px;">
+                    <label
+                        style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; display: block;">Materiales
+                        Usados</label>
+                    <input type="text" name="materials_used" class="form-control" placeholder="Ej: 2 RJ45, 5m UTP..."
+                        style="height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.9rem;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label
+                        style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; display: block;">Observaciones
+                        Administrativas</label>
+                    <textarea name="admin_observations" class="form-control" rows="2"
+                        placeholder="Notas internas opcionales..."
+                        style="border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.9rem; padding: 12px !important;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 12px;">
+                    <button type="button" class="btn-secondary close-modal"
+                        style="flex:1; height:46px; border-radius:12px; font-weight:700;">Cancelar</button>
+                    <button type="submit" class="btn-primary"
+                        style="flex:2; height:46px; border-radius:12px; background:#22c55e; border:none; color:white; font-weight:700; box-shadow:0 4px 12px rgba(34, 197, 94, 0.2);">Registrar
+                        y Resolver</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    #new-ticket-modal .form-control:focus {
+        border-color: #4f46e5 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+    }
+
+    #new-ticket-modal .upload-zone:hover {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+    }
+
+    #new-ticket-modal .btn-primary:active {
+        transform: scale(0.98);
+    }
+
+    #new-ticket-modal .close-modal:hover {
+        color: #1e293b;
+    }
+</style>

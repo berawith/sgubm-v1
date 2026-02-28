@@ -15,6 +15,7 @@ class ClientModal {
         this.currentClient = null;
         this.routers = [];
         this.plans = [];
+        this.collectors = [];
         this.trafficChart = null;
         this.consumptionChart = null;
         this.stabilityChart = null;
@@ -23,7 +24,8 @@ class ClientModal {
         this.lastChartUpdate = 0;
         this.chartUpdateInterval = 2000; // 2s throttle for modal chart
 
-        this.init();
+        // SE ELIMINA LA AUTO-INICIALIZACIÓN PARA EVITAR LLAMADAS A LA API SIN TOKEN
+        // this.init();
     }
 
     init() {
@@ -33,6 +35,8 @@ class ClientModal {
         this.loadRouters();
         // Cargar planes
         this.loadPlans();
+        // Cargar cobradores
+        this.loadCollectors();
         // Inicializar listeners de tráfico en tiempo real
         this.initTrafficSocket();
     }
@@ -222,6 +226,16 @@ class ClientModal {
                                         <input type="date" id="affiliation_date" class="form-control">
                                     </div>
                                 </div>
+
+                                <div class="form-group span-2">
+                                    <label for="assigned_collector_id">Cobrador Responsable</label>
+                                    <div class="input-icon-wrapper">
+                                        <i class="fas fa-user-tag field-icon"></i>
+                                        <select id="assigned_collector_id" class="form-control">
+                                            <option value="">(Por defecto: Según Router)</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -357,6 +371,30 @@ class ClientModal {
                                 <input type="number" id="account_balance">
                                 <input type="date" id="due_date">
                                 <input type="date" id="last_payment_date">
+                            </div>
+
+                            <!-- Billing Control Panel -->
+                            <div class="modern-panel" style="margin-bottom: 24px;">
+                                <div class="panel-header-modern">
+                                    <div class="panel-title"><i class="fas fa-file-invoice-dollar"></i> Control de Facturación</div>
+                                </div>
+                                <div class="panel-body-modern" style="padding: 20px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(99, 102, 241, 0.05); padding: 15px 20px; border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.1);">
+                                        <div style="display: flex; align-items: center; gap: 15px;">
+                                            <div style="width: 42px; height: 42px; border-radius: 10px; background: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                                                <i class="fas fa-toggle-on" style="color: #6366f1; font-size: 1.2rem;"></i>
+                                            </div>
+                                            <div>
+                                                <div style="font-weight: 700; color: #1e293b; font-size: 0.95rem;">Habilitar Facturación Mensual</div>
+                                                <div style="font-size: 0.8rem; color: #64748b;">Si se desactiva, el cliente será excluido de la generación de facturas.</div>
+                                            </div>
+                                        </div>
+                                        <label class="premium-switch">
+                                            <input type="checkbox" id="billing_enabled" checked>
+                                            <span class="premium-switch-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Refined History Section -->
@@ -624,6 +662,28 @@ class ClientModal {
         }
     }
 
+    async loadCollectors() {
+        try {
+            const data = await apiService.get('/api/users/collectors');
+            this.collectors = data;
+
+            // Actualizar select
+            const select = this.modal.querySelector('#assigned_collector_id');
+            if (select) {
+                select.innerHTML = '<option value="">(Por defecto: Según Router)</option>';
+
+                this.collectors.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = user.username || user.full_name;
+                    select.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading collectors:', error);
+        }
+    }
+
     /**
      * Abre el modal para crear un nuevo cliente
      */
@@ -632,6 +692,7 @@ class ClientModal {
         this.modal.querySelector('#modal-title').textContent = 'Nuevo Cliente';
         this.modal.querySelector('#modal-client-summary').style.display = 'none';
         this.resetForm();
+        this.applyPermissions(); // RBAC check
         this.modal.classList.add('active');
 
         // Focus en primer campo
@@ -686,12 +747,19 @@ class ClientModal {
         this.modal.querySelector('#plan_id').value = client.plan_id || '';
         this.modal.querySelector('#service_type').value = client.service_type || 'pppoe';
         this.modal.querySelector('#status').value = client.status || 'ACTIVE';
+        this.modal.querySelector('#assigned_collector_id').value = client.assigned_collector_id || '';
 
         // Facturación
         this.modal.querySelector('#monthly_fee').value = client.monthly_fee || 0;
         this.modal.querySelector('#account_balance').value = client.account_balance || 0;
         this.modal.querySelector('#due_date').value = client.due_date ? client.due_date.split('T')[0] : '';
         this.modal.querySelector('#last_payment_date').value = client.last_payment_date ? client.last_payment_date.split('T')[0] : '';
+
+        // Billing Enabled Toggle
+        const billingToggle = this.modal.querySelector('#billing_enabled');
+        if (billingToggle) {
+            billingToggle.checked = client.billing_enabled !== false; // Default to true if undefined
+        }
 
         // Update Premium Metrics
         const fee = parseFloat(client.monthly_fee || 0);
@@ -729,6 +797,100 @@ class ClientModal {
             this.modal.querySelector('#metric-last-payment-val').textContent = '--/--';
             this.modal.querySelector('#metric-last-payment-date').textContent = 'Sin registros';
         }
+
+        // Apply RBAC Permissions
+        this.applyPermissions();
+    }
+
+    /**
+     * Aplica restricciones basadas en RBAC
+     */
+    applyPermissions() {
+        const user = window.app?.authService?.getUser();
+        if (!user) return;
+
+        // Admins have full access
+        if (user.role === 'admin' || user.role === 'administradora') {
+            this.setModalReadOnly(false);
+            return;
+        }
+
+        const _rp = window.RBAC_PERMS || {};
+        const clientPerms = _rp['clients:list'] || {};
+        const canEdit = clientPerms.can_edit === true;
+
+        this.setModalReadOnly(!canEdit);
+    }
+
+    /**
+     * Alterna el estado de solo lectura del modal
+     */
+    setModalReadOnly(readOnly) {
+        if (!this.modal) return;
+
+        const inputs = this.modal.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            // No bloquear el buscador de tráfico o rangos si existen
+            if (input.id === 'traffic-time-range') return;
+
+            if (readOnly) {
+                input.setAttribute('disabled', 'true');
+                input.style.opacity = '0.7';
+                input.style.cursor = 'not-allowed';
+            } else {
+                input.removeAttribute('disabled');
+                input.style.opacity = '1';
+                input.style.cursor = 'auto';
+            }
+        });
+
+        // Ocultar/Deshabilitar botón Guardar
+        const saveBtn = this.modal.querySelector('#save-client-btn');
+        if (saveBtn) {
+            if (readOnly) {
+                saveBtn.style.display = 'none';
+            } else {
+                saveBtn.style.display = 'flex';
+            }
+        }
+
+        // Deshabilitar botones de sincronización de campos
+        const syncBtns = this.modal.querySelectorAll('.btn-sync-field');
+        syncBtns.forEach(btn => {
+            btn.style.display = readOnly ? 'none' : 'flex';
+        });
+
+        // Deshabilitar ajuste de balance
+        const balanceBtn = this.modal.querySelector('.btn-balance-adjust');
+        if (balanceBtn) {
+            balanceBtn.style.display = readOnly ? 'none' : 'block';
+        }
+
+        // Mensaje de aviso si es solo lectura
+        let readOnlyBadge = this.modal.querySelector('.readonly-badge');
+        if (readOnly) {
+            if (!readOnlyBadge) {
+                readOnlyBadge = document.createElement('div');
+                readOnlyBadge.className = 'readonly-badge';
+                readOnlyBadge.innerHTML = '<i class="fas fa-lock"></i> MODO LECTURA (Restringido)';
+                readOnlyBadge.style.cssText = `
+                    background: rgba(245, 158, 11, 0.1);
+                    color: #f59e0b;
+                    padding: 4px 12px;
+                    border-radius: 8px;
+                    font-size: 0.7rem;
+                    font-weight: 800;
+                    margin-left: 15px;
+                    border: 1px solid rgba(245, 158, 11, 0.2);
+                `;
+                const title = this.modal.querySelector('#modal-title');
+                if (title) title.parentElement.appendChild(readOnlyBadge);
+            } else {
+                readOnlyBadge.style.display = 'block';
+            }
+        } else if (readOnlyBadge) {
+            readOnlyBadge.style.display = 'none';
+        }
     }
 
     /**
@@ -739,7 +901,7 @@ class ClientModal {
         form.querySelectorAll('input, textarea, select').forEach(field => {
             if (field.type === 'checkbox') {
                 field.checked = false;
-            } else if (field.id !== 'router_id' && field.id !== 'service_type' && field.id !== 'status') {
+            } else if (field.id !== 'router_id' && field.id !== 'service_type' && field.id !== 'status' && field.id !== 'assigned_collector_id') {
                 field.value = '';
             }
         });
@@ -747,7 +909,11 @@ class ClientModal {
         // Valores por defecto
         this.modal.querySelector('#service_type').value = 'pppoe';
         this.modal.querySelector('#status').value = 'ACTIVE';
+        this.modal.querySelector('#assigned_collector_id').value = '';
         this.modal.querySelector('#account_balance').value = '0';
+
+        const billingToggle = this.modal.querySelector('#billing_enabled');
+        if (billingToggle) billingToggle.checked = true;
 
         // Volver al primer tab
         this.modal.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -822,6 +988,8 @@ class ClientModal {
             monthly_fee: parseFloat(this.modal.querySelector('#monthly_fee').value) || 0,
             account_balance: parseFloat(this.modal.querySelector('#account_balance').value) || 0,
             due_date: this.modal.querySelector('#due_date').value || null,
+            assigned_collector_id: parseInt(this.modal.querySelector('#assigned_collector_id').value) || null,
+            billing_enabled: this.modal.querySelector('#billing_enabled').checked
         };
     }
 
@@ -899,13 +1067,14 @@ class ClientModal {
         const data = this.getFormData();
 
         try {
+            let result;
             if (this.currentClient) {
                 // Actualizar existente
-                await apiService.put(`/api/clients/${this.currentClient.id}`, data);
+                result = await apiService.put(`/api/clients/${this.currentClient.id}`, data);
                 toast.success('Cliente actualizado correctamente');
             } else {
                 // Crear nuevo
-                await apiService.post('/api/clients', data);
+                result = await apiService.post('/api/clients', data);
                 toast.success('Cliente creado correctamente');
             }
 
@@ -915,9 +1084,15 @@ class ClientModal {
                 this.close();
             }
 
-            // Recargar lista de clientes
+            // Recargar lista de clientes o actualización granular
             if (window.app && window.app.modules && window.app.modules.clients) {
-                window.app.modules.clients.loadClients();
+                if (this.currentClient && result && result.id) {
+                    // Granular UI Update for existing clients
+                    window.app.modules.clients.updateClientInUI(result);
+                } else {
+                    // Full reload for new clients or if result is missing
+                    window.app.modules.clients.loadClients();
+                }
             }
         } catch (error) {
             console.error('Error saving client:', error);
@@ -932,6 +1107,11 @@ class ClientModal {
     close() {
         this.modal.classList.remove('active');
         this.resetForm();
+
+        // 🛡️ NOTIFICAR CIERRE AL MANAGER (NUEVO)
+        // Esto permite que ModalManager oculte el overlay global
+        const event = new CustomEvent('modal:client:closed', { bubbles: true });
+        document.dispatchEvent(event);
 
         // Destruir chart para evitar memory leaks
         if (this.trafficChart) {

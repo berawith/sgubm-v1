@@ -495,24 +495,482 @@ body {
 
 /* Mobile Payments Grid "Ultra-Premium" */
 .cards-grid-premium {
-    display: none;
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 12px;
-    padding: 4px;
+    padding: 10px;
     margin-top: 8px;
 }
 
+.payment-card-premium,
+.invoice-card-premium {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.invoice-card-premium:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
+    border-color: #cbd5e1;
+}
+
+.invoice-card-premium .card-header-premium {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.invoice-card-premium .client-info-premium {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.invoice-card-premium .avatar-premium {
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, #1e293b, #334155);
+    color: #38bdf8;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.9rem;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.invoice-card-premium .client-meta-premium {
+    display: flex;
+    flex-direction: column;
+}
+
+.invoice-card-premium .client-name-premium {
+    font-weight: 800;
+    color: #0f172a;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+}
+
+.invoice-card-premium .subscriber-code-premium {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.invoice-card-premium .status-pill-premium {
+    padding: 6px 12px;
+    border-radius: 100px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-pill-premium.success {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #10b98133;
+}
+
+.status-pill-premium.warning {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #f59e0b33;
+}
+
+.status-pill-premium.danger {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #ef444433;
+}
+
+.status-pill-premium.secondary {
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #cbd5e133;
+}
+
+.invoice-card-premium .amount-section-premium {
+    background: #f8fafc;
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.invoice-card-premium .amount-label-premium {
+    font-size: 0.8rem;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.invoice-card-premium .amount-value-premium {
+    font-size: 1.35rem;
+    font-weight: 900;
+    color: #4f46e5;
+    letter-spacing: -0.02em;
+}
+
+.invoice-card-premium .date-grid-premium {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.invoice-card-premium .date-item-premium {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.invoice-card-premium .date-label-premium {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.invoice-card-premium .date-value-premium {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.invoice-card-premium .card-actions-premium {
+    margin-top: 4px;
+    display: flex;
+    gap: 10px;
+}
+
+.card-actions-premium .btn-premium-action {
+    flex: 1;
+    height: 44px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #475569;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-actions-premium .btn-premium-action:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #1e293b;
+    transform: translateY(-2px);
+}
+
+.card-actions-premium .btn-premium-action.primary {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    border: none;
+    color: white;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+}
+
+/* Menú Contextual (Tres Puntos) para Tarjetas */
+.card-menu-container {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    z-index: 10;
+}
+
+.btn-menu-trigger {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: rgba(241, 245, 249, 0.8);
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-menu-trigger:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.card-context-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 5px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    min-width: 160px;
+    display: none;
+    flex-direction: column;
+    padding: 6px;
+    z-index: 100;
+}
+
+.card-context-menu.active {
+    display: flex;
+    animation: slideInDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-item-premium {
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+}
+
+.menu-item-premium:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+.menu-item-premium i {
+    width: 16px;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.menu-item-premium.danger {
+    color: #dc2626;
+}
+
+.menu-item-premium.danger:hover {
+    background: #fef2f2;
+}
+
+/* Tarjetas de Pagos Premium - Ultra Refined */
 .payment-card-premium {
     background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 16px;
-    padding: 16px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    border-radius: 20px;
+    padding: 18px;
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.payment-card-premium::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--success);
+    opacity: 0.8;
+}
+
+.payment-card-premium .card-header-premium {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    padding-bottom: 10px;
+}
+
+.payment-card-premium .receipt-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    color: #1e293b;
+    font-size: 0.85rem;
+    background: #f1f5f9;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+.payment-card-premium .card-body-premium {
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+.payment-card-premium .main-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.payment-card-premium .amount-value-premium {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 850;
+    color: #059669 !important;
+    letter-spacing: -0.02em;
+    line-height: 1;
+}
+
+.payment-card-premium .amount-value-premium .currency {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    margin-left: 2px;
+}
+
+.payment-card-premium .method-badge-premium {
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: #64748b;
+    background: #f8fafc;
+    padding: 4px 10px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    border: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.payment-card-premium .meta-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.015);
+    padding: 10px;
+    border-radius: 12px;
+}
+
+.payment-card-premium .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #475569;
+    font-weight: 600;
+}
+
+.payment-card-premium .meta-item i {
+    width: 14px;
+    text-align: center;
+    color: #94a3b8;
+}
+
+.payment-card-premium .meta-item.full-width {
+    grid-column: span 2;
+    border-top: 1px dashed #e2e8f0;
+    padding-top: 6px;
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+}
+
+.payment-card-premium .card-footer-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 5px;
+}
+
+.payment-card-premium .card-action-btn {
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+    border: 1px solid #e2e8f0;
+    background: white;
+    color: #475569;
+}
+
+.payment-card-premium .card-action-btn:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.payment-card-premium .card-action-btn.success:hover {
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.payment-card-premium .card-action-btn.danger:hover {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.05);
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsividad para Toolbar de Facturas */
+@media (max-width: 1100px) {
+    .clients-toolbar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 15px !important;
+        padding: 15px !important;
+    }
+
+    .toolbar-group {
+        flex-direction: column !important;
+        width: 100% !important;
+    }
+
+    .filter-item {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .toolbar-actions {
+        width: 100% !important;
+        justify-content: space-between !important;
+    }
+
+    .toolbar-actions .btn-premium {
+        flex: 1 !important;
+    }
 }
 
 /* Mobile Dropdown Menu */

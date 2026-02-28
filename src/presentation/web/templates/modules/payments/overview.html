@@ -31,7 +31,7 @@
 
     <!-- Tab 1: Ingresos -->
     <div id="finance-tab-ingresos" class="finance-tab-content active">
-        <div
+        <div class="stat-grid-premium"
             style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
             <div class="stat-card-premium" style="border-left-color: #6366f1;">
                 <div class="stat-label">Recaudación Hoy</div>
@@ -60,7 +60,7 @@
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px;">
+        <div class="panels-grid-premium" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px;">
             <div class="glass-panel" style="padding: 24px; border-radius: 16px;">
                 <h3 style="margin-bottom: 20px; font-size: 1.1rem; font-weight: 800; color: #1e293b;">
                     <i class="fas fa-wallet" style="color: #6366f1; margin-right: 10px;"></i>Métodos de Pago
@@ -82,7 +82,7 @@
 
     <!-- Tab 2: Egresos -->
     <div id="finance-tab-egresos" class="finance-tab-content">
-        <div
+        <div class="stat-grid-premium"
             style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
             <div class="stat-card-premium" style="border-left-color: #f43f5e;">
                 <div class="stat-label">Total Gastos</div>
@@ -103,7 +103,7 @@
                     <i class="fas fa-plus"></i> Nuevo Gasto
                 </button>
             </div>
-            <div style="overflow-x: auto;">
+            <div id="expenses-summary-table-view">
                 <table class="premium-data-table" style="width: 100%;">
                     <thead>
                         <tr>
@@ -122,12 +122,16 @@
                     </tbody>
                 </table>
             </div>
+            <div id="expenses-summary-cards-grid" class="cards-grid-premium"
+                style="display: none; grid-template-columns: 1fr; gap: 16px;">
+                <!-- Cards rendered by JS -->
+            </div>
         </div>
     </div>
 
     <!-- Tab 3: Perdidas -->
     <div id="finance-tab-perdidas" class="finance-tab-content">
-        <div
+        <div class="stat-grid-premium"
             style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
             <div class="stat-card-premium" style="border-left-color: #ef4444;">
                 <div class="stat-label">Pérdida FX</div>
@@ -150,7 +154,7 @@
             <h3 style="margin-bottom: 20px; font-size: 1.1rem; font-weight: 800; color: #1e293b;">
                 <i class="fas fa-search-dollar" style="color: #64748b; margin-right: 10px;"></i>Análisis de Fugas
             </h3>
-            <div style="overflow-x: auto;">
+            <div id="losses-table-view">
                 <table class="premium-data-table" style="width: 100%;">
                     <thead>
                         <tr>
@@ -168,6 +172,10 @@
                     </tbody>
                 </table>
             </div>
+            <div id="losses-cards-grid" class="cards-grid-premium"
+                style="display: none; grid-template-columns: 1fr; gap: 16px;">
+                <!-- Cards rendered by JS -->
+            </div>
         </div>
     </div>
 </div>
@@ -184,60 +192,128 @@
 
     #finance-overview-view .stat-card-premium {
         background: #ffffff;
-        padding: 12px 16px;
-        border-radius: 12px;
-        border-left: 4px solid #cbd5e1;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        transition: transform 0.2s;
+        padding: 16px;
+        border-radius: 16px;
+        border-left: 5px solid #cbd5e1;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
 
     #finance-overview-view .stat-card-premium:hover {
-        transform: translateY(-2px);
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
     }
 
     #finance-overview-view .stat-label {
-        font-size: 0.65rem;
+        font-size: 0.7rem;
         font-weight: 800;
         text-transform: uppercase;
         color: #64748b;
-        margin-bottom: 4px;
+        margin-bottom: 6px;
+        letter-spacing: 0.05em;
     }
 
     #finance-overview-view .stat-value {
-        font-size: 1.25rem;
+        font-size: 1.4rem;
         font-weight: 950;
-        color: #1e293b;
+        color: #0f172a;
+        line-height: 1.2;
     }
 
     #finance-overview-view .stat-sub {
-        font-size: 0.7rem;
+        font-size: 0.75rem;
         color: #94a3b8;
-        margin-top: 2px;
+        margin-top: 4px;
+        font-weight: 600;
     }
 
     #finance-overview-view .finance-tab-btn {
-        padding: 8px 16px;
+        padding: 10px 20px;
         border: none;
         background: transparent;
         color: #64748b;
         font-weight: 700;
         cursor: pointer;
-        border-radius: 8px;
+        border-radius: 12px;
         display: flex;
         align-items: center;
-        gap: 8px;
-        transition: 0.2s;
+        gap: 10px;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        white-space: nowrap;
+    }
+
+    #finance-overview-view .finance-tab-btn i {
+        font-size: 1rem;
     }
 
     #finance-overview-view .finance-tab-btn.active {
-        background: #f1f5f9;
-        color: #4f46e5;
+        background: #4f46e5;
+        color: white;
+        box-shadow: 0 4px 12px rgba(79, 70, 233, 0.3);
+    }
+
+    /* Media Queries para Mobile */
+    @media (max-width: 1100px) {
+        #finance-overview-view .view-header {
+            flex-direction: column;
+            align-items: flex-start !important;
+            gap: 20px;
+        }
+
+        #finance-overview-view .header-left {
+            width: 100%;
+        }
+
+        #finance-overview-view .header-right {
+            width: 100%;
+        }
+
+        #finance-overview-view .financial-clock-premium {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+        }
+
+        #finance-overview-view .finance-tabs-premium {
+            overflow-x: auto;
+            padding-bottom: 15px !important;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        #finance-overview-view .finance-tabs-premium::-webkit-scrollbar {
+            display: none;
+        }
+
+        #finance-overview-view .stat-grid-premium {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+        }
+
+        #finance-overview-view .panels-grid-premium {
+            grid-template-columns: 1fr !important;
+            gap: 20px !important;
+        }
+
+        #finance-overview-view .stat-value {
+            font-size: 1.6rem;
+            /* Un poco más grande en móvil para legibilidad */
+        }
     }
 
     @keyframes tabFadeIn {
         from {
             opacity: 0;
-            transform: translateY(5px);
+            transform: translateY(10px);
         }
 
         to {

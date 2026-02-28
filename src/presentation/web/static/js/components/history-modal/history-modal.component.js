@@ -42,6 +42,7 @@ export class HistoryModal extends BaseModal {
         }
 
         this.currentClientId = client.id;
+        this.isOpen = true; // Flag for resize listener
 
         // Reset and open
         super.open();
@@ -52,21 +53,34 @@ export class HistoryModal extends BaseModal {
         if (nameHeader) nameHeader.textContent = client.legal_name || 'Sin Nombre';
         if (idHeader) idHeader.textContent = client.subscriber_code || `CLI-${client.id}`;
 
-        const container = this.modalElement.querySelector('#client-history-list');
+        const container = this.modalElement.querySelector('#history-loading-placeholder');
         if (container) {
-            container.innerHTML = '<div style="padding: 40px; text-align:center;"><div class="spinner"></div> Cargando historial...</div>';
+            container.style.display = 'block';
+            container.innerHTML = '<div class="spinner"></div><p style="margin-top:15px; color: #64748b;">Cargando historial...</p>';
         }
 
+        // Hidden views until data
+        const tableView = this.modalElement.querySelector('#history-table-view');
+        const cardsView = this.modalElement.querySelector('#history-cards-view');
+        if (tableView) tableView.style.display = 'none';
+        if (cardsView) cardsView.style.display = 'none';
+
         await this.loadHistory();
+    }
+
+    onClose() {
+        this.isOpen = false; // Reset flag
+        super.onClose();
     }
 
     async loadHistory() {
         try {
             const payments = await this.api.get(`/api/payments?client_id=${this.currentClientId}&limit=50`);
+            this.lastPaymentsData = payments; // Cache data
             this.renderHistory(payments);
         } catch (error) {
             console.error('Error loading history:', error);
-            const container = this.modalElement.querySelector('#client-history-list');
+            const container = this.modalElement.querySelector('#history-loading-placeholder');
             if (container) {
                 container.innerHTML = `<div style="padding: 40px; text-align:center; color: #ef4444;">Error cargando historial: ${error.message}</div>`;
             }
@@ -74,21 +88,16 @@ export class HistoryModal extends BaseModal {
     }
 
     renderHistory(payments) {
-        const container = this.modalElement.querySelector('#client-history-list');
-        if (!container) return;
+        this.isMobile = window.innerWidth < 1100;
+        console.log(`[HistoryModal] Rendering. isMobile: ${this.isMobile}, width: ${window.innerWidth}`);
+        const tableView = this.modalElement.querySelector('#history-table-view');
+        const cardsView = this.modalElement.querySelector('#history-cards-view');
+        const loadingPlaceholder = this.modalElement.querySelector('#history-loading-placeholder');
 
-        if (!payments || payments.length === 0) {
-            container.innerHTML = `
-                <div style="text-align:center; padding: 60px; color: #94a3b8;">
-                    <i class="fas fa-file-invoice-dollar" style="font-size: 3rem; opacity:0.1; margin-bottom:15px; display:block;"></i>
-                    <p style="font-weight:600; font-size:1.1rem; color:#1e293b;">Sin movimientos financieros</p>
-                    <p style="font-size:0.85rem; opacity:0.7;">Este cliente no ha registrado pagos en el sistema.</p>
-                </div>
-            `;
-            return;
-        }
+        if (loadingPlaceholder) loadingPlaceholder.style.display = 'none';
 
-        const methodMap = {
+        // Definir mapeos comunes
+        this.methodMap = {
             'cash': 'Efectivo',
             'transfer': 'Transferencia',
             'card': 'Tarjeta',
@@ -97,12 +106,57 @@ export class HistoryModal extends BaseModal {
             'other': 'Otro'
         };
 
-        const statusMap = {
+        this.statusMap = {
             'paid': 'PAGADO',
             'verified': 'PAGADO',
             'pending': 'PENDIENTE',
             'cancelled': 'ANULADO'
         };
+
+        if (!payments || payments.length === 0) {
+            if (tableView) tableView.style.display = 'none';
+            if (cardsView) cardsView.style.display = 'block';
+            const cardsGrid = this.modalElement.querySelector('#client-history-cards-grid');
+            if (cardsGrid) {
+                cardsGrid.innerHTML = `
+                    <div style="text-align:center; padding: 60px; color: #94a3b8; grid-column: 1/-1;">
+                        <i class="fas fa-file-invoice-dollar" style="font-size: 3rem; opacity:0.1; margin-bottom:15px; display:block;"></i>
+                        <p style="font-weight:600; font-size:1.1rem; color:#1e293b;">Sin movimientos financieros</p>
+                        <p style="font-size:0.85rem; opacity:0.7;">Este cliente no ha registrado pagos en el sistema.</p>
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        if (this.isMobile) {
+            if (tableView) tableView.style.display = 'none';
+            if (cardsView) cardsView.style.display = 'block';
+            this.renderHistoryCards(payments);
+        } else {
+            if (cardsView) cardsView.style.display = 'none';
+            if (tableView) tableView.style.display = 'block';
+            this.renderHistoryTable(payments);
+        }
+
+        // Add resize listener only once
+        if (!this._resizeAttached) {
+            window.addEventListener('resize', () => {
+                if (this.isOpen && this.lastPaymentsData) {
+                    const wasMobile = this.isMobile;
+                    this.isMobile = window.innerWidth < 1100;
+                    if (wasMobile !== this.isMobile) {
+                        this.renderHistory(this.lastPaymentsData);
+                    }
+                }
+            });
+            this._resizeAttached = true;
+        }
+    }
+
+    renderHistoryTable(payments) {
+        const container = this.modalElement.querySelector('#client-history-list');
+        if (!container) return;
 
         const html = `
             <div class="table-container-premium" style="margin:0; box-shadow:none; background:transparent;">
@@ -120,8 +174,8 @@ export class HistoryModal extends BaseModal {
                     </thead>
                     <tbody>
                         ${payments.map(p => {
-            const methodName = methodMap[p.payment_method] || p.payment_method;
-            const statusName = statusMap[p.status] || p.status;
+            const methodName = this.methodMap[p.payment_method] || p.payment_method;
+            const statusName = this.statusMap[p.status] || p.status;
             const statusClass = p.status === 'paid' || p.status === 'verified' ? 'success' : (p.status === 'pending' ? 'warning' : 'danger');
 
             return `
@@ -181,6 +235,66 @@ export class HistoryModal extends BaseModal {
                 </table>
             </div>
         `;
+        container.innerHTML = html;
+    }
+
+    renderHistoryCards(payments) {
+        const container = this.modalElement.querySelector('#client-history-cards-grid');
+        if (!container) return;
+
+        const html = payments.map(p => {
+            const statusClass = p.status === 'paid' || p.status === 'verified' ? 'success' : (p.status === 'pending' ? 'warning' : 'danger');
+            const methodName = this.methodMap[p.payment_method] || p.payment_method;
+
+            return `
+                <div class="payment-card-premium slideInDown">
+                    <div class="card-header-premium">
+                        <div class="receipt-id">#${String(p.id).padStart(4, '0')}</div>
+                        <span class="premium-status-badge ${statusClass}">${this.statusMap[p.status]}</span>
+                    </div>
+
+                    <div class="card-body-premium">
+                        <div class="main-info">
+                            <div class="amount-value-premium">$${p.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })} <span class="currency">COP</span></div>
+                            <div class="method-badge-premium">
+                                <i class="fas ${p.payment_method === 'cash' ? 'fa-wallet' : 'fa-university'}"></i>
+                                ${methodName}
+                            </div>
+                        </div>
+
+                        <div class="meta-info-grid">
+                            <div class="meta-item">
+                                <i class="far fa-calendar-alt"></i>
+                                <span>${new Date(p.payment_date).toLocaleDateString()}</span>
+                            </div>
+                            <div class="meta-item">
+                                <i class="far fa-clock"></i>
+                                <span>${new Date(p.payment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            <div class="meta-item full-width">
+                                <i class="fas fa-hashtag"></i>
+                                <span>Ref: ${p.reference || 'N/A'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-footer-actions">
+                        <button class="card-action-btn success" onclick="app.modules.payments.printReceipt(${p.id})">
+                            <i class="fas fa-print"></i> Imprimir
+                        </button>
+                        <button class="card-action-btn" onclick="app.modules.payments.viewReceiptDetails(${p.id})">
+                            <i class="fas fa-eye"></i> Ver
+                        </button>
+                        ${p.status !== 'cancelled' ? `
+                            <button class="card-action-btn danger" onclick="app.modules.payments.showRevertPaymentModal(${p.id}, ${p.client_id}, '${p.payment_date}')">
+                                <i class="fas fa-undo"></i> Revertir
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
         container.innerHTML = html;
     }
 }

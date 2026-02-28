@@ -4,7 +4,7 @@ Logic for the "Secretary & Administrator" AI Agent.
 """
 from typing import Dict, Any, List, Optional
 from src.core.interfaces.contracts import IWhatsAppAgentService, IRepository
-from src.infrastructure.database.repositories import ClientRepository, PaymentRepository, RouterRepository
+from src.infrastructure.database.repository_registry import ClientRepository, PaymentRepository, RouterRepository
 import json
 
 class WhatsAppAgentService(IWhatsAppAgentService):

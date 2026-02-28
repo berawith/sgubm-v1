@@ -3,7 +3,7 @@ Database Models - SQLAlchemy
 Modelos de base de datos para el sistema
 """
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, Enum
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, Enum, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 import enum
@@ -16,6 +16,91 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
+
+from sqlalchemy.orm import Query
+from flask import g, has_request_context
+
+@event.listens_for(Query, "before_compile", retval=True)
+def ensure_tenant_isolation(query):
+    """
+    Interceptor global de consultas para aplicar aislamiento multi-tenant.
+    Si hay un contexto de request y un tenant_id en g, se aplica el filtro automáticamente
+    a cualquier modelo que tenga la columna 'tenant_id'.
+    """
+    if not has_request_context():
+        return query
+        
+    tenant_id = getattr(g, 'tenant_id', None)
+    if tenant_id is None:
+        return query
+
+    # SUPERADMIN BYPASS: Si el usuario es el SuperAdministrador del sistema, no filtramos.
+    # El usuario 'admin' del tenant 1 (main) suele ser el superadmin.
+    user = getattr(g, 'user', None)
+    if user and user.role == 'admin' and tenant_id == 1:
+        # Nota: Aquí podríamos añadir una lógica más granular si se desea
+        return query
+
+    for column in query.column_descriptions:
+        entity = column.get('entity')
+        if entity and hasattr(entity, 'tenant_id'):
+            # SUPERADMIN BYPASS: Si es el tenant 1 y es admin, no filtramos.
+            # YA SE MANEJA ARRIBA, pero aquí es donde se aplica el filtro.
+            # Usamos enable_assertions(False) para permitir filtrar después de limit() o offset()
+            query = query.enable_assertions(False).filter(entity.tenant_id == tenant_id)
+            
+    return query
+
+
+@event.listens_for(Base, "before_insert", propagate=True)
+def set_tenant_id(mapper, connection, target):
+    """
+    Asigna automáticamente el tenant_id a cualquier modelo nuevo 
+    si hay un contexto de request activo.
+    """
+    if has_request_context():
+        tenant_id = getattr(g, 'tenant_id', None)
+        if tenant_id and hasattr(target, 'tenant_id'):
+            # Si el objeto no tiene tenant_id o es None, lo asignamos desde el contexto global
+            if getattr(target, 'tenant_id', None) is None:
+                setattr(target, 'tenant_id', tenant_id)
+
+
+class Tenant(Base):
+    """Modelo de Empresa/Inquilino para SaaS"""
+    __tablename__ = 'tenants'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    subdomain = Column(String(50), unique=True, index=True) # ej: 'norte' para norte.sgubm.com
+    brand_color = Column(String(20), default='#4f46e5')
+    logo_path = Column(String(255))
+    
+    is_active = Column(Boolean, default=True)
+    plan_type = Column(String(20), default='basic') # basic, pro, enterprise
+    
+    # Configuración personalizada (JSON string)
+    settings = Column(Text) # Custom SMTP, WhatsApp API Keys, etc.
+    
+    created_at = Column(DateTime, default=datetime.now)
+    trial_ends_at = Column(DateTime)
+    
+    # Relations
+    users = relationship('User', back_populates='tenant')
+    routers = relationship('Router', back_populates='tenant')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'subdomain': self.subdomain,
+            'brand_color': self.brand_color,
+            'logo_path': self.logo_path,
+            'is_active': self.is_active,
+            'plan_type': self.plan_type,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 
 class RouterStatus(enum.Enum):
@@ -36,19 +121,186 @@ class PaymentStatus(enum.Enum):
     CANCELLED = "cancelled"
 
 
+class UserRole(enum.Enum):
+    ADMIN = "admin"
+    COLLECTOR = "collector"
+    TECHNICAL = "tecnico"
+    SECRETARY = "secretaria"
+    ADMIN_FEM = "administradora"
+    PARTNER = "socio"
+
+
+class RolePermission(Base):
+    """Matriz de Permisos Granulares por Rol y Módulo"""
+    __tablename__ = 'role_permissions'
+    
+    id = Column(Integer, primary_key=True)
+    role_name = Column(String(50), nullable=False) # 'admin', 'collector'
+    module = Column(String(50), nullable=False) # 'clients', 'finance', 'routers', 'system', 'whatsapp', etc.
+    
+    # Privilegios granulares
+    can_view = Column(Boolean, default=False)
+    can_create = Column(Boolean, default=False)
+    can_edit = Column(Boolean, default=False)
+    can_delete = Column(Boolean, default=False)
+    can_print = Column(Boolean, default=False)
+    can_revert = Column(Boolean, default=False)
+    
+    __table_args__ = (
+        UniqueConstraint('role_name', 'module', name='uq_role_module_permission'),
+    )
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'role_name': self.role_name,
+            'module': self.module,
+            'can_view': self.can_view,
+            'can_create': self.can_create,
+            'can_edit': self.can_edit,
+            'can_delete': self.can_delete,
+            'can_print': self.can_print,
+            'can_revert': self.can_revert
+        }
+
+
+class CollectorTransfer(Base):
+    """Registro de envíos de dinero del cobrador a la empresa"""
+    __tablename__ = 'collector_transfers'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    amount = Column(Float, nullable=False)
+    method = Column(String(50), default='transfer')  # transfer, cash, yape, etc.
+    notes = Column(Text)
+    sent_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=datetime.now)
+    
+    user = relationship('User', foreign_keys=[user_id])
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'amount': self.amount,
+            'method': self.method,
+            'notes': self.notes,
+            'sent_at': self.sent_at.isoformat() if self.sent_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class User(Base):
+    """Modelo de Usuario para control de acceso (RBAC)"""
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True) # Se permitirá null temporalmente para migración
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False) # Guardaremos el hash, nunca en texto plano
+    role = Column(String(20), default='collector') # admin, collector
+    full_name = Column(String(100))
+    identity_document = Column(String(50))
+    phone_number = Column(String(50))
+    email = Column(String(100))
+    address = Column(Text)
+    profit_percentage = Column(Float, default=0.0)
+    bonus_amount = Column(Float, default=0.0)
+    assigned_zone = Column(String(100))
+    is_active = Column(Boolean, default=True)
+    
+    # Si es collector, a qué router/zona está asignado (opcional si es admin)
+    assigned_router_id = Column(Integer, ForeignKey('routers.id', ondelete='SET NULL'), nullable=True) # DEPRECATED, kept for compatibility
+    
+    created_at = Column(DateTime, default=datetime.now)
+    last_login = Column(DateTime, nullable=True)
+    
+    # Relación
+    tenant = relationship('Tenant', back_populates='users')
+    assigned_router = relationship('Router', foreign_keys=[assigned_router_id])
+    assignments = relationship('CollectorAssignment', back_populates='user', cascade='all, delete-orphan', lazy='joined')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tenant_id': self.tenant_id,
+            'username': self.username,
+            'role': self.role,
+            'full_name': self.full_name,
+            'identity_document': self.identity_document,
+            'phone_number': self.phone_number,
+            'email': self.email,
+            'address': self.address,
+            'profit_percentage': self.profit_percentage,
+            'bonus_amount': self.bonus_amount,
+            'assigned_zone': self.assigned_zone,
+            'is_active': self.is_active,
+            'assigned_router_id': self.assigned_router_id,
+            'assigned_router_name': self.assigned_router.alias if self.assigned_router else 'N/A',
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_login': self.last_login.isoformat() if self.last_login else None,
+            'assignments': [a.to_dict() for a in self.assignments]
+        }
+
+
+class CollectorAssignment(Base):
+    """Asignación de Cobrador a Router con comisiones específicas"""
+    __tablename__ = 'collector_assignments'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    router_id = Column(Integer, ForeignKey('routers.id', ondelete='CASCADE'), nullable=False)
+    
+    # Comisiones específicas para este Router
+    profit_percentage = Column(Float, default=0.0)
+    bonus_amount = Column(Float, default=0.0)
+    assigned_zone = Column(String(100))
+    
+    # Relaciones
+    user = relationship('User', back_populates='assignments')
+    router = relationship('Router')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'router_id': self.router_id,
+            'router_name': self.router.alias if self.router else 'N/A',
+            'profit_percentage': self.profit_percentage,
+            'bonus_amount': self.bonus_amount,
+            'assigned_zone': self.assigned_zone
+        }
+
+
+class UserSession(Base):
+    """Sesiones activas de usuarios (Tokens)"""
+    __tablename__ = 'user_sessions'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    token = Column(String(100), unique=True, nullable=False, index=True)
+    ip_address = Column(String(50))
+    user_agent = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+    expires_at = Column(DateTime, nullable=False)
+    
+    user = relationship('User')
+
+
 class Router(Base):
     """Modelo de Router (Node)"""
     __tablename__ = 'routers'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
     alias = Column(String(100), nullable=False)
     host_address = Column(String(50), nullable=False, unique=True)
     api_username = Column(String(50), default='admin')
     api_password = Column(String(255), nullable=False)
     api_port = Column(Integer, default=8728)
     ssh_port = Column(Integer, default=22)
-    zone = Column(String(100))
-    status = Column(String(20), default='offline') # Enum cambiado a String por compatibilidad
+    zone = Column(String(100), index=True)
+    status = Column(String(20), default='offline', index=True) # Estandarizado a minúsculas
     notes = Column(Text)
     monitored_interfaces = Column(Text) # JSON string with preferences
     last_error = Column(Text)
@@ -62,6 +314,7 @@ class Router(Base):
     management_method = Column(String(50), default='mixed') # pppoe, dhcp, mixed
     pppoe_ranges = Column(Text) # JSON/String with IP ranges for PPPoE
     dhcp_ranges = Column(Text)  # JSON/String with IP ranges for DHCP/Simple Queues
+    exclusion_keywords = Column(Text) # Comma-separated words to exclude
 
     
     # Métricas
@@ -78,14 +331,12 @@ class Router(Base):
     last_billing_date = Column(DateTime) # Fecha del último ciclo de facturación completado
     
     # Relationships
+    tenant = relationship('Tenant', back_populates='routers')
     clients = relationship('Client', back_populates='router', cascade='all, delete-orphan')
     
     def to_dict(self):
-        # Manejo robusto de status
-        status_val = self.status if self.status else 'offline'
-        # Si por alguna razón sigue llegando como enum (raro tras cambio a String)
-        if hasattr(status_val, 'value'):
-            status_val = status_val.value
+        # El status ahora es garantizado string en DB
+        status_val = str(self.status).lower() if self.status else 'offline'
 
         return {
             'id': self.id,
@@ -112,7 +363,8 @@ class Router(Base):
             'cut_day': self.cut_day,
             'management_method': self.management_method,
             'pppoe_ranges': self.pppoe_ranges,
-            'dhcp_ranges': self.dhcp_ranges
+            'dhcp_ranges': self.dhcp_ranges,
+            'exclusion_keywords': self.exclusion_keywords
         }
 
 
@@ -121,6 +373,7 @@ class InternetPlan(Base):
     __tablename__ = 'internet_plans'
 
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
     name = Column(String(100), nullable=False)
     download_speed = Column(Integer, nullable=False) # kbps
     upload_speed = Column(Integer, nullable=False)   # kbps
@@ -171,6 +424,7 @@ class Client(Base):
     __tablename__ = 'clients'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
     router_id = Column(Integer, ForeignKey('routers.id'), nullable=False)
     
     # Plans (Centralized)
@@ -178,7 +432,7 @@ class Client(Base):
     internet_plan = relationship('InternetPlan', back_populates='clients')
     
     # Información personal
-    subscriber_code = Column(String(50), unique=True, nullable=False)
+    subscriber_code = Column(String(50), unique=True, nullable=False, index=True)
     legal_name = Column(String(200), nullable=False)
     identity_document = Column(String(50))
     email = Column(String(100))
@@ -195,13 +449,16 @@ class Client(Base):
     upload_speed = Column(String(20))
     
     # Estado y balance
-    status = Column(String(20), default='active') # Enum cambiado a String por compatibilidad
+    status = Column(String(20), default='active', index=True) # Enum cambiado a String por compatibilidad
     account_balance = Column(Float, default=0.0)
     monthly_fee = Column(Float, default=0.0)
+    billing_enabled = Column(Boolean, default=True) # Habilitar/Deshabilitar facturación para este cliente
     
     # MikroTik specific
     mikrotik_id = Column(String(100))  # ID interno del router
     service_type = Column(String(50))  # pppoe, hotspot, queue, etc.
+    mikrotik_queue_name = Column(String(100), index=True) # Nombre pre-resuelto de la cola
+    mikrotik_interface_name = Column(String(100), index=True) # Nombre pre-resuelto de la interfaz
     
     # Estado conectado
     is_online = Column(Boolean, default=False)
@@ -215,8 +472,12 @@ class Client(Base):
     promise_date = Column(DateTime) # Fecha de promesa de pago
     broken_promises_count = Column(Integer, default=0) # Contador de promesas incumplidas (consecutivas)
     
+    # Asignación de Cobrador (New)
+    assigned_collector_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    
     # Relationships
     router = relationship('Router', back_populates='clients')
+    assigned_collector = relationship('User', foreign_keys=[assigned_collector_id])
     payments = relationship('Payment', back_populates='client', cascade='all, delete-orphan')
     invoices = relationship('Invoice', back_populates='client', cascade='all, delete-orphan')
     traffic_history = relationship('ClientTrafficHistory', back_populates='client', cascade='all, delete-orphan')
@@ -225,10 +486,7 @@ class Client(Base):
     pending_operations = relationship('PendingOperation', back_populates='client', cascade='all, delete-orphan')
     
     def to_dict(self):
-        # Manejo robusto de status
-        status_val = self.status if self.status else 'active'
-        if hasattr(status_val, 'value'):
-            status_val = status_val.value
+        status_val = str(self.status).lower() if self.status else 'active'
 
         return {
             'id': self.id,
@@ -252,13 +510,18 @@ class Client(Base):
             'account_balance': self.account_balance,
             'monthly_fee': self.monthly_fee,
             'service_type': self.service_type,
+            'mikrotik_queue_name': self.mikrotik_queue_name,
+            'mikrotik_interface_name': self.mikrotik_interface_name,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_payment_date': self.last_payment_date.isoformat() if self.last_payment_date else None,
             'due_date': self.due_date.isoformat() if self.due_date else None,
             'promise_date': self.promise_date.isoformat() if self.promise_date else None,
             'broken_promises_count': self.broken_promises_count or 0,
+            'assigned_collector_id': self.assigned_collector_id,
+            'assigned_collector_name': self.assigned_collector.username if self.assigned_collector else None,
             'router': self.router.alias if self.router else None,
             'zone': self.router.zone if self.router else None,
+            'billing_enabled': self.billing_enabled if hasattr(self, 'billing_enabled') else True,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
@@ -268,6 +531,7 @@ class Payment(Base):
     __tablename__ = 'payments'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
     client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
     
     # Información del pago
@@ -275,8 +539,8 @@ class Payment(Base):
     currency = Column(String(10), default='COP') # COP, USD, VES
     payment_origin = Column(String(20), default='national') # national, international
     is_overpayment = Column(Boolean, default=False)
-    payment_date = Column(DateTime, default=datetime.now)
-    payment_method = Column(String(50))  # cash, transfer, card, etc.
+    payment_date = Column(DateTime, default=datetime.now, index=True)
+    payment_method = Column(String(50), index=True)  # cash, transfer, card, etc.
     reference = Column(String(100))
     notes = Column(Text)
     
@@ -290,7 +554,9 @@ class Payment(Base):
     # ----------------------------
     
     # Estado
-    status = Column(String(20), default='paid') # Enum cambiado a String por compatibilidad
+    status = Column(String(20), default='paid', index=True) # Enum cambiado a String por compatibilidad
+    alert_count = Column(Integer, default=0) # Alertas enviadas cuando está en pending
+    rejection_reason = Column(String(500)) # Motivo del rechazo de un pago reportado
     
     # Período que cubre
     period_start = Column(DateTime)
@@ -305,12 +571,10 @@ class Payment(Base):
     
     # Relationships
     client = relationship('Client', back_populates='payments')
+    details = relationship('PaymentDetail', back_populates='payment', cascade='all, delete-orphan')
     
     def to_dict(self):
-        # Manejo robusto de status
-        status_val = self.status if self.status else 'paid'
-        if hasattr(status_val, 'value'):
-            status_val = status_val.value
+        status_val = str(self.status).lower() if self.status else 'paid'
 
         return {
             'id': self.id,
@@ -324,11 +588,13 @@ class Payment(Base):
             'currency': self.currency,
             'payment_origin': self.payment_origin,
             'is_overpayment': self.is_overpayment,
+            'alert_count': self.alert_count,
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'payment_method': self.payment_method,
             'reference': self.reference,
             'notes': self.notes,
             'status': status_val,
+            'rejection_reason': self.rejection_reason,
             'period_start': self.period_start.isoformat() if self.period_start else None,
             'period_end': self.period_end.isoformat() if self.period_end else None,
             'registered_by': self.registered_by,
@@ -338,7 +604,40 @@ class Payment(Base):
             'fx_variance': self.fx_variance,
             'tax_amount': self.tax_amount,
             'tax_details': self.tax_details,
-            'transaction_hash': self.transaction_hash
+            'transaction_hash': self.transaction_hash,
+            'details': [d.to_dict() for d in self.details]
+        }
+
+
+class PaymentDetail(Base):
+    """Detalle de un componente de pago mixto"""
+    __tablename__ = 'payment_details'
+    
+    id = Column(Integer, primary_key=True)
+    payment_id = Column(Integer, ForeignKey('payments.id', ondelete='CASCADE'), nullable=False)
+    
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), nullable=False)
+    method = Column(String(50), nullable=False)
+    exchange_rate = Column(Float, default=1.0)
+    base_amount = Column(Float) # Monto en la moneda base (USD)
+    reference = Column(String(100))
+    notes = Column(Text)
+    
+    # Relationships
+    payment = relationship('Payment', back_populates='details')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'payment_id': self.payment_id,
+            'amount': self.amount,
+            'currency': self.currency,
+            'method': self.method,
+            'exchange_rate': self.exchange_rate,
+            'base_amount': self.base_amount,
+            'reference': self.reference,
+            'notes': self.notes
         }
 
 
@@ -385,6 +684,9 @@ class DeletedPayment(Base):
             'deleted_by': self.deleted_by,
             'reason': self.reason
         }
+
+
+
 
 
 class NetworkSegment(Base):
@@ -499,14 +801,16 @@ class Invoice(Base):
     __tablename__ = 'invoices'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
     client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
     
-    issue_date = Column(DateTime, default=datetime.now) # Fecha de emisión
-    due_date = Column(DateTime, nullable=False)            # Fecha de vencimiento
+    issue_date = Column(DateTime, default=datetime.now, index=True) # Fecha de emisión
+    due_date = Column(DateTime, nullable=False, index=True)            # Fecha de vencimiento
     
     total_amount = Column(Float, default=0.0)
-    status = Column(String(20), default='unpaid') # unpaid, paid, overdue, cancelled
+    status = Column(String(20), default='unpaid', index=True) # unpaid, paid, overdue, cancelled
     pdf_path = Column(String(255)) # Ruta al archivo PDF generado
+    notes = Column(Text) # Notas o descripción de la factura
     
     # --- ERP Enterprise Fields ---
     currency = Column(String(10), default='COP')
@@ -515,6 +819,7 @@ class Invoice(Base):
     tax_amount = Column(Float, default=0.0)
     tax_details = Column(Text) # JSON con desglose
     is_fiscal = Column(Boolean, default=False) # Si es factura legal SENIAT/DIAN
+    base_amount = Column(Float, default=0.0)
     transaction_hash = Column(String(64), index=True)
     # ----------------------------
     
@@ -555,7 +860,9 @@ class InvoiceItem(Base):
     invoice_id = Column(Integer, ForeignKey('invoices.id', ondelete='CASCADE'), nullable=False)
     
     description = Column(String(200), nullable=False)
-    amount = Column(Float, nullable=False)
+    unit_price = Column(Float, nullable=False)
+    quantity = Column(Integer, default=1)
+    total = Column(Float, default=0.0)
     
     # Relationship
     invoice = relationship('Invoice', back_populates='items')
@@ -564,7 +871,9 @@ class InvoiceItem(Base):
         return {
             'id': self.id,
             'description': self.description,
-            'amount': self.amount
+            'unit_price': self.unit_price,
+            'quantity': self.quantity,
+            'total': self.total
         }
 
 
@@ -576,6 +885,7 @@ class AuditLog(Base):
     __tablename__ = 'audit_logs'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
     timestamp = Column(DateTime, default=datetime.now)
     user_id = Column(Integer) # ID del usuario que realizó la acción
     username = Column(String(100))
@@ -614,6 +924,7 @@ class PaymentPromise(Base):
     __tablename__ = 'payment_promises'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
     client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
     
     promise_date = Column(DateTime, nullable=False)
@@ -643,7 +954,8 @@ class Expense(Base):
     __tablename__ = 'expenses'
     
     id = Column(Integer, primary_key=True)
-    description = Column(String(200), nullable=False)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
+    description = Column(String(255), nullable=False)
     amount = Column(Float, nullable=False)
     currency = Column(String(10), default='COP')
     expense_date = Column(DateTime, default=datetime.now)
@@ -651,6 +963,10 @@ class Expense(Base):
     # Categorización
     category = Column(String(50)) # 'fixed' (Fijo), 'variable' (Variable/Deducible)
     is_recurring = Column(Boolean, default=False) # Si es recurrente mensual
+    
+    # Filtros de Asignación (New)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
+    router_id = Column(Integer, ForeignKey('routers.id', ondelete='CASCADE'), nullable=True)
     
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.now)
@@ -673,6 +989,8 @@ class Expense(Base):
             'expense_date': self.expense_date.isoformat() if self.expense_date else None,
             'category': self.category,
             'is_recurring': self.is_recurring,
+            'user_id': self.user_id,
+            'router_id': self.router_id,
             'notes': self.notes,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'created_by': self.created_by,
@@ -688,6 +1006,8 @@ class WhatsAppMessage(Base):
     __tablename__ = 'whatsapp_messages'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     client_id = Column(Integer, ForeignKey('clients.id', ondelete='SET NULL'), nullable=True)
     phone = Column(String(50), nullable=False)
     
@@ -718,11 +1038,63 @@ class WhatsAppMessage(Base):
         }
 
 
+class SupportTicket(Base):
+    """Tickets de soporte/revisión para reportar fallas de clientes"""
+    __tablename__ = 'support_tickets'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
+    client_id = Column(Integer, ForeignKey('clients.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    subject = Column(String(100), nullable=False)
+    description = Column(Text, nullable=False)
+    status = Column(String(20), default='open') # open, in_progress, resolved
+    image_path = Column(String(255), nullable=True) # Ruta de la captura de pantalla o imagen anexada
+    created_at = Column(DateTime, default=datetime.now)
+    resolved_at = Column(DateTime, nullable=True)
+    
+    # New Resolution Fields (Minimalist Premium V3)
+    actual_failure = Column(Text, nullable=True)
+    resolution_details = Column(Text, nullable=True)
+    technicians = Column(Text, nullable=True)
+    materials_used = Column(Text, nullable=True)
+    support_cost = Column(Float, default=0.0)
+    admin_observations = Column(Text, nullable=True)
+    support_date = Column(DateTime, nullable=True) # Fecha efectiva del trabajo
+    
+    # Relations
+    client = relationship('Client')
+    user = relationship('User')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'client_id': self.client_id,
+            'client_name': self.client.legal_name if self.client else None,
+            'user_id': self.user_id,
+            'user_name': self.user.username if self.user else None,
+            'subject': self.subject,
+            'description': self.description,
+            'status': self.status,
+            'image_path': self.image_path,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
+            'actual_failure': self.actual_failure,
+            'resolution_details': self.resolution_details,
+            'technicians': self.technicians,
+            'materials_used': self.materials_used,
+            'support_cost': self.support_cost,
+            'admin_observations': self.admin_observations,
+            'support_date': self.support_date.isoformat() if self.support_date else None
+        }
+
+
 class SystemSetting(Base):
     """Modelo para configuración general del sistema"""
     __tablename__ = 'system_settings'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
     key = Column(String(100), unique=True, nullable=False)
     value = Column(Text)
     description = Column(String(255))
@@ -738,6 +1110,113 @@ class SystemSetting(Base):
         }
 
 
+class SystemIncident(Base):
+    """
+    RECICLADOR - Centinela de Errores y Fallos del Sistema
+    Captura excepciones, fallos de red y errores críticos para reparación proactiva.
+    """
+    __tablename__ = 'system_incidents'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
+    
+    # Clasificación
+    severity = Column(String(20), default='error') # critical, error, warning, info
+    category = Column(String(50)) # 'api', 'mikrotik', 'database', 'system', 'auth'
+    module = Column(String(100)) # Nombre del archivo o módulo donde ocurrió
+    
+    # Detalles del error
+    error_type = Column(String(100)) # e.g., 'ValueError', 'mikrotik.ConnectionError'
+    message = Column(Text, nullable=False)
+    stack_trace = Column(Text)
+    
+    # Contexto de la Petición (JSON)
+    url = Column(String(255))
+    method = Column(String(10))
+    request_params = Column(Text) # JSON string
+    request_payload = Column(Text) # JSON string (obfuscated)
+    
+    # Contexto de Usuario
+    user_id = Column(Integer)
+    username = Column(String(100))
+    ip_address = Column(String(50))
+    
+    # Estado de Resolución
+    status = Column(String(20), default='new') # new, investigating, resolved, recurring, ignored
+    resolution_notes = Column(Text)
+    resolved_at = Column(DateTime)
+    resolved_by = Column(String(100))
+    
+    # Inteligencia Artificial (Feedback)
+    ai_analysis = Column(Text) # Sugerencia de reparación por IA
+    root_cause = Column(String(255))
+    
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # Metadata técnica (JSON)
+    environment_meta = Column(Text) # Versión del server, OS, python ver, etc.
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tenant_id': self.tenant_id,
+            'severity': self.severity,
+            'category': self.category,
+            'module': self.module,
+            'error_type': self.error_type,
+            'message': self.message,
+            'stack_trace': self.stack_trace,
+            'url': self.url,
+            'method': self.method,
+            'user_id': self.user_id,
+            'username': self.username,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'ai_analysis': self.ai_analysis
+        }
+
+
+class SystemNotification(Base):
+    """
+    Control de notificaciones interactivas para el administrador.
+    Permite flujos de aprobación (Ciclo de Facturación) y alertas críticas.
+    """
+    __tablename__ = 'system_notifications'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=True)
+    
+    title = Column(String(100), nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(String(30), default='info') # 'approval_required', 'alert', 'info'
+    action_key = Column(String(50)) # e.g. 'monthly_billing_cycle_2024_03'
+    
+    status = Column(String(20), default='pending') # pending, accepted, rejected, dismissed
+    
+    # Metadata para la acción (JSON)
+    action_data = Column(Text) 
+    
+    expires_at = Column(DateTime)
+    remind_at = Column(DateTime)
+    
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tenant_id': self.tenant_id,
+            'title': self.title,
+            'message': self.message,
+            'type': self.type,
+            'action_key': self.action_key,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'remind_at': self.remind_at.isoformat() if self.remind_at else None
+        }
+
+
 # Database initialization
 def init_db(database_url='sqlite:///sgubm.db'):
     """Inicializa la base de datos"""
@@ -746,11 +1225,27 @@ def init_db(database_url='sqlite:///sgubm.db'):
         engine = create_engine(
             database_url, 
             echo=False,
-            pool_size=20,
-            max_overflow=10,
-            pool_recycle=3600,
-            connect_args={'check_same_thread': False}
+            pool_size=50,          # Incrementar a 50
+            max_overflow=20,       # 20 de desbordamiento en picos
+            pool_recycle=1800,     # Reciclar cada 30 min
+            pool_timeout=45,       # Tolerancia de bloqueo de 45 segs
+            connect_args={
+                'check_same_thread': False,
+                'timeout': 45.0,     # Time out nativo de SQLite muy alto
+            }
         )
+        
+        # Activar PRAGMAS de alta concurrencia como WAL y SYNCHRONOUS
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA cache_size=-64000") # Usar 64MB de RAM en caché
+            cursor.execute("PRAGMA temp_store=MEMORY")
+            cursor.close()
+            
     else:
         engine = create_engine(database_url, echo=False)
         

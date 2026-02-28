@@ -21,7 +21,8 @@ export class BaseModal {
         this.eventListeners = [];
 
         // Inicializar automáticamente si se desea, o llamar init() manualmente
-        this._initPromise = this.init();
+        // SE ELIMINA LA AUTO-INICIALIZACIÓN PARA EVITAR LLAMADAS A LA API SIN TOKEN
+        // this._initPromise = this.init();
     }
 
     /**
@@ -177,7 +178,15 @@ export class BaseModal {
      */
     onClose() {
         // Default implementation hides global loader to prevent UI freeze.
-        if (window.app) app.showLoading(false);
+        if (window.app && typeof app.showLoading === 'function') {
+            // Signal a decrement to the loader count
+            app.showLoading(false);
+
+            // If the loader count is somehow still high, we trust the safety timeout,
+            // but we ensure this specific modal instance is no longer in a "loading" state.
+            this.hideLoading();
+        }
+        console.log(`[BaseModal:${this.modalId}] onClose cleanup completed.`);
     }
 
     /**

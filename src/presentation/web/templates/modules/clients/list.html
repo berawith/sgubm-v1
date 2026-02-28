@@ -17,7 +17,7 @@
                     </button>
                 </div>
             </div>
-            <button class="btn-premium" onclick="app.modules.clients.showCreateModal()">
+            <button id="add-client-btn" class="btn-premium" onclick="app.modules.clients.showCreateModal()">
                 <i class="fas fa-plus"></i> Nuevo Cliente
             </button>
         </div>
@@ -40,12 +40,19 @@
                     <select id="filter-status" class="select-premium" onchange="app.modules.clients.applyFilters()">
                         <option value="all">Todos los Estados</option>
                         <option value="active">Activos</option>
-                        <option value="suspended">Suspendidos</option>
+
                         <option value="debtors">Pendientes (Mora)</option>
                         <option value="online">Online</option>
                         <option value="offline">Offline</option>
-                        <option value="warning">Sin Queue (Detected)</option>
-                        <option value="deleted">Eliminados</option>
+
+                    </select>
+                </div>
+            </div>
+            <div class="filter-item">
+                <label>Cobrador</label>
+                <div class="select-wrapper">
+                    <select id="filter-collector" class="select-premium" onchange="app.modules.clients.applyFilters()">
+                        <option value="">Todos los Cobradores</option>
                     </select>
                 </div>
             </div>
@@ -68,35 +75,48 @@
         </div>
     </div>
 
-    <!-- Mini Stats bar -->
-    <div id="client-stats-bar" class="client-stats-bar">
-        <div class="stat-pill total">
-            <i class="fas fa-users"></i>
-            <span id="count-total">0</span> Total
+    <div class="clients-header-wrapper">
+        <div id="client-stats-bar" class="client-stats-bar">
+            <div class="stat-pill total">
+                <i class="fas fa-users"></i>
+                <span id="count-total">0</span> Total
+            </div>
+            <div class="stat-pill active">
+                <i class="fas fa-check-circle"></i>
+                <span id="count-active">0</span> Activos
+            </div>
+            <div class="stat-pill online">
+                <i class="fas fa-wifi"></i>
+                <span id="count-online">0</span> Online
+            </div>
+            <div class="stat-pill offline">
+                <i class="fas fa-plug"></i>
+                <span id="count-offline">0</span> Offline
+            </div>
+            <div class="stat-pill warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="count-morosos">0</span> Morosos
+            </div>
         </div>
-        <div class="stat-pill active">
-            <i class="fas fa-check-circle"></i>
-            <span id="count-active">0</span> Activos
-        </div>
-        <div class="stat-pill suspended">
-            <i class="fas fa-ban"></i>
-            <span id="count-suspended">0</span> Suspendidos
-        </div>
-        <div class="stat-pill online">
-            <i class="fas fa-wifi"></i>
-            <span id="count-online">0</span> Online
-        </div>
-        <div class="stat-pill offline">
-            <i class="fas fa-plug"></i>
-            <span id="count-offline">0</span> Offline
-        </div>
-        <div class="stat-pill warning">
-            <i class="fas fa-exclamation-triangle"></i>
-            <span id="count-morosos">0</span> Morosos
-        </div>
-        <div class="stat-pill secondary">
-            <i class="fas fa-microchip"></i>
-            <span id="count-warning">0</span> Sin Queue
+
+        <!-- Bulk Actions Bar (Integrated in Red Box area) -->
+        <div id="bulk-actions-bar" class="bulk-actions-bar">
+            <div class="bulk-info">
+                <i class="fas fa-layer-group"></i>
+                <span id="selected-count-label" class="selected-badge">0</span>
+                <span class="selected-text">Seleccionados</span>
+            </div>
+            <div class="bulk-tools">
+                <select id="bulk-plan-select" class="select-premium-mini">
+                    <option value="">Cambiar Plan...</option>
+                </select>
+                <button class="btn-premium-mini" onclick="app.modules.clients.applyBulkPlan()" title="Aplicar Plan">
+                    <i class="fas fa-bolt"></i>
+                </button>
+                <button class="btn-secondary-mini" onclick="app.modules.clients.clearSelection()" title="Cancelar">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -106,13 +126,26 @@
             <thead>
                 <tr>
                     <th width="40"><input type="checkbox" id="client-select-all"
-                            onclick="app.modules.clients.toggleSelectAll(this.checked)"></th>
-                    <th width="80">ID</th>
-                    <th>Cliente</th>
-                    <th width="150">Conexión</th>
-                    <th width="150">Router / Zona</th>
-                    <th width="120">Cartera</th>
-                    <th width="150">Plan / Estado</th>
+                            onclick="app.modules.clients.toggleSelectAll(this)"></th>
+                    <th width="80" class="sortable" data-sort="id" onclick="app.modules.clients.sortClients('id')">
+                        ID <i class="fas fa-sort sort-icon"></i>
+                    </th>
+                    <th class="sortable" data-sort="legal_name" onclick="app.modules.clients.sortClients('legal_name')">
+                        Cliente <i class="fas fa-sort sort-icon"></i>
+                    </th>
+                    <th width="150" class="sortable" data-sort="ip_address"
+                        onclick="app.modules.clients.sortClients('ip_address')">
+                        Conexión <i class="fas fa-sort sort-icon"></i>
+                    </th>
+                    <th width="160">Router / Cobrador</th>
+                    <th width="120" class="sortable" data-sort="account_balance"
+                        onclick="app.modules.clients.sortClients('account_balance')">
+                        Cartera <i class="fas fa-sort sort-icon"></i>
+                    </th>
+                    <th width="150" class="sortable" data-sort="status"
+                        onclick="app.modules.clients.sortClients('status')">
+                        Plan / Estado <i class="fas fa-sort sort-icon"></i>
+                    </th>
                     <th width="100">Tráfico</th>
                     <th width="150" style="text-align: right;">Acciones</th>
                 </tr>
@@ -149,4 +182,5 @@
             </button>
         </div>
     </div>
+
 </div>

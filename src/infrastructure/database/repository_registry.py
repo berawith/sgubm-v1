@@ -4,7 +4,7 @@ Implementaciones de IRepository para acceso a datos
 """
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from src.infrastructure.database.models import Router, Client, Payment, RouterStatus, ClientStatus, Invoice, InvoiceItem, WhatsAppMessage, SystemSetting, Expense, ClientTrafficHistory
 from src.domain.services.audit_service import AuditService
 
@@ -112,12 +112,12 @@ class ClientRepository:
     
     def get_by_status(self, status: str) -> List[Client]:
         """Obtiene clientes por estado"""
-        return self.session.query(Client).filter(Client.status == status).all()
+        return self.session.query(Client).options(joinedload(Client.router), joinedload(Client.assigned_collector), joinedload(Client.internet_plan)).filter(Client.status == status).all()
     
     def search(self, query: str) -> List[Client]:
         """Busca clientes por nombre, código, documento o IP"""
         search_pattern = f"%{query}%"
-        return self.session.query(Client).filter(
+        return self.session.query(Client).options(joinedload(Client.router), joinedload(Client.assigned_collector), joinedload(Client.internet_plan)).filter(
             (Client.legal_name.ilike(search_pattern)) |
             (Client.subscriber_code.ilike(search_pattern)) |
             (Client.identity_document.ilike(search_pattern)) |
@@ -126,12 +126,43 @@ class ClientRepository:
             (Client.ip_address.ilike(search_pattern))
         ).all()
 
-    def get_filtered(self, router_id: Optional[int] = None, status: Optional[str] = None, search: Optional[str] = None, plan_id: Optional[int] = None) -> List[Client]:
-        """Obtiene clientes con filtros combinados"""
-        query_obj = self.session.query(Client)
+    def get_filtered(self, router_id: Optional[Any] = None, status: Optional[str] = None, 
+                     search: Optional[str] = None, plan_id: Optional[int] = None,
+                     assigned_collector_id: Optional[int] = None) -> List[Client]:
+        """Obtiene clientes con filtros combinados, con carga ansiosa de relaciones"""
+        query_obj = self.session.query(Client).options(
+            joinedload(Client.router), 
+            joinedload(Client.assigned_collector), 
+            joinedload(Client.internet_plan)
+        )
 
         if router_id:
-            query_obj = query_obj.filter(Client.router_id == router_id)
+            if isinstance(router_id, list):
+                query_obj = query_obj.filter(Client.router_id.in_(router_id))
+            else:
+                query_obj = query_obj.filter(Client.router_id == router_id)
+
+        if assigned_collector_id:
+            # Logic: Explicitly assigned OR (Not explicitly assigned AND router is assigned to this collector)
+            from src.infrastructure.database.models import User, CollectorAssignment
+            
+            # Get router IDs from multi-router assignments (new system)
+            assigned_router_subq = self.session.query(CollectorAssignment.router_id).filter(
+                CollectorAssignment.user_id == assigned_collector_id
+            )
+            # Fallback: also check legacy assigned_router_id
+            legacy_router_subq = self.session.query(User.assigned_router_id).filter(
+                User.id == assigned_collector_id,
+                User.assigned_router_id != None
+            )
+            
+            query_obj = query_obj.filter(
+                (Client.assigned_collector_id == assigned_collector_id) |
+                (
+                    (Client.assigned_collector_id == None) & 
+                    (Client.router_id.in_(assigned_router_subq.union(legacy_router_subq)))
+                )
+            )
 
         if plan_id:
             query_obj = query_obj.filter(Client.plan_id == plan_id)
@@ -220,16 +251,18 @@ class ClientRepository:
         """Actualiza el balance del cliente"""
         client = self.get_by_id(client_id)
         if client:
+            current_balance = client.account_balance or 0.0
             if operation == 'add':
-                client.account_balance += amount
+                client.account_balance = current_balance + amount
             elif operation == 'subtract':
-                client.account_balance -= amount
+                client.account_balance = current_balance - amount
             elif operation == 'set':
                 client.account_balance = amount
             if commit:
                 self.session.commit()
                 self.session.refresh(client)
         return client
+
 
 
 class PaymentRepository:
@@ -260,14 +293,16 @@ class PaymentRepository:
         """Obtiene un pago por ID"""
         return self.session.query(Payment).filter(Payment.id == payment_id).first()
     
-    def get_all(self, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, limit: int = 100) -> List[Payment]:
-        """Obtiene todos los pagos (limitado) con filtro opcional de fechas"""
+    def get_all(self, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, limit: int = 100, status: Optional[str] = None) -> List[Payment]:
+        """Obtiene todos los pagos (limitado) con filtro opcional de fechas y estado"""
         query = self.session.query(Payment)
         
         if start_date:
             query = query.filter(Payment.payment_date >= start_date)
         if end_date:
             query = query.filter(Payment.payment_date <= end_date)
+        if status:
+            query = query.filter(Payment.status == status)
             
         return query.order_by(Payment.payment_date.desc()).limit(limit).all()
     
@@ -275,11 +310,15 @@ class PaymentRepository:
         """Obtiene todos los pagos de un cliente"""
         return self.session.query(Payment).filter(Payment.client_id == client_id).order_by(Payment.payment_date.desc()).all()
     
-    def get_by_date_range(self, start_date: datetime, end_date: datetime, router_id: Optional[int] = None) -> List[Payment]:
+    def get_by_date_range(self, start_date: datetime, end_date: datetime, router_id: Optional[Any] = None) -> List[Payment]:
         """Obtiene pagos en un rango de fechas"""
         query = self.session.query(Payment)
         if router_id:
-            query = query.join(Client, Payment.client_id == Client.id).filter(Client.router_id == router_id)
+            query = query.join(Client, Payment.client_id == Client.id)
+            if isinstance(router_id, list):
+                query = query.filter(Client.router_id.in_(router_id))
+            else:
+                query = query.filter(Client.router_id == router_id)
             
         return query.filter(
             Payment.payment_date >= start_date,
@@ -289,11 +328,14 @@ class PaymentRepository:
     def get_filtered(self, client_id: Optional[int] = None, router_id: Optional[int] = None, 
                      start_date: Optional[datetime] = None, 
                      end_date: Optional[datetime] = None, method: Optional[str] = None, 
-                     search: Optional[str] = None, limit: int = 100) -> List[Payment]:
-        """Obtiene pagos con filtros combinados"""
-        query = self.session.query(Payment).join(Client, Payment.client_id == Client.id)
+                     search: Optional[str] = None, limit: int = 100,
+                     router_ids: Optional[List[int]] = None, status: Optional[str] = None) -> List[Payment]:
+        """Obtiene pagos con filtros combinados (Optimizado con joinedload)"""
+        query = self.session.query(Payment).options(joinedload(Payment.client)).join(Client, Payment.client_id == Client.id)
 
-        if router_id:
+        if router_ids:
+            query = query.filter(Client.router_id.in_(router_ids))
+        elif router_id:
             query = query.filter(Client.router_id == router_id)
 
         if client_id:
@@ -307,6 +349,9 @@ class PaymentRepository:
             
         if method and method != 'all':
             query = query.filter(Payment.payment_method == method)
+            
+        if status:
+            query = query.filter(Payment.status == status)
             
         if search:
             search_pattern = f"%{search}%"
@@ -325,8 +370,8 @@ class PaymentRepository:
             Payment.payment_date >= today_start
         ).order_by(Payment.payment_date.desc()).all()
     
-    def get_total_by_date_range(self, start_date: datetime, end_date: datetime, client_id: Optional[int] = None, router_id: Optional[int] = None) -> float:
-        """Calcula el total de pagos en un rango, con filtros opcionales"""
+    def get_total_by_date_range(self, start_date: datetime, end_date: datetime, client_id: Optional[int] = None, router_id: Optional[int] = None, router_ids: Optional[List[int]] = None) -> float:
+        """Calcula el total de pagos en un rango, con filtros opcionales (soporta multi-router)"""
         query = self.session.query(Payment).join(Client, Payment.client_id == Client.id)
         
         query = query.filter(Payment.payment_date >= start_date)
@@ -338,7 +383,12 @@ class PaymentRepository:
         if client_id:
             query = query.filter(Payment.client_id == client_id)
         if router_id:
-            query = query.filter(Client.router_id == router_id)
+            if isinstance(router_id, list):
+                query = query.filter(Client.router_id.in_(router_id))
+            else:
+                query = query.filter(Client.router_id == router_id)
+        if router_ids:
+            query = query.filter(Client.router_id.in_(router_ids))
             
         result = query.all()
         return sum(p.amount for p in result)
@@ -491,11 +541,15 @@ class InvoiceRepository:
         """Obtiene facturas de un cliente"""
         return self.session.query(Invoice).filter(Invoice.client_id == client_id).order_by(Invoice.issue_date.desc()).all()
     
-    def get_by_date_range(self, start_date: datetime, end_date: datetime, router_id: Optional[int] = None) -> List[Invoice]:
+    def get_by_date_range(self, start_date: datetime, end_date: datetime, router_id: Optional[Any] = None) -> List[Invoice]:
         """Obtiene facturas en un rango de fechas de emisión"""
         query = self.session.query(Invoice)
         if router_id:
-            query = query.join(Client, Invoice.client_id == Client.id).filter(Client.router_id == router_id)
+            query = query.join(Client, Invoice.client_id == Client.id)
+            if isinstance(router_id, list):
+                query = query.filter(Client.router_id.in_(router_id))
+            else:
+                query = query.filter(Client.router_id == router_id)
             
         return query.filter(
             Invoice.issue_date >= start_date,
@@ -653,16 +707,27 @@ class ExpenseRepository:
             query = query.filter(Expense.expense_date <= end_date)
             
         return query.order_by(Expense.expense_date.desc()).limit(limit).all()
-        
+
     def get_filtered(self, category: Optional[str] = None, start_date: Optional[datetime] = None, 
                      end_date: Optional[datetime] = None, min_amount: Optional[float] = None,
                      max_amount: Optional[float] = None, search: Optional[str] = None, 
-                     is_recurring: Optional[bool] = None, limit: int = 100) -> List[Expense]:
+                     is_recurring: Optional[bool] = None, user_id: Optional[int] = None,
+                     router_id: Optional[int] = None, limit: int = 100) -> List[Expense]:
         """Obtiene gastos con filtros avanzados"""
         query = self.session.query(Expense)
         
         if category and category != 'all':
             query = query.filter(Expense.category == category)
+            
+        if start_date:
+            query = query.filter(Expense.expense_date >= start_date)
+        if end_date:
+            query = query.filter(Expense.expense_date <= end_date)
+
+        if user_id:
+            query = query.filter(Expense.user_id == user_id)
+        if router_id:
+            query = query.filter(Expense.router_id == router_id)
             
         if start_date:
             query = query.filter(Expense.expense_date >= start_date)

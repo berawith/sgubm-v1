@@ -1,90 +1,143 @@
 <!-- EXPENSES VIEW -->
 <div id="expenses-view" class="view content-view" style="display: none;">
-    <div class="view-header"
-        style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <button class="btn-text" onclick="app.modules.payments.switchTab('overview')"
-                style="padding: 8px; font-size: 1.2rem; color: #64748b;">
-                <i class="fas fa-chevron-left"></i>
-            </button>
-            <div>
-                <h1 class="page-title">Gastos y Deducibles</h1>
-                <p class="page-subtitle">Registro y control de gastos operativos</p>
+    <!-- View Header -->
+    <div class="view-header-premium glass"
+        style="margin-bottom: 24px; padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.4);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <button class="btn-text-premium" onclick="app.modules.payments.switchTab('overview')"
+                    style="padding: 10px; font-size: 1.2rem; color: #6366f1; background: rgba(99, 102, 241, 0.1); border-radius: 12px; border: none; cursor: pointer;">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <div>
+                    <h1 class="page-title"
+                        style="margin: 0; font-size: 1.5rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em;">
+                        Gastos y Deducibles</h1>
+                    <p class="page-subtitle" style="margin: 0; color: #64748b; font-size: 0.85rem;">Registro y control
+                        de gastos operativos</p>
+                </div>
+            </div>
+
+            <div class="view-actions-premium" style="display: flex; gap: 10px;">
+                <button class="btn-premium" onclick="app.modules.payments.showNewExpenseModal()"
+                    style="padding: 10px 20px; border-radius: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);">
+                    <i class="fas fa-plus-circle"></i> <span>NUEVO GASTO</span>
+                </button>
             </div>
         </div>
     </div>
 
-    <div class="clients-toolbar glass-panel" style="margin-bottom: 20px;">
-        <div class="toolbar-group">
-            <div class="filter-item" style="min-width: 250px;">
-                <label>Buscar Gasto</label>
-                <div class="input-with-icon">
-                    <i class="fas fa-search"></i>
+    <!-- Toolbar Filters -->
+    <div class="reports-toolbar-premium glass" style="margin-bottom: 24px; padding: 15px; border-radius: 16px;">
+        <div class="toolbar-content-premium"
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; align-items: flex-end;">
+
+            <div class="filter-group-premium">
+                <label
+                    style="font-size: 0.65rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.05em;">
+                    <i class="fas fa-search" style="margin-right: 4px;"></i> BUSCAR GASTO
+                </label>
+                <div class="input-premium-wrapper" style="position: relative;">
                     <input type="text" id="expense-search" class="input-premium" placeholder="Descripción o nota..."
-                        oninput="app.modules.payments.loadExpenses()">
+                        oninput="app.modules.payments.loadExpenses()"
+                        style="width: 100%; border-radius: 10px; padding: 10px 15px; font-size: 0.9rem;">
                 </div>
             </div>
-            <div class="filter-item">
-                <label>Mes</label>
+
+            <div class="filter-group-premium">
+                <label
+                    style="font-size: 0.65rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.05em;">
+                    <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i> MES
+                </label>
                 <input type="month" id="expense-filter-month" class="input-premium"
-                    onchange="app.modules.payments.loadExpenses()">
+                    onchange="app.modules.payments.loadExpenses()"
+                    style="width: 100%; border-radius: 10px; padding: 8px 12px;">
             </div>
-            <div class="filter-item">
-                <label>Categoría</label>
+
+            <div class="filter-group-premium">
+                <label
+                    style="font-size: 0.65rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.05em;">
+                    <i class="fas fa-tags" style="margin-right: 4px;"></i> CATEGORÍA
+                </label>
                 <select id="expense-filter-category" class="select-premium"
-                    onchange="app.modules.payments.loadExpenses()">
-                    <option value="">Todas</option>
+                    onchange="app.modules.payments.loadExpenses()"
+                    style="width: 100%; border-radius: 10px; padding: 8px 12px; border: 1px solid #e2e8f0; background: white;">
+                    <option value="">Todas las categorías</option>
                     <option value="fixed">Gastos Fijos</option>
                     <option value="variable">Variables / Deducibles</option>
                 </select>
             </div>
-        </div>
-        <div class="toolbar-actions">
-            <button class="btn-secondary btn-icon" onclick="app.modules.payments.loadExpenses()" title="Recargar">
-                <i class="fas fa-sync-alt"></i>
-            </button>
-            <button class="btn-premium" onclick="app.modules.payments.showNewExpenseModal()">
-                <i class="fas fa-plus-circle"></i> Nuevo Gasto
-            </button>
-        </div>
-    </div>
 
-    <!-- Summary Cards -->
-    <div class="financial-stats" style="margin-bottom: 24px;">
-        <div class="payment-stat-card clients-paid"> <!-- Using existing class for style reuse -->
-            <div class="payment-stat-info">
-                <div class="payment-stat-value" id="exp-stat-fixed">$0.00</div>
-                <h4>Gastos Fijos</h4>
-            </div>
-            <div class="payment-stat-icon">
-                <i class="fas fa-building"></i>
-            </div>
-        </div>
-
-        <div class="payment-stat-card clients-pending"> <!-- Using existing class for style reuse -->
-            <div class="payment-stat-info">
-                <div class="payment-stat-value" id="exp-stat-variable">$0.00</div>
-                <h4>Variables</h4>
-            </div>
-            <div class="payment-stat-icon">
-                <i class="fas fa-receipt"></i>
-            </div>
-        </div>
-
-        <div class="payment-stat-card total">
-            <div class="payment-stat-info">
-                <div class="payment-stat-value" id="exp-stat-total">$0.00</div>
-                <h4>Total Gastos</h4>
-            </div>
-            <div class="payment-stat-icon">
-                <i class="fas fa-chart-line"></i>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn-secondary-premium" onclick="app.modules.payments.loadExpenses()" title="Recargar"
+                    style="height: 42px; width: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: white; border: 1px solid #e2e8f0;">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
             </div>
         </div>
     </div>
 
-    <div class="table-container-premium glass-panel">
+    <!-- Summary Statistics Grid -->
+    <div class="reports-stats-grid"
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="stat-card-premium glass"
+            style="border-left: 5px solid #3b82f6; padding: 20px; border-radius: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span
+                        style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Gastos
+                        Fijos</span>
+                    <h2 id="exp-stat-fixed"
+                        style="margin: 5px 0 0; font-size: 1.6rem; font-weight: 900; color: #1e293b; font-family: 'JetBrains Mono', monospace;">
+                        $0.00</h2>
+                </div>
+                <div
+                    style="height: 45px; width: 45px; background: rgba(59, 130, 246, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-building" style="color: #3b82f6; font-size: 1.3rem;"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card-premium glass"
+            style="border-left: 5px solid #f59e0b; padding: 20px; border-radius: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span
+                        style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Variables</span>
+                    <h2 id="exp-stat-variable"
+                        style="margin: 5px 0 0; font-size: 1.6rem; font-weight: 900; color: #1e293b; font-family: 'JetBrains Mono', monospace;">
+                        $0.00</h2>
+                </div>
+                <div
+                    style="height: 45px; width: 45px; background: rgba(245, 158, 11, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-receipt" style="color: #f59e0b; font-size: 1.3rem;"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card-premium glass"
+            style="border-left: 5px solid #8b5cf6; padding: 20px; border-radius: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(139, 92, 246, 0.05));">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span
+                        style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Total
+                        Gastos</span>
+                    <h2 id="exp-stat-total"
+                        style="margin: 5px 0 0; font-size: 1.6rem; font-weight: 900; color: #4f46e5; font-family: 'JetBrains Mono', monospace;">
+                        $0.00</h2>
+                </div>
+                <div
+                    style="height: 45px; width: 45px; background: rgba(139, 92, 246, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-chart-line" style="color: #8b5cf6; font-size: 1.3rem;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Desktop Table View -->
+    <div class="table-container-premium glass-panel desktop-only">
         <table class="premium-data-table">
-            <thead>
+            <thead style="background: rgba(241, 15, 107, 0.03);">
                 <tr>
                     <th width="120">FECHA</th>
                     <th>DESCRIPCIÓN</th>
@@ -98,5 +151,10 @@
                 <!-- Dynamic Rows -->
             </tbody>
         </table>
+    </div>
+
+    <!-- Mobile Cards View -->
+    <div id="expenses-cards-grid" class="mobile-only" style="display: none; padding-bottom: 30px;">
+        <!-- Dynamic Cards -->
     </div>
 </div>

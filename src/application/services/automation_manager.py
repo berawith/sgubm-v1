@@ -1,7 +1,7 @@
 import threading
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.application.services.billing_service import BillingService
 
 logger = logging.getLogger(__name__)
@@ -77,42 +77,87 @@ class AutomationManager:
                 time.sleep(10) # 6 x 10s = 60s
 
     def _check_and_run_tasks(self):
-        """Verifica qué tareas tocan ahora"""
-        now = datetime.now()
-        today = now.date()
+        """Verifica qué tareas tocan ahora para CADA TENANT"""
+        from src.infrastructure.database.db_manager import get_db, get_app
+        from src.infrastructure.database.models import Tenant
+        from flask import g
         
-        # 1. Ciclo de Facturación (Una vez al día)
-        if self.last_check_date != today:
-            logger.info(f"📅 AutomationManager: Detectado cambio de día ({today}). Ejecutando ciclo de facturación...")
+        app = get_app()
+        if not app:
+            logger.error("AutomationManager: App not initialized yet.")
+            return
+
+        with app.app_context():
+            db = get_db()
             try:
-                service = BillingService()
-                # generate_monthly_invoices es idempotente
-                service.generate_monthly_invoices()
+                # Obtener todos los tenants activos
+                tenants = db.session.query(Tenant).filter(Tenant.is_active == 1).all()
                 
-                self.last_check_date = today
+                now = datetime.now()
+                today = now.date()
+                
+                for tenant in tenants:
+                    # SIMULAR CONTEXTO DE TENANT PARA ESTE HILO
+                    g.tenant_id = tenant.id
+                    g.tenant_name = tenant.name
+                    
+                    service = BillingService()
+                    
+                    # 1. Ciclo de Facturación (Aprobación Requerida el Día 1)
+                    if today.day == 1 and self.last_check_date != today:
+                        logger.info(f"📅 AutomationManager [{tenant.name}]: Día 1 detectado. Solicitando aprobación de ciclo...")
+                        service.request_cycle_approval(tenant.id, today.year, today.month)
+
+                    # 2. Verificar Notificaciones Pendientes (Recordatorios Horarios)
+                    self._process_notification_reminders(db, tenant.id)
+
+                    # 3. Ciclo de Suspensiones (Horario)
+                    try:
+                        if now.minute == 0: 
+                            logger.info(f"⚡ AutomationManager [{tenant.name}]: Verificación horaria de suspensiones...")
+                            service.process_suspensions()
+                    except Exception as e:
+                        logger.error(f"Error suspendiendo tenant {tenant.name}: {e}")
+                
+                # Tareas Globales
+                if self.last_check_date != today:
+                    try:
+                        logger.info("🧹 AutomationManager: Ejecutando limpieza global de historial...")
+                        g.tenant_id = None
+                        self._clean_traffic_history()
+                        self.last_check_date = today
+                    except Exception as e:
+                        logger.error(f"Error limpieza global: {e}")
+
             except Exception as e:
-                logger.error(f"Error ejecutando Facturación: {e}")
+                logger.error(f"Error crítico en _check_and_run_tasks: {e}")
+            finally:
+                if 'db' in locals():
+                    db.remove_session()
+                if hasattr(g, 'tenant_id'):
+                    del g.tenant_id
+
+    def _process_notification_reminders(self, db, tenant_id):
+        """Busca notificaciones de aprobación pendientes y maneja recordatorios"""
+        from src.infrastructure.database.models import SystemNotification
+        
+        now = datetime.now()
+        pending = db.session.query(SystemNotification).filter(
+            SystemNotification.tenant_id == tenant_id,
+            SystemNotification.status == 'pending',
+            SystemNotification.type == 'approval_required',
+            SystemNotification.remind_at <= now
+        ).all()
+        
+        for notif in pending:
+            # En un sistema real aquí enviaríamos un WebSocket push o Telegram/WhatsApp
+            # Por ahora, registramos en log y actualizamos remind_at para la siguiente hora
+            logger.info(f"🔔 RECORDATORIO: {notif.title} para tenant {tenant_id}. Mensaje: {notif.message}")
             
-            # Limpiar historial de tráfico antiguo (mantener últimos 30 días)
-            try:
-                logger.info("🧹 AutomationManager: Ejecutando limpieza de historial antiguo...")
-                self._clean_traffic_history()
-            except Exception as e:
-                logger.error(f"Error limpiando historial: {e}")
-
-        # 2. Ciclo de Suspensiones (Soporta revisión horaria)
-        # Ejecutar suspensiones cada hora para asegurar que el corte de las 5:00 PM sea efectivo
-        try:
-            # Solo loggear cada hora para evitar spam
-            if now.minute == 0: 
-                logger.info("⚡ AutomationManager: Ejecutando verificación horaria de suspensiones...")
-                service = BillingService()
-                service.process_suspensions()
-        except Exception as e:
-            logger.error(f"Error en verificación de suspensiones: {e}")
-
-        # Aquí se pueden agregar otras tareas diarias o periódicas
-        # como limpiezas de logs, backups, etc.
+            # Programar siguiente recordatorio en 1 hora
+            notif.remind_at = now + timedelta(hours=1)
+            
+        db.session.commit()
 
     def _record_traffic_snapshots(self):
         """Captura snapshots de tráfico de todos los clientes para el historial"""
@@ -132,9 +177,10 @@ class AutomationManager:
                 return
 
             def process_router(router):
-                # Use a fresh session per thread for safety if needed, 
-                # but since we are just reading and adding snapshots, 
-                # we'll use a local db instance if possible or manage sessions carefully.
+                # SIMULAR CONTEXTO DE TENANT EN EL HILO
+                from flask import g
+                g.tenant_id = router.tenant_id
+                
                 from src.infrastructure.database.db_manager import get_db as get_local_db
                 local_db = get_local_db()
                 
@@ -181,7 +227,8 @@ class AutomationManager:
                         for client in clients:
                             cid = client.id
                             user = client.username
-                            info_bps = traffic_bps.get(str(cid), {})
+                            # TrafficSurgicalEngine usa enteros como llaves, no strings.
+                            info_bps = traffic_bps.get(cid, {})
                             info_bytes = traffic_bytes.get(user, {})
                             target_ip = info_bps.get('ip') or client.ip_address
                             
@@ -194,9 +241,7 @@ class AutomationManager:
                                 'jitter': 0
                             })
                             
-                            is_online_traffic = (info_bps.get('download', 0) > 0 or 
-                                                 info_bps.get('upload', 0) > 0 or 
-                                                 quality_data.get('status') == 'online')
+                            is_online_traffic = (info_bps.get('status') == 'online')
                             
                             # --- ANALYTICAL LINK HEALTH INDEX (LHI) ---
                             lhi = 100.0
@@ -241,6 +286,13 @@ class AutomationManager:
                                 'quality_score': round(lhi, 1),
                                 'timestamp': datetime.now()
                             })
+
+                            # Actualizar estado is_online en el objeto cliente para el Dashboard
+                            if client.is_online != is_online_traffic:
+                                client.is_online = is_online_traffic
+                                client.last_seen = datetime.now() if is_online_traffic else client.last_seen
+                        
+                        local_db.session.commit()
                         adapter.disconnect()
                 except Exception as e_proc:
                     logger.error(f"Error processing router {router.alias}: {e_proc}")

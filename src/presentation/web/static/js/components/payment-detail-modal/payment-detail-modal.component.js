@@ -333,6 +333,7 @@ export class PaymentDetailModal extends BaseModal {
 
         const p = this.currentPayment;
         const c = this.currentClient || {};
+        const details = p.details || [];
 
         // Method map
         const methodMap = {
@@ -344,6 +345,7 @@ export class PaymentDetailModal extends BaseModal {
             'zelle': { name: 'Zelle', icon: 'fa-dollar-sign', color: '#6366f1' },
             'pago_movil': { name: 'Pago Móvil', icon: 'fa-mobile-alt', color: '#ec4899' },
             'binance': { name: 'Binance', icon: 'fa-bitcoin', color: '#f59e0b' },
+            'mixed': { name: 'Mixto', icon: 'fa-layer-group', color: '#8b5cf6' },
             'other': { name: 'Otro', icon: 'fa-money-bill-wave', color: '#64748b' }
         };
 
@@ -351,147 +353,143 @@ export class PaymentDetailModal extends BaseModal {
 
         // Status map
         const statusMap = {
-            'paid': { name: 'PAGADO', class: 'success', icon: 'fa-check-circle' },
-            'verified': { name: 'VERIFICADO', class: 'success', icon: 'fa-check-double' },
-            'pending': { name: 'PENDIENTE', class: 'warning', icon: 'fa-clock' },
-            'cancelled': { name: 'ANULADO', class: 'danger', icon: 'fa-times-circle' }
+            'paid': { name: 'PAGADO', class: 'success', icon: 'fa-check-circle', color: '#10b981' },
+            'verified': { name: 'VERIFICADO', class: 'success', icon: 'fa-check-double', color: '#10b981' },
+            'pending': { name: 'PENDIENTE', class: 'warning', icon: 'fa-clock', color: '#f59e0b' },
+            'cancelled': { name: 'ANULADO', class: 'danger', icon: 'fa-times-circle', color: '#ef4444' }
         };
 
         const status = statusMap[p.status] || statusMap['pending'];
 
+        // Build parts breakdown HTML
+        let partsHtml = '';
+        if (details.length > 0) {
+            partsHtml = `
+                <div class="pd-section" style="margin-bottom: 16px;">
+                    <div class="pd-section-title">
+                        <i class="fas fa-layer-group" style="color: #8b5cf6;"></i>
+                        DESGLOSE DE MODALIDADES (${details.length})
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${details.map(d => {
+                const dm = methodMap[d.method] || methodMap['other'];
+                return `
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: ${dm.color}08; border: 1px solid ${dm.color}20; border-radius: 10px; transition: all 0.2s;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 32px; height: 32px; border-radius: 8px; background: ${dm.color}15; display: flex; align-items: center; justify-content: center;">
+                                        <i class="fas ${dm.icon}" style="color: ${dm.color}; font-size: 0.8rem;"></i>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8rem; color: #1e293b;">${dm.name}</div>
+                                        ${d.reference ? `<div style="font-size: 0.7rem; color: #94a3b8; font-family: 'JetBrains Mono', monospace;">Ref: ${d.reference}</div>` : ''}
+                                        ${d.currency !== (p.currency || 'COP') ? `<div style="font-size: 0.65rem; color: #94a3b8;">${d.currency} · Tasa: ${d.exchange_rate}</div>` : ''}
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.9rem; color: #1e293b;">$${(d.amount || 0).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</div>
+                                    <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">${d.currency || 'COP'}</div>
+                                </div>
+                            </div>`;
+            }).join('')}
+                    </div>
+                </div>`;
+        }
+
         const html = `
-            <div class="payment-detail-report">
-                <!-- Header Section -->
-                <div class="report-header glass-panel" style="background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); padding: 30px; border-radius: 16px; color: white; margin-bottom: 24px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <div style="font-size: 0.75rem; opacity: 0.8; font-weight: 600; letter-spacing: 0.1em; margin-bottom: 8px;">RECIBO DE PAGO</div>
-                            <div style="font-size: 2rem; font-weight: 800; font-family: 'JetBrains Mono', monospace;">#${String(p.id).padStart(4, '0')}</div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 8px;">ESTADO</div>
-                            <span class="premium-status-badge ${status.class}" style="font-size: 0.85rem; padding: 8px 16px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.4);">
-                                <i class="fas ${status.icon}"></i> ${status.name}
+            <div class="payment-detail-report" style="font-size: 0.85rem;">
+                <!-- Compact Header -->
+                <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 20px 24px; border-radius: 14px; color: white; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em;">#${String(p.id).padStart(4, '0')}</div>
+                            <span style="font-size: 0.7rem; padding: 4px 10px; background: ${status.color}30; border: 1px solid ${status.color}60; border-radius: 6px; font-weight: 700; color: ${status.color}; letter-spacing: 0.05em;">
+                                <i class="fas ${status.icon}" style="margin-right: 4px;"></i>${status.name}
                             </span>
                         </div>
+                        <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 900; color: #4ade80;">
+                            $${p.amount.toLocaleString('es-CO', { minimumFractionDigits: 0 })}
+                        </div>
                     </div>
-                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2); display: flex; gap: 30px; font-size: 0.9rem;">
-                        <div>
-                            <i class="far fa-calendar-alt" style="opacity: 0.7; margin-right: 8px;"></i>
-                            <strong>${new Date(p.payment_date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>
-                        </div>
-                        <div>
-                            <i class="far fa-clock" style="opacity: 0.7; margin-right: 8px;"></i>
-                            <strong>${new Date(p.payment_date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</strong>
-                        </div>
+                    <div style="display: flex; gap: 20px; font-size: 0.75rem; opacity: 0.7;">
+                        <span><i class="far fa-calendar-alt" style="margin-right: 6px;"></i>${new Date(p.payment_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <span><i class="far fa-clock" style="margin-right: 6px;"></i>${new Date(p.payment_date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span style="margin-left: auto;"><i class="fas fa-coins" style="margin-right: 4px;"></i>${p.currency || 'COP'}</span>
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
-                    <!-- Client Info -->
-                    <div class="info-section glass-panel" style="padding: 24px; border-radius: 12px;">
-                        <h4 style="margin: 0 0 20px 0; color: #1e293b; font-size: 1rem; font-weight: 800; display: flex; align-items: center; gap: 10px;">
-                            <i class="fas fa-user-circle" style="color: #6366f1;"></i>
-                            INFORMACIÓN DEL CLIENTE
-                        </h4>
-                        <div style="display: flex; flex-direction: column; gap: 12px;">
-                            <div class="info-row">
-                                <span class="info-label">Nombre:</span>
-                                <span class="info-value">${c.legal_name || 'No disponible'}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Documento:</span>
-                                <span class="info-value">${c.identity_document || '---'}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Código:</span>
-                                <span class="info-value"><code>${c.subscriber_code || `CLI-${c.id}`}</code></span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Plan:</span>
-                                <span class="info-value">${c.plan_name || '---'}</span>
-                            </div>
-                            ${c.router_name ? `
-                            <div class="info-row">
-                                <span class="info-label">Nodo:</span>
-                                <span class="info-value"><i class="fas fa-server" style="color: #64748b; margin-right: 5px;"></i>${c.router_name}</span>
-                            </div>` : ''}
+                <!-- Client + Method Row -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                    <div class="pd-section">
+                        <div class="pd-section-title">
+                            <i class="fas fa-user" style="color: #6366f1;"></i> CLIENTE
                         </div>
+                        <div class="pd-row"><span class="pd-label">Nombre</span><span class="pd-val">${c.legal_name || '---'}</span></div>
+                        <div class="pd-row"><span class="pd-label">Código</span><span class="pd-val" style="font-family: 'JetBrains Mono', monospace;">${c.subscriber_code || '---'}</span></div>
+                        <div class="pd-row"><span class="pd-label">Documento</span><span class="pd-val">${c.identity_document || '---'}</span></div>
+                        <div class="pd-row"><span class="pd-label">Plan</span><span class="pd-val">${c.plan_name || '---'}</span></div>
                     </div>
-
-                    <!-- Transaction Amount -->
-                    <div class="amount-section glass-panel" style="padding: 24px; border-radius: 12px; background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); border: 2px solid #e2e8f0;">
-                        <h4 style="margin: 0 0 20px 0; color: #1e293b; font-size: 1rem; font-weight: 800; display: flex; align-items: center; gap: 10px;">
-                            <i class="fas fa-hand-holding-usd" style="color: #10b981;"></i>
-                            MONTO DE LA TRANSACCIÓN
-                        </h4>
-                        <div style="text-align: center; padding: 20px 0;">
-                            <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; margin-bottom: 10px; letter-spacing: 0.1em;">TOTAL PAGADO</div>
-                            <div style="font-size: 3rem; font-weight: 900; color: #10b981; line-height: 1; font-family: 'JetBrains Mono', monospace;">
-                                $${p.amount.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                            <div style="font-size: 0.85rem; color: #64748b; margin-top: 8px; font-weight: 600;">COP (Pesos Colombianos)</div>
+                    <div class="pd-section">
+                        <div class="pd-section-title">
+                            <i class="fas fa-receipt" style="color: #10b981;"></i> TRANSACCIÓN
                         </div>
-                    </div>
-                </div>
-
-                <!-- Transaction Details -->
-                <div class="info-section glass-panel" style="padding: 24px; border-radius: 12px; margin-bottom: 24px;">
-                    <h4 style="margin: 0 0 20px 0; color: #1e293b; font-size: 1rem; font-weight: 800; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-receipt" style="color: #6366f1;"></i>
-                        DETALLES DE LA TRANSACCIÓN
-                    </h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="info-row">
-                            <span class="info-label">Método de Pago:</span>
-                            <span class="info-value">
-                                <span style="display: inline-flex; align-items: center; gap: 8px; background: ${method.color}15; color: ${method.color}; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.85rem;">
-                                    <i class="fas ${method.icon}"></i>
-                                    ${method.name}
-                                </span>
+                        <div class="pd-row">
+                            <span class="pd-label">Método</span>
+                            <span style="display: inline-flex; align-items: center; gap: 5px; background: ${method.color}12; color: ${method.color}; padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 0.75rem;">
+                                <i class="fas ${method.icon}"></i> ${method.name}
                             </span>
                         </div>
-                        <div class="info-row">
-                            <span class="info-label">Referencia:</span>
-                            <span class="info-value"><code style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">${p.reference || 'Sin referencia'}</code></span>
-                        </div>
-                        ${p.notes ? `
-                        <div class="info-row" style="grid-column: span 2;">
-                            <span class="info-label">Notas:</span>
-                            <span class="info-value" style="font-style: italic; color: #475569;">${p.notes}</span>
-                        </div>` : ''}
+                        <div class="pd-row"><span class="pd-label">Referencia</span><span class="pd-val" style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;">${p.reference || 'N/A'}</span></div>
+                        ${p.registered_by ? `<div class="pd-row"><span class="pd-label">Registrado por</span><span class="pd-val">${p.registered_by}</span></div>` : ''}
+                        ${p.notes ? `<div class="pd-row" style="flex-wrap: wrap;"><span class="pd-label">Notas</span><span class="pd-val" style="font-style: italic; color: #64748b; font-weight: 500;">${p.notes}</span></div>` : ''}
                     </div>
                 </div>
+
+                <!-- Payment Parts Breakdown -->
+                ${partsHtml}
 
                 ${this.renderAnalyticsSection()}
 
                 <!-- Print Button -->
-                <div style="text-align: center; padding: 20px 0;">
-                    <button class="btn-primary" onclick="app.modules.payments.printReceipt(${p.id})" style="padding: 14px 32px; font-size: 1rem; background: #4f46e5; box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);">
-                        <i class="fas fa-print" style="margin-right: 10px;"></i>
-                        Imprimir Recibo
+                <div style="text-align: center; padding: 12px 0 4px;">
+                    <button class="btn-primary" onclick="app.modules.payments.printReceipt(${p.id})" style="padding: 10px 28px; font-size: 0.85rem; background: #1e293b; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                        <i class="fas fa-print" style="margin-right: 8px;"></i> Imprimir Recibo
                     </button>
                 </div>
             </div>
 
             <style>
-                .info-row {
+                .pd-section {
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 12px;
+                    padding: 16px;
+                }
+                .pd-section-title {
+                    font-size: 0.7rem;
+                    font-weight: 800;
+                    color: #475569;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                    margin-bottom: 12px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .pd-row {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    padding: 10px 0;
+                    padding: 6px 0;
                     border-bottom: 1px solid #f1f5f9;
                 }
-                .info-row:last-child {
-                    border-bottom: none;
-                }
-                .info-label {
-                    font-size: 0.85rem;
-                    color: #64748b;
+                .pd-row:last-child { border-bottom: none; }
+                .pd-label {
+                    font-size: 0.75rem;
+                    color: #94a3b8;
                     font-weight: 600;
                 }
-                .info-value {
-                    font-size: 0.95rem;
+                .pd-val {
+                    font-size: 0.8rem;
                     color: #1e293b;
                     font-weight: 700;
                     text-align: right;

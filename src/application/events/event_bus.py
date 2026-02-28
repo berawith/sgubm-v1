@@ -127,7 +127,12 @@ class SystemEvents:
     WHATSAPP_MESSAGE_RECEIVED = "whatsapp.message_received"
     WHATSAPP_MESSAGE_SENT = "whatsapp.message_sent"
     
-    # Eventos de Sistema
+    # Eventos de Soporte
+    SUPPORT_TICKET_CREATED = "support.ticket_created"
+    SUPPORT_TICKET_UPDATED = "support.ticket_updated"
+    
+    # Eventos de Sistema y Centinela (RECICLADOR)
+    INCIDENT_REPORTED = "system.incident_reported"
     SYSTEM_ERROR = "system.error"
     SYSTEM_WARNING = "system.warning"
 

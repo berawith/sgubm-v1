@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify
 from src.infrastructure.database.db_manager import get_db
 from src.application.services.whatsapp_agent_service import WhatsAppAgentService
 from src.infrastructure.notifications.whatsapp_adapter import WhatsAppAdapter
+from src.application.services.auth import admin_required, permission_required
 import logging
 from datetime import datetime
 
@@ -80,6 +81,7 @@ def webhook():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @whatsapp_bp.route('/history/<phone>', methods=['GET'])
+@permission_required('whatsapp:chats', 'view')
 def get_history(phone):
     """Obtiene el historial de mensajes de un número específico"""
     try:
@@ -92,6 +94,7 @@ def get_history(phone):
         return jsonify({"success": False, "error": str(e)}), 500
 
 @whatsapp_bp.route('/config', methods=['GET'])
+@permission_required('whatsapp:config', 'view')
 def get_config():
     """Obtiene la configuración actual del agente"""
     try:
@@ -121,6 +124,7 @@ def get_config():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @whatsapp_bp.route('/config', methods=['POST'])
+@permission_required('whatsapp:config', 'edit')
 def save_config():
     """Guarda la configuración del agente en la base de datos"""
     try:
@@ -159,6 +163,7 @@ _whatsapp_status = {
 }
 
 @whatsapp_bp.route('/status', methods=['GET'])
+@permission_required('whatsapp:config', 'view')
 def get_status():
     """Retorna el estado actual de la conexión y el QR si existe"""
     return jsonify(_whatsapp_status)
@@ -186,12 +191,13 @@ def sync_chats():
     return jsonify({"success": True})
 
 @whatsapp_bp.route('/conversations', methods=['GET'])
+@permission_required('whatsapp:chats', 'view')
 def get_conversations():
     """Retorna hilos de conversación de la DB mezclados con chats externos"""
     try:
         db = get_db()
         # 1. Obtener hilos de la DB
-        from src.infrastructure.database.repositories import WhatsAppRepository
+        from src.infrastructure.database.repository_registry import WhatsAppRepository
         repo = WhatsAppRepository(db.session)
         db_conversations = repo.get_latest_conversations()
         
@@ -243,9 +249,10 @@ def get_conversations():
         return jsonify(results)
     except Exception as e:
         logger.error(f"Error fetching aggregated conversations: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @whatsapp_bp.route('/send', methods=['POST'])
+@permission_required('whatsapp:chats', 'create')
 def send_message():
     """Envía un mensaje manual a un número específico"""
     try:
@@ -287,6 +294,7 @@ def send_message():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @whatsapp_bp.route('/pair', methods=['POST'])
+@permission_required('whatsapp:config', 'edit')
 def request_pairing():
     """Registra una solicitud de vinculación por código"""
     try:

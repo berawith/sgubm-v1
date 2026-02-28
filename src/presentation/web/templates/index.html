@@ -3,8 +3,19 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SGUBM - Sistema de Gestión ISP</title>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <!-- PWA Manifest & Theme -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="{{ g.brand_color or '#4f46e5' }}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="{{ g.tenant_name or 'SGUB Pro' }}">
+    <link rel="apple-touch-icon" href="/static/images/icons/icon-152x152.png">
+
+    <title>{{ g.tenant_name or 'SGUB' }} - Sistema de Gestión ISP</title>
 
     <link href="/static/vendor/css/inter.css" rel="stylesheet">
     <!-- Component Styles -->
@@ -77,195 +88,235 @@
             width: 18px;
             height: 18px;
         }
+
+        /* SaaS Dynamic Branding Injection */
+        :root {
+            --primary: {
+                    {
+                    g.brand_color or '#4f46e5'
+                }
+            }
+
+            ;
+            /* RGB Fallback handled by JS, but we set the main color here */
+        }
     </style>
 
-    <link rel="stylesheet" href="/static/dist/bundle.css?v=2.2.32">
+    <!-- Global App Configuration -->
+    <script>
+        window.SGUBM_CONFIG = {
+            debug: {{ 'true' if config.DEBUG else 'false' }},
+        tenant_id: "{{ g.tenant_id or '' }}",
+            version: '2.2.70'
+        };
+    </script>
+
+    <link rel="stylesheet" href="/static/dist/bundle.css?v=2.2.70">
 </head>
 
 <body class="bg-gray-50 text-gray-900 font-sans antialiased">
-    <!-- Mobile Header -->
-    <div class="mobile-header">
-        <div class="logo">
-            <div class="logo-icon small">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M12 6v6l4 2" />
-                </svg>
-            </div>
-            <span class="logo-text">SGUBM</span>
-        </div>
-        <button id="mobile-menu-toggle" class="btn-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-        </button>
-    </div>
+    <div id="app-wrapper" style="display: none; width: 100%; height: 100%;">
 
-    <!-- Sidebar Navigation -->
-    <aside class="sidebar">
-        <div class="sidebar-header">
+        <!-- Mobile Header -->
+        <div class="mobile-header">
             <div class="logo">
-                <div class="logo-icon premium-gradient">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18"
-                        height="18">
-                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                <div class="logo-icon small">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
                     </svg>
                 </div>
-                <span class="logo-text">SGUBM <span
-                        style="font-size: 10px; vertical-align: super; color: #4f46e5;">PRO</span></span>
+                <span class="logo-text">{{ g.tenant_name or 'SGUB' }}</span>
             </div>
+            <button id="mobile-menu-toggle" class="btn-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
         </div>
 
-        <nav class="sidebar-nav">
-            <a href="/" class="nav-item active" data-view="dashboard">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="7" height="7" />
-                    <rect x="14" y="3" width="7" height="7" />
-                    <rect x="14" y="14" width="7" height="7" />
-                    <rect x="3" y="14" width="7" height="7" />
-                </svg>
-                <span>Dashboard</span>
-            </a>
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon premium-gradient">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18"
+                            height="18">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                        </svg>
+                    </div>
+                    <span class="logo-text font-bold text-slate-800 dark:text-white">{{ g.tenant_name or 'SGUB' }} <span
+                            style="font-size: 10px; vertical-align: super; color: var(--primary);">PRO</span></span>
+                </div>
+            </div>
 
-            <a href="#" class="nav-item" data-view="routers">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="2" width="20" height="8" rx="2" />
-                    <rect x="2" y="14" width="20" height="8" rx="2" />
-                    <line x1="6" y1="6" x2="6.01" y2="6" />
-                    <line x1="6" y1="18" x2="6.01" y2="18" />
-                </svg>
-                <span>Routers</span>
-            </a>
+            <nav class="sidebar-nav">
+                <a href="/" class="nav-item active" data-view="dashboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
 
-            <a href="#" class="nav-item has-submenu" id="nav-clientes">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-                <span>Clientes</span>
-                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-            </a>
-            <div class="submenu-container" id="clientes-submenu">
-                <a href="#" class="submenu-item" data-view="clients">
+                <a href="#" class="nav-item" data-view="routers">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="2" width="20" height="8" rx="2" />
+                        <rect x="2" y="14" width="20" height="8" rx="2" />
+                        <line x1="6" y1="6" x2="6.01" y2="6" />
+                        <line x1="6" y1="18" x2="6.01" y2="18" />
+                    </svg>
+                    <span>Routers</span>
+                </a>
+
+                <a href="#" class="nav-item has-submenu" id="nav-clientes">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                         <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                     </svg>
-                    <span>Listado</span>
-                </a>
-                <a href="#" class="submenu-item" data-view="clients-import">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="17 8 12 3 7 8" />
-                        <line x1="12" y1="3" x2="12" y2="15" />
+                    <span>Clientes</span>
+                    <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
                     </svg>
-                    <span>Importar</span>
                 </a>
-                <a href="#" class="submenu-item" data-view="clients-actions">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                    </svg>
-                    <span>Acciones</span>
-                </a>
-                <a href="#" class="submenu-item" data-view="clients-trash">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
-                    <span>Papelera</span>
-                </a>
-            </div>
+                <div class="submenu-container" id="clientes-submenu">
+                    <a href="#" class="submenu-item" data-view="clients">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                        </svg>
+                        <span>Listado</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="clients-import">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        <span>Importar</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="clients-alerts">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path
+                                d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                        <span>Alertas</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="clients-support">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                        <span>Soporte</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="clients-actions">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                        </svg>
+                        <span>Acciones</span>
+                    </a>
+                </div>
 
-            <a href="#" class="nav-item" data-view="plans">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path
-                        d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                    <line x1="12" y1="22.08" x2="12" y2="12" />
-                </svg>
-                <span>Planes</span>
-            </a>
-
-            <a href="#" class="nav-item" data-view="whatsapp" id="nav-whatsapp">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path
-                        d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.5 8.5 0 0 1 3.4 1.4L22 4l-1 5a8.38 8.38 0 0 1 .5 2.5z" />
-                    <path d="M16 8l-2 2 2 2" />
-                    <line x1="10" y1="10" x2="14" y2="10" />
-                </svg>
-                <span>WhatsApp</span>
-            </a>
-
-            <a href="#" class="nav-item" data-view="metrics" id="nav-metrics">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                    <polyline points="2 17 12 22 22 17" />
-                    <polyline points="2 12 12 17 22 12" />
-                </svg>
-                <span>Métricas</span>
-            </a>
-
-            <a href="#" class="nav-item has-submenu" id="nav-finanzas">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="5" width="20" height="14" rx="2" />
-                    <line x1="2" y1="10" x2="22" y2="10" />
-                </svg>
-                <span>Finanzas</span>
-                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-            </a>
-            <div class="submenu-container" id="finanzas-submenu">
-                <a href="#" class="submenu-item" data-view="finance-overview">
+                <a href="#" class="nav-item" data-view="plans">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
-                        <path d="M22 12A10 10 0 0 0 12 2v10z" />
+                        <path
+                            d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                        <line x1="12" y1="22.08" x2="12" y2="12" />
                     </svg>
-                    <span>Resumen</span>
-                </a>
-                <a href="#" class="submenu-item" data-view="payments-list">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="8" x2="12" y2="16" />
-                        <line x1="8" y1="12" x2="16" y2="12" />
-                    </svg>
-                    <span>Pagos</span>
-                </a>
-                <a href="#" class="submenu-item" data-view="invoices">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                    </svg>
-                    <span>Facturas</span>
-                </a>
-                <a href="#" class="submenu-item" data-view="reports">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 3v18h18" />
-                        <path d="M18 17l-5-5-4 4-6-6" />
-                    </svg>
-                    <span>Reportes</span>
-                </a>
-                <a href="#" class="submenu-item" data-view="promises">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M20 6L9 17l-5-5" />
-                    </svg>
-                    <span>Promesas</span>
-                </a>
-                <a href="#" class="submenu-item" data-view="expenses">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                    </svg>
-                    <span>Gastos</span>
+                    <span>Planes</span>
                 </a>
 
+                <a href="#" class="nav-item" data-view="whatsapp" id="nav-whatsapp">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.5 8.5 0 0 1 3.4 1.4L22 4l-1 5a8.38 8.38 0 0 1 .5 2.5z" />
+                        <path d="M16 8l-2 2 2 2" />
+                        <line x1="10" y1="10" x2="14" y2="10" />
+                    </svg>
+                    <span>WhatsApp</span>
+                </a>
 
-                <a href="#" class="submenu-item" data-view="automation">
+                <a href="#" class="nav-item" data-view="metrics" id="nav-metrics">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                        <polyline points="2 17 12 22 22 17" />
+                        <polyline points="2 12 12 17 22 12" />
+                    </svg>
+                    <span>Métricas</span>
+                </a>
+
+                <a href="#" class="nav-item has-submenu" id="nav-finanzas">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="5" width="20" height="14" rx="2" />
+                        <line x1="2" y1="10" x2="22" y2="10" />
+                    </svg>
+                    <span>Finanzas</span>
+                    <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </a>
+                <div class="submenu-container" id="finanzas-submenu">
+                    <a href="#" class="submenu-item" data-view="finance-overview">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
+                            <path d="M22 12A10 10 0 0 0 12 2v10z" />
+                        </svg>
+                        <span>Resumen</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="payments-list">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="16" />
+                            <line x1="8" y1="12" x2="16" y2="12" />
+                        </svg>
+                        <span>Pagos</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="invoices">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <span>Facturas</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="reports">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3v18h18" />
+                            <path d="M18 17l-5-5-4 4-6-6" />
+                        </svg>
+                        <span>Reportes</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="promises">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                        <span>Promesas</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="expenses">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                        </svg>
+                        <span>Gastos</span>
+                    </a>
+                    <!-- Mis Cobros (Collector/Admin) -->
+                    <a href="#" class="submenu-item" data-view="collector-finance" id="nav-collector-finance"
+                        style="display:none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                        <span>Mis Finanzas</span>
+                    </a>
+                </div>
+
+                <a href="#" class="nav-item" data-view="automation">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3" />
                         <path
@@ -273,7 +324,7 @@
                     </svg>
                     <span>Automatización</span>
                 </a>
-                <a href="#" class="submenu-item" data-view="sync">
+                <a href="#" class="nav-item" data-view="sync">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M23 4v6h-6"></path>
                         <path d="M1 20v-6h6"></path>
@@ -281,62 +332,82 @@
                     </svg>
                     <span>Sincronización</span>
                 </a>
-                <a href="#" class="submenu-item" data-view="trash">
+                <a href="#" class="nav-item has-submenu" id="nav-sistema">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                     </svg>
-                    <span>Papelera</span>
+                    <span>Sistema</span>
+                    <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                 </a>
-            </div>
-        </nav>
-
-        <div class="sidebar-footer">
-            <div class="user-profile">
-                <div class="user-avatar">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                        <circle cx="12" cy="7" r="4" />
-                    </svg>
+                <div class="submenu-container" id="sistema-submenu">
+                    <a href="#" class="submenu-item" data-view="system">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="7" r="4"></circle>
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        </svg>
+                        <span>Usuarios</span>
+                    </a>
+                    <a href="#" class="submenu-item" data-view="system-reciclador">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="4 17 10 11 4 5"></polyline>
+                            <line x1="12" y1="19" x2="20" y2="19"></line>
+                        </svg>
+                        <span>Centinela</span>
+                    </a>
                 </div>
-                <div class="user-info">
-                    <span class="user-name">Administrador</span>
-                    <span class="user-role">Super Admin</span>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="user-avatar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
+                    </div>
+                    <div class="user-info">
+                        <span class="user-name">Administrador</span>
+                        <span class="user-role">Super Admin</span>
+                    </div>
                 </div>
             </div>
-        </div>
-    </aside>
+        </aside>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        {% include 'modules/dashboard.html' %}
-        {% include 'modules/routers.html' %}
-        {% include 'modules/clients.html' %}
-        {% include 'modules/plans_manager.html' %}
-        {% include 'modules/whatsapp.html' %}
-        {% include 'modules/metrics.html' %}
+        <!-- Main Content -->
+        <main class="main-content">
+            {% include 'modules/dashboard.html' %}
+            {% include 'modules/routers.html' %}
+            {% include 'modules/clients.html' %}
+            {% include 'modules/plans_manager.html' %}
+            {% include 'modules/whatsapp.html' %}
+            {% include 'modules/metrics.html' %}
 
-        <!-- Finance Sub-Views -->
-        {% include 'modules/payments/overview.html' %}
-        {% include 'modules/payments/payments_list.html' %}
-        {% include 'modules/payments/invoices.html' %}
-        {% include 'modules/payments/reports.html' %}
-        {% include 'modules/payments/promises.html' %}
-        {% include 'modules/payments/expenses.html' %}
+            <!-- Finance Sub-Views -->
+            {% include 'modules/payments/overview.html' %}
+            {% include 'modules/payments/payments_list.html' %}
+            {% include 'modules/payments/invoices.html' %}
+            {% include 'modules/payments/reports.html' %}
+            {% include 'modules/payments/promises.html' %}
+            {% include 'modules/payments/expenses.html' %}
 
-        {% include 'modules/payments/automation.html' %}
-        {% include 'modules/payments/trash.html' %}
-        {% include 'modules/sync.html' %}
-
-        <!-- Original payments.html removed to avoid duplicate IDs with modular views -->
-    </main>
+            {% include 'modules/payments/automation.html' %}
+            {% include 'modules/payments/trash.html' %}
+            {% include 'modules/sync.html' %}
+            {% include 'modules/system.html' %}
+            {% include 'modules/system/reciclador.html' %}
+            {% include 'modules/collector_finance.html' %}
+        </main>
+    </div>
 
     <script src="/static/vendor/js/chart.min.js"></script>
-
-    <script type="module" src="/static/dist/bundle.js?v=2.2.35"></script>
+    <script type="module" src="/static/dist/bundle.js?v=2.2.70"></script>
     <script type="module" src="/static/js/components/sync-dashboard/sync-dashboard.component.js"></script>
-
     {% include 'modules/modals.html' %}
+    {% include 'modules/login.html' %}
 </body>
 
 </html>

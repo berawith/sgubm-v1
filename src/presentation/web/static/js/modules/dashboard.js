@@ -13,6 +13,22 @@ export class DashboardModule {
 
 
         console.log('📊 Dashboard Module initialized');
+
+        // REAL-TIME DATA REFRESH
+        this.eventBus.subscribe('data_refresh', (data) => {
+            if (this.viewManager?.currentMainView === 'dashboard') {
+                console.log(`♻️ Real-time Dashboard: Refreshing due to ${data.event_type}`);
+                // Throttled refresh
+                if (this._refreshTimeout) clearTimeout(this._refreshTimeout);
+                this._refreshTimeout = setTimeout(() => {
+                    this.loadStats();
+                    this.loadActivity();
+                    if (data.event_type === 'payment.received') {
+                        this.loadReportedPayments();
+                    }
+                }, 500);
+            }
+        });
     }
 
     async load() {
@@ -26,11 +42,25 @@ export class DashboardModule {
             this.loadStats(),
             this.loadServers(),
             this.loadActivity(),
-            this.initDashboardChart()
+            this.initDashboardChart(),
+            this.loadReportedPayments() // NUEVO: Cargar pagos reportados
         ]);
+
+        this.applyRoleVisibility();
 
         this.startDashboardMonitoring();
         this.startServerAutoRefresh();
+    }
+
+    applyRoleVisibility() {
+        const user = window.app.authService.getUser();
+        if (user && (user.role === 'collector' || user.role === 'cobrador')) {
+            const reportedWidget = document.getElementById('reported-payments-widget');
+            const activityWidget = document.getElementById('recent-activity-widget');
+
+            if (reportedWidget) reportedWidget.style.display = 'none';
+            if (activityWidget) activityWidget.style.display = 'none';
+        }
     }
 
 
@@ -41,17 +71,36 @@ export class DashboardModule {
 
     async loadStats() {
         try {
-            const stats = await this.api.get('/api/dashboard/stats');
+            const user = window.app.authService.getUser();
+            let url = '/api/dashboard/stats';
+
+            // Si es cobrador, filtrar por su router asignado
+            if (user && user.role === 'collector' && user.assigned_router_id) {
+                url += `?router_id=${user.assigned_router_id}`;
+            }
+
+            const stats = await this.api.get(url);
             this.renderStats(stats);
         } catch (error) {
             console.error('Error loading stats:', error);
+            this.renderStats({});
+            if (typeof toast !== 'undefined') toast.error('Error al cargar estadísticas.');
         }
     }
 
     async loadServers() {
         try {
+            const user = window.app.authService.getUser();
+            let url = '/api/routers';
+
             // Cargar datos rápidos de la BD primero
-            const servers = await this.api.get('/api/routers');
+            let servers = await this.api.get(url);
+
+            // Si es cobrador, filtrar la lista localmente para mayor seguridad de UI
+            if (user && user.role === 'collector' && user.assigned_router_id) {
+                servers = servers.filter(s => s.id === user.assigned_router_id);
+            }
+
             this.servers = servers;
             this.renderServers();
 
@@ -60,13 +109,22 @@ export class DashboardModule {
         } catch (error) {
             console.error('Error loading servers:', error);
             this.servers = [];
+            this.renderServers();
+            if (typeof toast !== 'undefined') toast.error('Error al cargar lista de routers.');
         }
     }
 
     async refreshLiveStatus() {
         try {
+            const user = window.app.authService.getUser();
+            let url = '/api/routers/monitor';
+
+            if (user && user.role === 'collector' && user.assigned_router_id) {
+                url += `?router_id=${user.assigned_router_id}`;
+            }
+
             // El monitor también actualiza la BD en el backend
-            const liveInfo = await this.api.get('/api/routers/monitor');
+            const liveInfo = await this.api.get(url);
 
             // Actualizar solo los campos que cambiaron en nuestro array local
             liveInfo.forEach(info => {
@@ -88,8 +146,105 @@ export class DashboardModule {
             this.renderActivity(activity);
         } catch (error) {
             console.error('Error loading activity:', error);
+            if (typeof this.renderActivity === 'function') this.renderActivity([]);
         }
     }
+
+    async loadReportedPayments() {
+        const user = window.app.authService.getUser();
+        // Solo admins y secretarias ven esto
+        if (!user || user.role === 'collector') return;
+
+        try {
+            const reports = await this.api.get('/api/payments/reported/pending');
+            this.renderReportedPayments(reports);
+        } catch (e) {
+            console.error('Error loading reported payments', e);
+        }
+    }
+
+    renderReportedPayments(reports) {
+        const container = document.getElementById('reported-payments-list');
+        const badge = document.getElementById('reported-payments-badge');
+
+        if (!container) return; // Si el widget no existe en la UI (ej. para cobradores), salir
+
+        if (badge) {
+            badge.textContent = reports.length;
+            badge.style.display = reports.length > 0 ? 'inline-block' : 'none';
+        }
+
+        if (reports.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 30px 10px; color: #94a3b8;">
+                    <i class="fas fa-check-circle" style="font-size: 2rem; margin-bottom: 10px; opacity: 0.5;"></i>
+                    <p style="margin: 0; font-size: 0.85rem;">No hay pagos pendientes de autorización</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Sorting: Prioritize those with alerts
+        reports.sort((a, b) => (b.alert_count || 0) - (a.alert_count || 0));
+
+        container.innerHTML = reports.map(r => {
+            const alertBadge = (r.alert_count > 0)
+                ? `<span style="background: #ef4444; color: white; padding: 2px 6px; border-radius: 12px; font-size: 0.65rem; font-weight: bold; margin-left: 8px; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-bell"></i> ${r.alert_count}</span>`
+                : '';
+
+            return `
+            <div class="reported-payment-card" style="background: #fff; border: 1px solid ${(r.alert_count > 0) ? '#fca5a5' : '#e2e8f0'}; border-left: 4px solid ${(r.alert_count > 0) ? '#ef4444' : '#f59e0b'}; border-radius: 8px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div>
+                        <div style="font-weight: 600; color: #1e293b; font-size: 0.9rem; display: flex; align-items: center;">${r.client_name} ${alertBadge}</div>
+                        <div style="color: #64748b; font-size: 0.75rem;"><i class="fas fa-id-badge"></i> ${r.subscriber_code} | Rep: ${r.collector_name}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-weight: 700; color: #10b981;">$${r.amount.toLocaleString('en-US')}</div>
+                        <div style="color: #94a3b8; font-size: 0.7rem;">${this.formatTime(r.payment_date)}</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid #f1f5f9; padding-top: 8px;">
+                    <button onclick="app.modules.dashboard.rejectReportedPayment(${r.id})" class="btn-secondary btn-sm" style="color: #ef4444; border-color: #fca5a5; padding: 4px 8px; font-size: 0.75rem;"><i class="fas fa-times"></i> Rechazar</button>
+                    <button onclick="app.modules.dashboard.approveReportedPayment(${r.id})" class="btn-primary btn-sm" style="background: #10b981; border-color: #10b981; padding: 4px 12px; font-size: 0.75rem;"><i class="fas fa-check"></i> Aprobar</button>
+                </div>
+            </div>
+            `;
+        }).join('');
+    }
+
+    async approveReportedPayment(id) {
+        if (!confirm('¿Está seguro de aprobar este pago? Esto afectará el balance del cliente y podría reactivar su servicio.')) return;
+
+        try {
+            app.showLoading(true);
+            const res = await this.api.post(`/api/payments/reported/${id}/approve`);
+            toast.success(res.message || 'Pago aprobado formalmente');
+            this.loadReportedPayments(); // Reload list
+            this.loadStats(); // Reload stats since balance changed
+        } catch (e) {
+            toast.error(e.message || 'Error al aprobar el pago');
+        } finally {
+            app.showLoading(false);
+        }
+    }
+
+    async rejectReportedPayment(id) {
+        const reason = prompt('Motivo del rechazo (opcional):');
+        if (reason === null) return; // Cancelled
+
+        try {
+            app.showLoading(true);
+            const res = await this.api.post(`/api/payments/reported/${id}/reject`, { reason });
+            toast.success('Pago reportado fue rechazado');
+            this.loadReportedPayments(); // Reload list
+        } catch (e) {
+            toast.error(e.message || 'Error al rechazar el pago');
+        } finally {
+            app.showLoading(false);
+        }
+    }
+
 
     renderStats(stats) {
         // Actualizar tarjetas de estadísticas
@@ -100,8 +255,7 @@ export class DashboardModule {
 
         setSafeText('stat-servers', stats.total_servers || 0);
         setSafeText('stat-total-clients', stats.total_clients || 0);
-        setSafeText('stat-active-clients', stats.active_clients || 0);
-        setSafeText('stat-suspended-clients', stats.suspended_clients || 0);
+        setSafeText('stat-active-clients', (stats.active_clients || 0) + (stats.suspended_clients || 0));
         setSafeText('stat-online-clients', stats.online_clients || 0);
         setSafeText('stat-offline-clients', stats.offline_clients || 0);
         setSafeText('stat-paid-clients', stats.paid_clients || 0);
@@ -150,37 +304,63 @@ export class DashboardModule {
 
         container.innerHTML = `
             <div class="elegant-list">
-                ${this.servers.map(server => `
-                    <div class="elegant-item" onclick="app.modules.dashboard.showRouterDetails(${server.id})" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f8fafc; cursor: pointer; transition: background 0.2s;">
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <span class="status-indicator ${server.status || 'offline'}" title="${server.status || 'offline'}"></span>
-                            <div style="display: flex; flex-direction: column;">
-                                <span style="font-weight: 600; color: #1e293b; font-size: 0.875rem;">${server.alias || 'Router'}</span>
-                                <span style="color: #94a3b8; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace;">${server.host_address || 'N/A'}</span>
+                ${this.servers.map(server => {
+            const isOffline = (server.status || 'offline') === 'offline';
+            const hasOfflineClients = (server.clients_offline || 0) > 0;
+            const alertIcon = isOffline
+                ? `<i class="fas fa-exclamation-triangle router-alert-icon" onclick="event.stopPropagation(); app.modules.dashboard.showConnectionError(${server.id})" title="Ver error de conexión"></i>`
+                : '';
+
+            return `
+                    <div class="elegant-item">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="status-indicator ${server.status || 'offline'}" style="width: 12px; height: 12px;"></span>
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span class="router-name-premium" onclick="app.modules.dashboard.showRouterDetails(${server.id})">${(server.alias || 'Router').toUpperCase()}</span>
+                                    ${alertIcon}
+                                </div>
+                                <span class="router-ip-premium">${server.host_address || '---'}</span>
+                                
+                                 <!-- Mini Tarjetas de Clientes -->
+                                 <div style="display: flex; gap: 4px; margin-top: 4px;">
+                                    <div class="router-mini-card active" title="Activos" onclick="event.stopPropagation(); app.modalManager.open('client-status-details', { routerId: ${server.id}, status: 'active' })">
+                                        <i class="fas fa-users"></i> ${server.clients_active || 0}
+                                    </div>
+                                    <div class="router-mini-card online" title="Conectados" onclick="event.stopPropagation(); app.modalManager.open('client-status-details', { routerId: ${server.id}, status: 'online' })">
+                                        <i class="fas fa-circle"></i> ${server.clients_online || 0}
+                                    </div>
+                                    <div class="router-mini-card offline ${hasOfflineClients ? 'alert-pulse' : ''}" title="Offline" onclick="event.stopPropagation(); app.modalManager.open('client-status-details', { routerId: ${server.id}, status: 'offline' })">
+                                        <i class="fas fa-circle"></i> ${server.clients_offline || 0}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <span style="font-weight: 700; color: #6366f1; font-size: 0.75rem;">
-                                ${server.clients_connected || 0} <span style="font-weight: 500; opacity: 0.7;">cli</span>
-                            </span>
-                            <div style="display: flex; gap: 4px;">
-                                <button class="action-btn-xs minimal" onclick="event.stopPropagation(); app.modules.dashboard.showRouterGraph(${server.id}, '${server.alias}')" style="background: transparent; border: none; color: #cbd5e1; cursor: pointer;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="text-align: right; min-width: 50px;">
+                                <span class="router-cli-count">${server.clients_connected || 0}</span>
+                                <span class="router-cli-label">cli</span>
+                            </div>
+                            <div style="display: flex; gap: 6px;">
+                                <button class="action-btn-xs minimal" onclick="event.stopPropagation(); app.modules.dashboard.showRouterGraph(${server.id}, '${server.alias}')" title="Ver Gráfico" style="background: transparent; border: none; color: #cbd5e1; cursor: pointer; font-size: 0.9rem;">
                                     <i class="fas fa-chart-line"></i>
                                 </button>
-                                <button class="action-btn-xs minimal" onclick="event.stopPropagation(); app.modules.dashboard.syncRouter(${server.id})" style="background: transparent; border: none; color: #cbd5e1; cursor: pointer;">
+                                <button class="action-btn-xs minimal" onclick="event.stopPropagation(); app.modules.dashboard.syncRouter(${server.id})" title="Sincronizar" style="background: transparent; border: none; color: #cbd5e1; cursor: pointer; font-size: 0.9rem;">
                                     <i class="fas fa-sync-alt"></i>
                                 </button>
                             </div>
                         </div>
                     </div>
-                `).join('')}
+                `}).join('')}
             </div>
         `;
+
     }
 
     // --- Action Handlers ---
 
     async syncRouter(routerId) {
+        if (!window.app.checkPermission('sync', 'can_edit')) return;
         if (!confirm('¿Deseas sincronizar este router con MikroTik ahora?')) return;
 
         try {
@@ -188,7 +368,7 @@ export class DashboardModule {
             const response = await this.api.post(`/api/routers/${routerId}/sync`, { confirm: true });
 
             if (response.success) {
-                alert(`Sincronización exitosa: ${response.message}`);
+                toast.success(`Sincronización exitosa: ${response.message}`);
                 this.loadServers(); // Reload list
             } else {
                 alert('Error al sincronizar: ' + response.message);
@@ -202,6 +382,7 @@ export class DashboardModule {
     }
 
     async confirmReboot(routerId, alias) {
+        if (!window.app.checkPermission('routers:reboot', 'can_edit')) return;
         if (!confirm(`⚠️ PELIGRO ⚠️\n\n¿Estás SEGURO de que quieres reiniciar el router "${alias}"?\n\nSe cortará la conexión temporalmente.`)) return;
 
         try {
@@ -249,8 +430,17 @@ export class DashboardModule {
 
         // UI Activate
         if (btn) btn.classList.add('active');
-        const content = document.getElementById(tabId);
+        const content = document.getElementById(tabId.startsWith('tab-') ? tabId : `tab-${tabId}`);
         if (content) content.classList.add('active');
+
+        // RBAC Tab Protection (Safety Guard for manual calls)
+        if (tabId === 'tab-interfaces' || tabId === 'tab-logs') {
+            if (!app.modules.auth.checkPermission('system:users', 'view')) {
+                toast.error('Este procedimiento no se puede procesar porque no posee los privilegios necesarios.');
+                this.switchTab('info');
+                return;
+            }
+        }
 
         // Logic Hook
         const clientsFooter = document.getElementById('clients-footer-info');
@@ -358,6 +548,24 @@ export class DashboardModule {
 
             // Guardar para uso en la otra pestaña
             this.activeRouterId = routerId;
+
+            // RBAC Check for Sync Button in Modal
+            const syncBtn = document.getElementById('btn-sync-router');
+            if (syncBtn) {
+                const canSync = app.modules.auth.checkPermission('routers:monitoring', 'edit');
+                syncBtn.style.display = canSync ? 'flex' : 'none';
+            }
+
+            // RBAC Check for Admin Tabs (Interfaces / Logs) SCOPED to the current modal
+            const isAdmin = app.modules.auth.checkPermission('system:users', 'view');
+            const modalEl = document.getElementById('router-details-modal');
+            if (modalEl) {
+                const interfacesTabBtn = Array.from(modalEl.querySelectorAll('.tab-btn')).find(b => b.textContent.includes('Interfaces'));
+                const logsTabBtn = Array.from(modalEl.querySelectorAll('.tab-btn')).find(b => b.textContent.includes('Logs'));
+
+                if (interfacesTabBtn) interfacesTabBtn.style.display = isAdmin ? 'flex' : 'none';
+                if (logsTabBtn) logsTabBtn.style.display = isAdmin ? 'flex' : 'none';
+            }
         } catch (e) {
             console.error(e);
             toast.error('Error al cargar información del router');
@@ -399,12 +607,21 @@ export class DashboardModule {
             };
 
             body.innerHTML = clients.map((c, idx) => `
-                <tr>
-                    <td style="padding: 12px; border-bottom: 1px solid #f1f5f9; font-weight: 500;">
-                        <span style="color:#94a3b8; font-size:0.7rem; margin-right:5px;">${idx + 1}.</span> ${c.subscriber_code}
+                <tr class="premium-row" style="transition: background 0.2s;">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid rgba(226, 232, 240, 0.5);">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="color: #94a3b8; font-size: 0.75rem; font-weight: 700; width: 25px;">${idx + 1}.</span>
+                            <span class="status-badge-table pending" style="font-size: 0.7rem; letter-spacing: 0.05em;">${c.subscriber_code}</span>
+                        </div>
                     </td>
-                    <td style="padding: 12px; border-bottom: 1px solid #f1f5f9;">${c.legal_name}</td>
-                    <td style="padding: 12px; border-bottom: 1px solid #f1f5f9; font-family: 'JetBrains Mono';">${c.ip_address || '-'}</td>
+                    <td style="padding: 15px 12px; border-bottom: 1px solid rgba(226, 232, 240, 0.5); font-weight: 600; color: #1e293b;">
+                        ${c.legal_name}
+                    </td>
+                    <td style="padding: 15px 12px; border-bottom: 1px solid rgba(226, 232, 240, 0.5);">
+                        <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #4f46e5; background: rgba(79, 70, 229, 0.05); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(79, 70, 229, 0.1);">
+                            ${c.ip_address || 'Sin IP'}
+                        </span>
+                    </td>
                 </tr>
             `).join('');
 
@@ -426,6 +643,7 @@ export class DashboardModule {
     }
 
     async previewSync() {
+        if (!window.app.checkPermission('sync', 'can_edit')) return;
         if (!this.activeRouterId) return;
 
         const btn = document.getElementById('btn-sync-router');
@@ -456,12 +674,10 @@ export class DashboardModule {
                     toast.success('No hay clientes nuevos para sincronizar.');
                     previewContainer.style.display = 'none';
                 }
-            } else {
-                toast.error(data.message || 'Error al escanear router');
             }
         } catch (e) {
             console.error(e);
-            toast.error('Error durante el escaneo del router');
+            // Redundant toast removed: api.service.js now handles the 403 message professionally
         } finally {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-sync"></i> Sincronizar Ahora';
@@ -469,6 +685,7 @@ export class DashboardModule {
     }
 
     async confirmSync() {
+        if (!window.app.checkPermission('sync', 'can_edit')) return;
         if (!this.activeRouterId) return;
 
         app.showLoading(true);
@@ -478,17 +695,16 @@ export class DashboardModule {
                 toast.success(data.message);
                 document.getElementById('sync-preview-container').style.display = 'none';
                 this.loadRouterClients(); // Recargar lista
-            } else {
-                toast.error(data.message);
             }
         } catch (e) {
-            toast.error('Error en la sincronización final');
+            // Redundant toast removed: api.service.js now handles the 403 message professionally
         } finally {
             app.showLoading(false);
         }
     }
 
     async loadRouterInterfaces() {
+        if (!window.app.checkPermission('routers:interfaces', 'can_view')) return;
         if (!this.activeRouterId) return;
 
         const container = document.getElementById('interfaces-list-container');
@@ -537,6 +753,7 @@ export class DashboardModule {
     }
 
     async loadRouterLogs() {
+        if (!window.app.checkPermission('routers:logs', 'can_view')) return;
         if (!this.activeRouterId) return;
 
         const container = document.getElementById('router-logs-container');
@@ -1021,42 +1238,60 @@ export class DashboardModule {
         if (!container) return;
 
         if (!activities || activities.length === 0) {
-            container.innerHTML = '<p style="color: #94a3b8; padding: 1rem; font-size: 0.875rem;">No hay actividad reciente</p>';
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: #94a3b8;">
+                    <i class="fas fa-inbox" style="font-size: 2.5rem; margin-bottom: 12px; display: block; opacity: 0.4;"></i>
+                    <p style="font-size: 0.9rem; font-weight: 600;">Sin actividad reciente</p>
+                    <p style="font-size: 0.78rem;">Las acciones del sistema aparecerán aquí</p>
+                </div>`;
             return;
         }
 
-        container.innerHTML = activities.map(activity => `
-            <div class="activity-item">
-                <div style="width: 32px; height: 32px; border-radius: 8px; background: #f8fafc; display: flex; align-items: center; justify-content: center; color: #64748b; flex-shrink: 0;">
-                    <i class="fas fa-${this.getActivityIcon(activity.type)}" style="font-size: 0.875rem;"></i>
+        container.innerHTML = activities.map((activity, i) => {
+            const iconClass = this.getActivityIconClass(activity.type);
+            const iconName = this.getActivityIcon(activity.type);
+            const delay = Math.min(i * 30, 300);
+
+            // Highlight monetary amounts in the message
+            let msg = activity.message || '';
+            msg = msg.replace(/\$[\d,\.]+/g, '<strong style="color: #10b981;">$&</strong>');
+
+            return `
+                <div class="activity-item" style="animation: fadeInUp 0.3s ease ${delay}ms both;">
+                    <div class="activity-icon ${iconClass}">
+                        <i class="fas fa-${iconName}"></i>
+                    </div>
+                    <div class="activity-content" style="flex: 1; min-width: 0;">
+                        <p style="font-size: 0.875rem; color: #1e293b; font-weight: 600; margin: 0 0 3px 0; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${msg}</p>
+                        <p style="font-size: 0.72rem; color: #94a3b8; margin: 0; font-weight: 500;">
+                            <i class="far fa-clock" style="margin-right: 3px;"></i>${activity.time_ago || 'Hace un momento'}
+                        </p>
+                    </div>
                 </div>
-                <div class="activity-content">
-                    <p style="font-size: 0.875rem; color: #1e293b; font-weight: 500; margin-bottom: 2px;">${activity.message}</p>
-                    <p style="font-size: 0.75rem; color: #94a3b8;">${activity.time_ago || 'Hace un momento'}</p>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
-    formatUptime(uptime) {
-        if (!uptime || uptime === 'N/A') return 'N/A';
-        // Traducir unidades crudas de MikroTik a versión corta: 2w5d -> 2sem 5d
-        return uptime
-            .replace(/(\d+)w/g, '$1sem ')
-            .replace(/(\d+)d/g, '$1d ')
-            .replace(/(\d+)h/g, '$1h ')
-            .replace(/(\d+)m/g, '$1m ')
-            .replace(/(\d+)s/g, '$1s ')
-            .trim();
+    getActivityIconClass(type) {
+        const classes = {
+            'payment': 'payment',
+            'suspended': 'suspended',
+            'client': 'client',
+            'server': 'system',
+            'system': 'system',
+            'alert': 'alert'
+        };
+        return classes[type] || 'system';
     }
 
     getActivityIcon(type) {
         const icons = {
             'server': 'server',
-            'client': 'user',
+            'client': 'user-check',
             'payment': 'dollar-sign',
             'system': 'cog',
-            'alert': 'exclamation-triangle'
+            'alert': 'exclamation-triangle',
+            'suspended': 'user-slash'
         };
         return icons[type] || 'circle';
     }
@@ -1179,4 +1414,228 @@ export class DashboardModule {
     }
 
 
+    formatUptime(uptime) {
+        if (!uptime || uptime === 'N/A') return 'OFFLINE';
+        if (uptime.includes('w') || uptime.includes('d') || uptime.includes('h')) return uptime;
+
+        // Si viene en segundos (usado a veces por monitoreo rápido)
+        if (!isNaN(uptime)) {
+            const seconds = parseInt(uptime);
+            const d = Math.floor(seconds / (3600 * 24));
+            const h = Math.floor(seconds % (3600 * 24) / 3600);
+            const m = Math.floor(seconds % 3600 / 60);
+
+            if (d > 0) return `${d}d ${h}h`;
+            if (h > 0) return `${h}h ${m}m`;
+            return `${m}m`;
+        }
+
+        return uptime;
+    }
+
+    formatTime(timestamp) {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    async showClientStatusDetails(routerId, status) {
+        console.log(`📊 [Dashboard] showClientStatusDetails: routerId=${routerId}, status=${status}`);
+        const router = this.servers.find(s => s.id === routerId);
+        const routerName = router ? router.alias : 'Router';
+        const titles = {
+            'active': 'Clientes Activos',
+            'online': 'Clientes Conectados',
+            'offline': 'Clientes Desconectados'
+        };
+
+        // UI Updates for the modal
+        const titleEl = document.getElementById('client-status-modal-title');
+        const subtitleEl = document.getElementById('client-status-modal-subtitle');
+        const listEl = document.getElementById('status-clients-list');
+        const trafficIndicator = document.getElementById('modal-traffic-indicator-global');
+
+        if (!titleEl || !listEl) {
+            console.error('❌ [Dashboard] Modal elements not found in DOM!', { titleEl, listEl });
+        }
+
+        if (titleEl) titleEl.textContent = `${titles[status]} - ${routerName}`;
+        if (subtitleEl) subtitleEl.textContent = `ESTADO: ${status.toUpperCase()} | ROUTER: ${router?.host_address || '---'}`;
+        if (listEl) {
+            listEl.innerHTML = '<div class="loading-cell" style="grid-column: 1/-1; text-align: center; padding: 40px;"><div class="spinner"></div><p style="margin-top: 15px; color: #64748b;">Cargando listado de clientes...</p></div>';
+        }
+        if (trafficIndicator) trafficIndicator.style.display = (status === 'online') ? 'flex' : 'none';
+
+        try {
+            // Para online / offline, partimos siempre de la base de clientes 'active' administrativamente
+            // para mantener consistencia con los totales de la tarjeta.
+            const clients = await this.api.get(`/api/clients?router_id=${routerId}&status=active`);
+            let filtered = clients || [];
+
+            if (status === 'online') filtered = filtered.filter(c => c.is_online);
+            if (status === 'offline') filtered = filtered.filter(c => !c.is_online);
+
+            this.currentModalClients = filtered;
+            this.currentModalStatus = status;
+            this.currentModalRouterId = routerId;
+
+            const searchInput = document.getElementById('client-status-search');
+            if (searchInput) {
+                searchInput.value = ''; // Reset search
+
+                // Remove generic old listeners if any by cloning
+                const newSearchInput = searchInput.cloneNode(true);
+                searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+
+                newSearchInput.addEventListener('input', (e) => {
+                    const term = e.target.value.toLowerCase();
+                    const searchedClients = this.currentModalClients.filter(c =>
+                        (c.legal_name && c.legal_name.toLowerCase().includes(term)) ||
+                        (c.ip_address && c.ip_address.toLowerCase().includes(term)) ||
+                        (c.subscriber_code && c.subscriber_code.toLowerCase().includes(term))
+                    );
+                    this.renderStatusClients(searchedClients, this.currentModalStatus, this.currentModalRouterId);
+                });
+            }
+
+            this.renderStatusClients(filtered, status, routerId);
+        } catch (e) {
+            console.error('Error fetching clients for status details:', e);
+            if (listEl) listEl.innerHTML = `<div class="error-cell" style="grid-column: 1/-1; text-align: center; padding: 20px; color: #ef4444;">Error al cargar datos: ${e.message}</div>`;
+        }
+    }
+
+    renderStatusClients(clients, status, routerId) {
+        const container = document.getElementById('status-clients-list');
+        if (!container) return;
+
+        if (clients.length === 0) {
+            container.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 2rem;">No hay clientes en este estado</p>`;
+            return;
+        }
+
+        container.innerHTML = clients.map(client => {
+            const avatar = (client.legal_name || '?').charAt(0).toUpperCase();
+            let detailHtml = '';
+
+            if (status === 'offline') {
+                const downtime = client.last_seen ? this.calculateDowntime(client.last_seen) : 'Tiempo desconocido';
+                detailHtml = `<div class="downtime-indicator" style="color: #ef4444; font-size: 0.75rem; font-weight: 700; margin-top: 10px; background: rgba(239, 68, 68, 0.05); padding: 8px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.1);">
+                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                                    <i class="fas fa-plug-circle-xmark"></i> 
+                                    <span>Desconectado</span>
+                                </div>
+                                <div style="font-size: 0.7rem; margin-top: 4px; color: #1e293b; opacity: 0.9;">
+                                    <span style="font-weight: 400;">Desde:</span> 
+                                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700;">${client.last_seen ? new Date(client.last_seen).toLocaleString() : '---'}</span>
+                                </div>
+                                <div style="font-size: 0.75rem; font-weight: 800; margin-top: 4px; color: #b91c1c;">
+                                    <span>Hace:</span>
+                                    <span style="font-family: 'JetBrains Mono', monospace;">${downtime}</span>
+                                </div>
+                             </div>`;
+            } else if (status === 'online') {
+                detailHtml = `<div class="traffic-mini" id="traffic-${client.id}" style="display: flex; gap: 8px; margin-left: auto; align-items: center; flex-shrink: 0;">
+                                <div style="background: rgba(16, 185, 129, 0.08); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2); display: flex; flex-direction: column; min-width: 80px;">
+                                    <div style="display: flex; align-items: center; gap: 4px; color: #059669; font-size: 0.65rem; font-weight: 800; text-transform: uppercase;">
+                                        <i class="fas fa-arrow-down" style="font-size: 0.65rem;"></i> DESCARGA
+                                    </div>
+                                    <div class="val-down" style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 800; color: #064e3b; margin-top: 2px;">0 bps</div>
+                                </div>
+                                <div style="background: rgba(99, 102, 241, 0.08); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(99, 102, 241, 0.2); display: flex; flex-direction: column; min-width: 80px;">
+                                    <div style="display: flex; align-items: center; gap: 4px; color: #4338ca; font-size: 0.65rem; font-weight: 800; text-transform: uppercase;">
+                                        <i class="fas fa-arrow-up" style="font-size: 0.65rem;"></i> SUBIDA
+                                    </div>
+                                    <div class="val-up" style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 800; color: #312e81; margin-top: 2px;">0 bps</div>
+                                </div>
+                             </div>`;
+            } else if (status === 'active') {
+                detailHtml = `<div style="margin-top: 10px; display: flex; gap: 6px;">
+                                <span style="font-size: 0.65rem; font-weight: 700; background: #f1f5f9; color: #475569; padding: 4px 8px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                                    <i class="fas fa-tag"></i> ${client.service_type || 'Servicio'}
+                                </span>
+                             </div>`;
+            }
+
+            return `
+                <div class="client-detail-card premium-card glass" style="padding: 16px; border: 1px solid rgba(148, 163, 184, 0.1); height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; overflow: hidden;">
+                    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                        <div class="client-avatar" style="width: 36px; height: 36px; font-size: 1rem; flex-shrink: 0;">${avatar}</div>
+                        <div style="display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 1;">
+                            <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${client.legal_name}">${client.legal_name}</div>
+                            <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${client.subscriber_code || '---'}</div>
+                            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #94a3b8; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${client.ip_address || '---'}</div>
+                            ${status !== 'online' ? detailHtml : ''}
+                        </div>
+                        ${status === 'online' ? detailHtml : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        if (status === 'online') {
+            const trafficIndicator = document.getElementById('modal-traffic-indicator');
+            if (trafficIndicator) trafficIndicator.style.display = 'flex';
+            this.startClientDetailsMonitoring(routerId, clients.map(c => c.id));
+        }
+    }
+
+    calculateDowntime(lastOnline) {
+        if (!lastOnline) return '---';
+        const last = new Date(lastOnline).getTime();
+        const now = Date.now();
+        const diff = Math.max(0, now - last);
+
+        const totalSeconds = Math.floor(diff / 1000);
+        const days = Math.floor(totalSeconds / 86400);
+        const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+
+        let result = [];
+        if (days > 0) result.push(`${days}d`);
+        if (hours > 0) result.push(`${hours}h`);
+        if (minutes > 0) result.push(`${minutes}m`);
+        if (seconds > 0 || result.length === 0) result.push(`${seconds}s`);
+
+        return result.join(' ');
+    }
+
+    startClientDetailsMonitoring(routerId, clientIds) {
+        if (!app.socket) return;
+
+        if (app.socket.connected) {
+            app.socket.emit('join_router', { router_id: routerId });
+            app.socket.emit('subscribe_clients', { router_id: routerId, client_ids: clientIds });
+
+            // Escuchar actualizaciones de tráfico (Solo si esta vista está activa para evitar fugas)
+            const trafficHandler = (data) => {
+                if (!document.getElementById('status-clients-list')) {
+                    app.socket.off('client_traffic', trafficHandler);
+                    return;
+                }
+                Object.keys(data).forEach(clientId => {
+                    const trafficEl = document.getElementById(`traffic-${clientId}`);
+                    if (trafficEl) {
+                        const downEl = trafficEl.querySelector('.val-down');
+                        const upEl = trafficEl.querySelector('.val-up');
+                        if (downEl) downEl.textContent = this.formatSpeedModal(data[clientId].download || 0);
+                        if (upEl) upEl.textContent = this.formatSpeedModal(data[clientId].upload || 0);
+                    }
+                });
+            };
+            app.socket.on('client_traffic', trafficHandler);
+        }
+    }
+
+    stopClientDetailsMonitoring() {
+        // No apagamos 'client_traffic' globalmente porque otros módulos lo usan.
+        // Los handlers locales se auto-limpian.
+    }
+
+    formatSpeedModal(bps) {
+        if (bps >= 1000000) return (bps / 1000000).toFixed(1) + ' Mbps';
+        if (bps >= 1000) return (bps / 1000).toFixed(1) + ' Kbps';
+        return bps + ' bps';
+    }
 }

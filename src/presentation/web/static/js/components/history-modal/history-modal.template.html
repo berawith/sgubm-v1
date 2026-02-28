@@ -1,15 +1,17 @@
 <div class="modal-content large-modal">
     <div class="modal-header">
-        <div>
+        <div class="header-titles">
             <h3 class="modal-title">Historial Financiero</h3>
             <p id="history-client-name-subtitle" class="modal-subtitle-text">GESTIÓN DE PAGOS Y FACTURAS</p>
         </div>
 
         <!-- Info Box para nombre e ID (Ultra-Premium Consistency) -->
         <div id="modal-history-summary" class="modal-client-summary-box">
-            <span id="history-header-name" class="header-info-name">Cargando...</span>
-            <span class="header-info-divider">|</span>
-            <span id="history-header-id" class="header-info-ip">CLI-0000</span>
+            <div class="summary-info-row">
+                <span id="history-header-name" class="header-info-name">Cargando...</span>
+                <span class="header-info-divider">|</span>
+                <span id="history-header-id" class="header-info-id">CLI-0000</span>
+            </div>
         </div>
 
         <button type="button" class="close-btn" data-close>
@@ -17,11 +19,24 @@
         </button>
     </div>
     <div class="modal-body" style="padding: 0;">
-        <div id="client-history-list" class="history-list-premium">
-            <div style="padding: 40px; text-align:center;">
-                <div class="spinner"></div>
-                <p style="margin-top: 15px; color: #64748b;">Cargando historial...</p>
+        <!-- Desktop Table View -->
+        <div id="history-table-view" class="history-view-container">
+            <div id="client-history-list" class="history-list-premium">
+                <!-- Table will be rendered here -->
             </div>
+        </div>
+
+        <!-- Mobile Card View -->
+        <div id="history-cards-view" class="history-view-container" style="display: none; padding: 15px;">
+            <div id="client-history-cards-grid" class="cards-grid-premium">
+                <!-- Cards will be rendered here -->
+            </div>
+        </div>
+
+        <!-- Empty/Loading State -->
+        <div id="history-loading-placeholder" style="padding: 40px; text-align:center;">
+            <div class="spinner"></div>
+            <p style="margin-top: 15px; color: #64748b;">Cargando historial...</p>
         </div>
     </div>
     <div class="modal-footer" style="background: white; border-top: 1px solid #f1f5f9; margin: 0; padding: 20px 32px;">

@@ -43,17 +43,48 @@ export class PaymentsModule {
         // Escuchar eventos del Payment Modal component
         this.setupModalListeners();
 
-        // Mobile View Detection
-        this.isMobile = window.innerWidth < 1024;
-        window.addEventListener('resize', () => {
-            const wasMobile = this.isMobile;
-            this.isMobile = window.innerWidth < 1024;
-            if (wasMobile !== this.isMobile) {
-                console.log(`📱 Responsive Switch: ${wasMobile ? 'Mobile' : 'Desktop'} -> ${this.isMobile ? 'Mobile' : 'Desktop'}`);
-                if (this.viewManager && (this.viewManager.currentSubView === 'payments-list' || this.viewManager.currentSubView === 'list')) {
-                    this.renderPayments();
+        // REAL-TIME DATA REFRESH (SI EL EVENTO ES DE FINANZAS)
+        this.eventBus.subscribe('data_refresh', (data) => {
+            const current = this.viewManager?.currentSubView;
+            const isFinanceView = ['finance-overview', 'payments-list', 'invoices', 'reports', 'promises', 'expenses'].includes(current);
+
+            if (isFinanceView) {
+                if (data.event_type && (data.event_type.startsWith('payment.') || data.event_type.startsWith('invoice.'))) {
+                    console.log(`♻️ Real-time Finance: Refreshing due to ${data.event_type}`);
+                    // Throttled refresh
+                    if (this._refreshTimeout) clearTimeout(this._refreshTimeout);
+                    this._refreshTimeout = setTimeout(() => {
+                        this.loadPayments();
+                        this.loadStatistics();
+                    }, 500);
                 }
             }
+        });
+
+        // Mobile View Detection
+        this.isMobile = window.innerWidth < 1100;
+        let _resizeTimer = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(() => {
+                const wasMobile = this.isMobile;
+                this.isMobile = window.innerWidth < 1100;
+                if (wasMobile !== this.isMobile) {
+                    console.log(`📱 Responsive Switch: ${wasMobile ? 'Mobile' : 'Desktop'} -> ${this.isMobile ? 'Mobile' : 'Desktop'}`);
+
+                    const currentSubView = this.viewManager?.currentSubView;
+                    if (currentSubView === 'payments-list' || currentSubView === 'list') {
+                        this.renderPayments();
+                    } else if (currentSubView === 'invoices') {
+                        this.renderInvoices();
+                    } else if (currentSubView === 'finance-overview') {
+                        this.loadExpensesSummary();
+                        this.loadLossesDetail();
+                    } else if (currentSubView === 'reports') {
+                        if (this.lastAuditReportData) this.renderClientsStatusReport(this.lastAuditReportData);
+                    }
+                }
+            }, 150);
         });
     }
 
@@ -61,8 +92,15 @@ export class PaymentsModule {
         // Escuchar evento de pago guardado del componente
         document.addEventListener('modal:payment-modal:payment-saved', async (e) => {
             console.log('✅ Payment saved via component, refreshing list...', e.detail);
-            // Recargar lista de pagos (loadPayments already calls loadStatistics)
-            await this.loadPayments();
+            try {
+                // Recargar lista de pagos (loadPayments already calls loadStatistics)
+                await this.loadPayments();
+            } catch (err) {
+                console.error('Error refreshing after payment save:', err);
+            } finally {
+                // Safety: always clear global loading overlay after payment flow completes
+                if (window.app && window.app.showLoading) window.app.showLoading(false);
+            }
             // Mostrar toast de éxito
             if (window.toast) {
                 window.toast.success('Pago registrado exitosamente');
@@ -275,7 +313,6 @@ export class PaymentsModule {
         const contents = document.querySelectorAll('.finance-tab-content');
         contents.forEach(content => {
             content.classList.remove('active');
-            // Force hide to override any potential CSS conflicts
             content.style.display = 'none';
         });
 
@@ -284,11 +321,13 @@ export class PaymentsModule {
 
         if (activeContent) {
             activeContent.classList.add('active');
-            // Force show
             activeContent.style.display = 'block';
+
+            // 3. Load Data for specific tab
+            if (tabName === 'egresos') this.loadExpensesSummary();
+            if (tabName === 'perdidas') this.loadLossesDetail();
+
             console.log(`✅ Activated content: ${targetId}`);
-        } else {
-            console.error(`❌ Target content not found: ${targetId}`);
         }
     }
 
@@ -315,8 +354,9 @@ export class PaymentsModule {
             this.loadRoutersForBatch(); // TODO: unify with this.routers
             this.loadBatchClients();
         } else if (tabName === 'automation') {
-            this.loadRouters();
-            this.loadExchangeRates(); // Recargar tasas globales al entrar
+            this.initAutomationFilters();
+            this.loadExchangeRates();
+            this.loadBillingSettings();
         }
         else if (tabName === 'revert') {
             this.loadRoutersForBatch();
@@ -811,8 +851,13 @@ export class PaymentsModule {
         try {
             const params = new URLSearchParams({ limit: 1000 });
 
-            // Prioridad: Fechas manuales > Ciclo
-            if (this.filterState.startDate || this.filterState.endDate) {
+            //Prioridad: Búsqueda (Global) > Fechas manuales > Ciclo
+            if (this.filterState.search) {
+                console.log('🔍 Global Search Active, ignoring cycle/dates:', this.filterState.search);
+                params.append('search', this.filterState.search);
+                // No añadimos fechas para que busque en todo el historial
+            }
+            else if (this.filterState.startDate || this.filterState.endDate) {
                 console.log('📅 Using Manual Date Range:', this.filterState.startDate, 'to', this.filterState.endDate);
                 if (this.filterState.startDate) params.append('start_date', this.filterState.startDate);
                 if (this.filterState.endDate) params.append('end_date', this.filterState.endDate);
@@ -823,9 +868,6 @@ export class PaymentsModule {
                 if (range.start) params.append('start_date', range.start);
                 if (range.end) params.append('end_date', range.end);
             }
-
-            if (this.filterState.method) params.append('method', this.filterState.method);
-            if (this.filterState.search) params.append('search', this.filterState.search);
 
             const url = `/api/payments?${params.toString()}`;
             console.log(`📡 Fetching payments from: ${url}`);
@@ -912,19 +954,40 @@ export class PaymentsModule {
     }
 
     renderInvoices() {
+        const tableView = document.getElementById('invoices-table-view');
+        const cardsGrid = document.getElementById('invoices-cards-grid');
         const tbody = document.getElementById('invoices-table-body');
-        if (!tbody) return;
+
+        if (!tableView || !cardsGrid) return;
+
+        // Threshold synced with global CSS (standard 1100px)
+        this.isMobile = window.innerWidth < 1100;
+
+        if (this.isMobile) {
+            tableView.style.display = 'none';
+            cardsGrid.style.display = 'grid';
+        } else {
+            tableView.style.display = 'block';
+            cardsGrid.style.display = 'none';
+        }
+
+        const canPrint = app.modules.auth.checkPermission('finance:payments', 'print');
+        const canCreate = app.modules.auth.checkPermission('finance:payments', 'create');
 
         if (!this.invoices || this.invoices.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" style="text-align:center; padding: 60px; color: #94a3b8;">
-                        <i class="fas fa-file-invoice" style="font-size: 3rem; opacity:0.2; margin-bottom:15px; display:block;"></i>
-                        <p style="font-weight:600; font-size:1.1rem;">No se encontraron facturas</p>
-                        <p style="font-size:0.85rem; opacity:0.7;">Intente ajustar los filtros de búsqueda</p>
-                    </td>
-                </tr>
+            const emptyHtml = `
+                <div class="empty-state-premium" style="text-align:center; padding: 60px; color: #94a3b8; grid-column: 1 / -1; width: 100%;">
+                    <i class="fas fa-file-invoice" style="font-size: 3rem; opacity:0.1; margin-bottom:15px; display:block;"></i>
+                    <p style="font-weight:600; font-size:1.1rem; color:#1e293b;">No se encontraron facturas</p>
+                    <p style="font-size:0.85rem; opacity:0.7;">Intente ajustar los filtros de búsqueda</p>
+                </div>
             `;
+
+            if (this.isMobile) {
+                cardsGrid.innerHTML = emptyHtml;
+            } else if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="7">${emptyHtml}</td></tr>`;
+            }
             return;
         }
 
@@ -944,7 +1007,91 @@ export class PaymentsModule {
             return (valA || '').toString().localeCompare((valB || '').toString()) * dir;
         });
 
-        tbody.innerHTML = sorted.map(inv => {
+        if (this.isMobile) {
+            this.renderInvoicesCards(sorted);
+        } else if (tbody) {
+            tbody.innerHTML = sorted.map(inv => {
+                let statusText = 'Pendiente';
+                let statusClass = 'warning';
+                let statusIcon = 'fa-clock';
+
+                if (inv.status === 'paid') {
+                    statusText = 'Pagada'; statusClass = 'success'; statusIcon = 'fa-check-circle';
+                }
+                else if (inv.status === 'overdue') {
+                    statusText = 'Vencida'; statusClass = 'danger'; statusIcon = 'fa-exclamation-triangle';
+                }
+                else if (inv.status === 'cancelled') {
+                    statusText = 'Anulada'; statusClass = 'secondary'; statusIcon = 'fa-times-circle';
+                }
+
+                const initial = (inv.client_name || 'C').charAt(0).toUpperCase();
+
+                return `
+                <tr class="premium-row">
+                    <td class="id-cell">
+                        <span class="id-badge">#${inv.id}</span>
+                    </td>
+                    <td class="client-cell-premium">
+                        <div class="avatar-mini">${initial}</div>
+                        <div class="client-info-stack">
+                            <span class="client-name-text">${inv.client_name || 'Cliente'}</span>
+                            <span class="client-sub-text">${inv.subscriber_code || '---'}</span>
+                        </div>
+                    </td>
+                    <td class="date-cell">
+                        <div class="date-wrapper">
+                            <i class="far fa-calendar-alt"></i>
+                            <span>${new Date(inv.issue_date).toLocaleDateString()}</span>
+                        </div>
+                    </td>
+                    <td class="date-cell">
+                        <div class="date-wrapper due">
+                            <i class="fas fa-history"></i>
+                            <span>${new Date(inv.due_date).toLocaleDateString()}</span>
+                        </div>
+                    </td>
+                    <td class="amount-cell-premium">
+                        <div class="amount-main">$${(inv.total_amount || 0).toLocaleString('en-US')}</div>
+                        <div class="amount-sub">COP</div>
+                    </td>
+                    <td>
+                        <span class="premium-status-badge ${statusClass}">
+                            <i class="fas ${statusIcon}"></i>
+                            ${statusText}
+                        </span>
+                    </td>
+                    <td style="text-align: right;">
+                        <div class="action-flex-right">
+                            <button class="action-btn-mini" 
+                                onclick="window.open('/api/billing/invoices/${inv.id}/print?token=' + encodeURIComponent(localStorage.getItem('auth_token') || ''), '_blank')" 
+                                title="Imprimir PDF"
+                                ${canPrint ? '' : 'disabled style="opacity:0.4; cursor:not-allowed;"'}>
+                                <i class="fas fa-print"></i>
+                            </button>
+                             ${inv.status === 'unpaid' ? `
+                            <button class="action-btn-mini success" 
+                                onclick="app.modules.payments.showNewPaymentModal(${inv.client_id})" 
+                                title="Pagar"
+                                ${canCreate ? '' : 'disabled style="opacity:0.4; cursor:not-allowed;"'}>
+                                <i class="fas fa-dollar-sign"></i>
+                            </button>` : ''}
+                        </div>
+                    </td>
+                </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    renderInvoicesCards(invoices) {
+        const grid = document.getElementById('invoices-cards-grid');
+        if (!grid) return;
+
+        const canPrint = app.modules.auth.checkPermission('finance:payments', 'print');
+        const canCreate = app.modules.auth.checkPermission('finance:payments', 'create');
+
+        grid.innerHTML = invoices.map(inv => {
             let statusText = 'Pendiente';
             let statusClass = 'warning';
             let statusIcon = 'fa-clock';
@@ -962,51 +1109,70 @@ export class PaymentsModule {
             const initial = (inv.client_name || 'C').charAt(0).toUpperCase();
 
             return `
-            <tr class="premium-row">
-                <td class="id-cell">
-                    <span class="id-badge">#${inv.id}</span>
-                </td>
-                <td class="client-cell-premium">
-                    <div class="avatar-mini">${initial}</div>
-                    <div class="client-info-stack">
-                        <span class="client-name-text">${inv.client_name || 'Cliente'}</span>
-                        <span class="client-sub-text">${inv.subscriber_code || '---'}</span>
-                    </div>
-                </td>
-                <td class="date-cell">
-                    <div class="date-wrapper">
-                        <i class="far fa-calendar-alt"></i>
-                        <span>${new Date(inv.issue_date).toLocaleDateString()}</span>
-                    </div>
-                </td>
-                <td class="date-cell">
-                    <div class="date-wrapper due">
-                        <i class="fas fa-history"></i>
-                        <span>${new Date(inv.due_date).toLocaleDateString()}</span>
-                    </div>
-                </td>
-                <td class="amount-cell-premium">
-                    <div class="amount-main">$${(inv.total_amount || 0).toLocaleString('en-US')}</div>
-                    <div class="amount-sub">COP</div>
-                </td>
-                <td>
-                    <span class="premium-status-badge ${statusClass}">
-                        <i class="fas ${statusIcon}"></i>
-                        ${statusText}
-                    </span>
-                </td>
-                <td style="text-align: right;">
-                    <div class="action-flex-right">
-                        <button class="action-btn-mini" onclick="window.open('/api/billing/invoices/${inv.id}/print', '_blank')" title="Imprimir PDF">
-                            <i class="fas fa-print"></i>
+            <div class="invoice-card-premium" data-invoice-id="${inv.id}">
+                <!-- Menú de Tres Puntos -->
+                <div class="card-menu-container">
+                    <button class="btn-menu-trigger" onclick="app.modules.payments.toggleCardMenu(event, this)">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <div class="card-context-menu">
+                        <button class="menu-item-premium" 
+                            onclick="window.open('/api/billing/invoices/${inv.id}/print?token=' + encodeURIComponent(localStorage.getItem('auth_token') || ''), '_blank')" 
+                            ${canPrint ? '' : 'disabled'}>
+                            <i class="fas fa-print"></i> Imprimir Factura
                         </button>
-                         ${inv.status === 'unpaid' ? `
-                        <button class="action-btn-mini success" onclick="app.modules.payments.showNewPaymentModal(${inv.client_id})" title="Pagar">
-                            <i class="fas fa-dollar-sign"></i>
+                        
+                        <button class="menu-item-premium" 
+                            onclick="app.modules.clients.openClientDetails(${inv.client_id})">
+                            <i class="fas fa-user-tag"></i> Ver Cliente
+                        </button>
+
+                        ${inv.status !== 'paid' && inv.status !== 'cancelled' ? `
+                        <div style="border-top: 1px solid #f1f5f9; margin: 4px 0;"></div>
+                        <button class="menu-item-premium" style="color: #4f46e5;"
+                            onclick="app.modules.payments.showNewPaymentModal(${inv.client_id})"
+                            ${canCreate ? '' : 'disabled'}>
+                            <i class="fas fa-dollar-sign"></i> Registrar Pago
                         </button>` : ''}
                     </div>
-                </td>
-            </tr>
+                </div>
+
+                <div class="card-header-premium">
+                    <div class="client-info-premium">
+                        <div class="avatar-premium">${initial}</div>
+                        <div class="client-meta-premium">
+                            <span class="client-name-premium text-truncate" style="max-width: 180px;">${inv.client_name || 'Desconocido'}</span>
+                            <span class="subscriber-code-premium">#${inv.id} • ${inv.subscriber_code || '---'}</span>
+                        </div>
+                    </div>
+                    <div class="status-pill-premium ${statusClass}">
+                        <i class="fas ${statusIcon}"></i>
+                        ${statusText}
+                    </div>
+                </div>
+                
+                <div class="amount-section-premium">
+                    <span class="amount-label-premium">Total Facturado</span>
+                    <span class="amount-value-premium">$${(inv.total_amount || 0).toLocaleString('en-US')}</span>
+                </div>
+
+                <div class="date-grid-premium">
+                    <div class="date-item-premium">
+                        <span class="date-label-premium">Emisión</span>
+                        <span class="date-value-premium">
+                            <i class="far fa-calendar-alt" style="color: #4f46e5;"></i>
+                            ${new Date(inv.issue_date).toLocaleDateString()}
+                        </span>
+                    </div>
+                    <div class="date-item-premium">
+                        <span class="date-label-premium">Vencimiento</span>
+                        <span class="date-value-premium" style="color: #dc2626;">
+                            <i class="fas fa-history"></i>
+                            ${new Date(inv.due_date).toLocaleDateString()}
+                        </span>
+                    </div>
+                </div>
+            </div>
             `;
         }).join('');
     }
@@ -1338,86 +1504,114 @@ export class PaymentsModule {
         grid.innerHTML = payments.map((payment, index) => {
             const sequentialNumber = index + 1;
             const methodMap = {
-                'cash': 'EFECTIVO',
-                'transfer': 'TRANSFERENCIA',
-                'card': 'TARJETA/DIGITAL',
-                'pago_movil': 'PAGO MÓVIL',
-                'zelle': 'ZELLE/INTL'
+                'cash': 'Efectivo',
+                'transfer': 'Transferencia',
+                'pago_movil': 'Pago Móvil',
+                'zelle': 'Zelle/Intl',
+                'card': 'Tarjeta'
             };
             const statusMap = {
-                'paid': 'PAGADO',
-                'completed': 'PAGADO',
-                'verified': 'PAGADO',
-                'verificated': 'PAGADO',
-                'pending': 'PENDIENTE',
-                'voided': 'ANULADO'
+                'paid': 'Completado',
+                'completed': 'Completado',
+                'verified': 'Verificado',
+                'verificated': 'Verificado',
+                'pending': 'Pendiente',
+                'voided': 'Anulado'
             };
 
-            const methodName = methodMap[payment.payment_method?.toLowerCase()] || payment.payment_method?.toUpperCase() || 'EFECTIVO';
-            const statusName = statusMap[payment.status?.toLowerCase()] || payment.status?.toUpperCase() || 'PAGADO';
+            const methodName = methodMap[payment.payment_method?.toLowerCase()] || payment.payment_method || 'Efectivo';
+            const statusName = statusMap[payment.status?.toLowerCase()] || payment.status || 'Completado';
             const statusClass = (payment.status === 'paid' || payment.status === 'completed' || payment.status === 'verified' || payment.status === 'verificated') ? 'success' : 'warning';
             const initial = (payment.client_name || 'C').charAt(0).toUpperCase();
 
             return `
-            <div class="plan-card-mobile payment-card-premium">
-                <div class="card-mobile-header">
-                    <div class="card-mobile-client-info">
-                        <div class="avatar-mini" style="width:40px; height:40px; background:linear-gradient(135deg, #1e293b, #0f172a); color:#38bdf8; display:flex; align-items:center; justify-content:center; border-radius:10px; font-weight:800; font-size:1rem;">#${sequentialNumber}</div>
-                        <div class="card-mobile-name-group">
-                            <span class="card-mobile-name">${payment.client_name || 'Desconocido'}</span>
-                            <span class="card-mobile-code">${payment.subscriber_code || '---'}</span>
-                        </div>
-                    </div>
-                    <span class="premium-status-badge ${statusClass}" style="font-size:0.6rem;">
-                        ${statusName}
-                    </span>
-                </div>
-                
-                <div class="card-mobile-body">
-                    <div class="card-mobile-data-item">
-                        <span class="data-item-label">Monto Pagado</span>
-                        <span class="data-item-value" style="font-weight:800; color:#0f172a; font-size:1.1rem;">$${(payment.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div class="card-mobile-data-item">
-                        <span class="data-item-label">Fecha</span>
-                        <span class="data-item-value">${new Date(payment.payment_date).toLocaleDateString()} ${new Date(payment.payment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <div class="card-mobile-data-item">
-                        <span class="data-item-label">Método</span>
-                        <span class="data-item-value" style="text-transform:uppercase; font-size:0.75rem; font-weight:700;">${methodName}</span>
-                    </div>
-                    <div class="card-mobile-data-item">
-                        <span class="data-item-label">Referencia</span>
-                        <span class="data-item-value" style="font-family:'JetBrains Mono';">${payment.reference || '---'}</span>
+            <div class="invoice-card-premium payment-card-premium" data-payment-id="${payment.id}">
+                <!-- Menú de Tres Puntos -->
+                <div class="card-menu-container">
+                    <button class="btn-menu-trigger" onclick="app.modules.payments.toggleCardMenu(event, this)">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <div class="card-context-menu">
+                        <button class="menu-item-premium" onclick="app.modules.payments.printReceipt(${payment.id})">
+                            <i class="fas fa-print"></i> Imprimir Recibo
+                        </button>
+                        <button class="menu-item-premium" onclick="app.modules.payments.showEditPaymentModal(${payment.id})">
+                            <i class="fas fa-edit"></i> Editar Pago
+                        </button>
+                        ${payment.status !== 'cancelled' ? `
+                        <button class="menu-item-premium warning" onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')">
+                            <i class="fas fa-undo"></i> Revertir Pago
+                        </button>
+                        ` : ''}
+                        <div style="border-top: 1px solid #f1f5f9; margin: 4px 0;"></div>
+                        <button class="menu-item-premium danger" onclick="app.modules.payments.voidPayment(${payment.id})">
+                            <i class="fas fa-trash"></i> Eliminar Registro
+                        </button>
                     </div>
                 </div>
 
-                <div class="card-mobile-footer" style="justify-content: flex-end; border-top: 1px dashed rgba(0, 0, 0, 0.05); padding-top: 10px;">
-                    <div class="mobile-dropdown-container">
-                        <button class="mobile-action-btn" onclick="this.nextElementSibling.classList.toggle('show')" onblur="setTimeout(() => this.nextElementSibling?.classList.remove('show'), 200)" title="Opciones" style="background: transparent; border: none; font-size: 1.1rem; color: #94a3b8; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
-                            <i class="fas fa-ellipsis-v"></i>
-                        </button>
-                        <div class="mobile-dropdown-menu">
-                            <button onclick="app.modules.payments.printReceipt(${payment.id})" class="dropdown-item">
-                                <i class="fas fa-print" style="color: #64748b; width: 16px; text-align: center;"></i> Imprimir Recibo
-                            </button>
-                            <button onclick="app.modules.payments.showEditPaymentModal(${payment.id})" class="dropdown-item">
-                                <i class="fas fa-edit" style="color: #6366f1; width: 16px; text-align: center;"></i> Editar Pago
-                            </button>
-                            ${payment.status !== 'cancelled' ? `
-                            <button onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')" class="dropdown-item">
-                                <i class="fas fa-undo" style="color: #eab308; width: 16px; text-align: center;"></i> Revertir Pago
-                            </button>
-                            ` : ''}
-                            <button onclick="app.modules.payments.voidPayment(${payment.id})" class="dropdown-item" style="color: #dc2626;">
-                                <i class="fas fa-trash" style="width: 16px; text-align: center;"></i> Eliminar Pago
-                            </button>
+                <div class="card-header-premium">
+                    <div class="client-info-premium">
+                        <div class="avatar-premium" style="background: linear-gradient(135deg, #059669, #10b981); color: white;">
+                            #${sequentialNumber}
                         </div>
+                        <div class="client-meta-premium">
+                            <span class="client-name-premium text-truncate" style="max-width: 180px;">${payment.client_name || 'Desconocido'}</span>
+                            <span class="subscriber-code-premium">${payment.subscriber_code || '---'}</span>
+                        </div>
+                    </div>
+                    <div class="status-pill-premium ${statusClass}">
+                        <i class="fas fa-check-circle"></i>
+                        ${statusName}
+                    </div>
+                </div>
+                
+                <div class="amount-section-premium">
+                    <span class="amount-label-premium">Monto Recibido</span>
+                    <span class="amount-value-premium">$${(payment.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+
+                <div class="date-grid-premium">
+                    <div class="date-item-premium">
+                        <span class="date-label-premium">Método / Ref</span>
+                        <span class="date-value-premium">
+                            <span class="method-badge-premium">${methodName}</span>
+                            <small style="color: #64748b; font-family: 'JetBrains Mono';">${payment.reference || ''}</small>
+                        </span>
+                    </div>
+                    <div class="date-item-premium">
+                        <span class="date-label-premium">Fecha de Pago</span>
+                        <span class="date-value-premium">
+                            <i class="far fa-clock" style="color: #64748b;"></i>
+                            ${new Date(payment.payment_date).toLocaleDateString()}
+                        </span>
                     </div>
                 </div>
             </div>
             `;
         }).join('');
+    }
+
+    toggleCardMenu(event, btn) {
+        event.stopPropagation();
+        const menu = btn.nextElementSibling;
+        const isActive = menu.classList.contains('active');
+
+        // Cerrar todos los menús abiertos antes
+        document.querySelectorAll('.card-context-menu.active').forEach(m => m.classList.remove('active'));
+
+        if (!isActive) {
+            menu.classList.add('active');
+
+            // Cerrar al hacer clic fuera
+            const closeHandler = (e) => {
+                if (!menu.contains(e.target)) {
+                    menu.classList.remove('active');
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', closeHandler), 10);
+        }
     }
 
     renderPayments() {
@@ -1428,7 +1622,7 @@ export class PaymentsModule {
         if (!container) return;
 
         // Ensure display logic is applied
-        this.isMobile = window.innerWidth < 1024;
+        this.isMobile = window.innerWidth < 1100;
 
         if (this.isMobile) {
             if (tableView) tableView.style.display = 'none';
@@ -1521,6 +1715,10 @@ export class PaymentsModule {
                     const methodName = methodMap[payment.payment_method?.toLowerCase()] || payment.payment_method?.toUpperCase() || 'EFECTIVO';
                     const statusName = statusMap[payment.status?.toLowerCase()] || payment.status?.toUpperCase() || 'PAGADO';
                     const statusClass = (payment.status === 'paid' || payment.status === 'completed' || payment.status === 'verified' || payment.status === 'verificated') ? 'success' : 'warning';
+                    const canPrint = app.modules.auth.checkPermission('finance:payments', 'print');
+                    const canEdit = app.modules.auth.checkPermission('finance:payments', 'edit');
+                    const canRevert = app.modules.auth.checkPermission('finance:payments', 'revert');
+                    const canDelete = app.modules.auth.checkPermission('finance:payments', 'delete');
 
                     return `
                 <tr class="premium-row" style="background: rgba(255,255,255,0.4);">
@@ -1560,18 +1758,30 @@ export class PaymentsModule {
                     </td>
                     <td style="text-align: right;">
                         <div style="display:flex; gap:6px; justify-content:flex-end;">
-                            <button class="action-btn-mini success" onclick="app.modules.payments.printReceipt(${payment.id})" title="Imprimir">
+                            <button class="action-btn-mini success" 
+                                onclick="app.modules.payments.printReceipt(${payment.id})" 
+                                title="Imprimir" 
+                                ${canPrint ? '' : 'disabled style="opacity:0.4; cursor:not-allowed;"'}>
                                 <i class="fas fa-print"></i>
                             </button>
-                            <button class="action-btn-mini" onclick="app.modules.payments.showEditPaymentModal(${payment.id})" title="Editar">
+                            <button class="action-btn-mini" 
+                                onclick="app.modules.payments.showEditPaymentModal(${payment.id})" 
+                                title="Editar"
+                                ${canEdit ? '' : 'disabled style="opacity:0.4; cursor:not-allowed;"'}>
                                 <i class="fas fa-edit"></i>
                             </button>
                             ${payment.status !== 'cancelled' ? `
-                            <button class="action-btn-mini danger" onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')" title="Revertir">
+                            <button class="action-btn-mini danger" 
+                                onclick="app.modules.payments.showRevertPaymentModal(${payment.id}, ${payment.client_id}, '${payment.payment_date}')" 
+                                title="Revertir"
+                                ${canRevert ? '' : 'disabled style="opacity:0.4; cursor:not-allowed;"'}>
                                 <i class="fas fa-undo"></i>
                             </button>
                             ` : ''}
-                            <button class="action-btn-mini danger" onclick="app.modules.payments.voidPayment(${payment.id})" title="Eliminar">
+                            <button class="action-btn-mini danger" 
+                                onclick="app.modules.payments.voidPayment(${payment.id})" 
+                                title="Eliminar"
+                                ${canDelete ? '' : 'disabled style="opacity:0.4; cursor:not-allowed;"'}>
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -1586,7 +1796,8 @@ export class PaymentsModule {
 
     printReceipt(id) {
         if (window.toast) window.toast.show('Generando vista de impresión...', 'info');
-        window.open(`/api/payments/${id}/print`, '_blank');
+        const token = localStorage.getItem('auth_token') || '';
+        window.open(`/api/payments/${id}/print?token=${encodeURIComponent(token)}`, '_blank');
     }
 
     /**
@@ -1819,7 +2030,10 @@ export class PaymentsModule {
                         <button class="action-btn-mini" onclick="app.modules.clients.openClientDetails(${client.id})" title="Ver Cliente">
                             <i class="fas fa-external-link-alt"></i>
                         </button>
-                        <button class="action-btn-mini success" onclick="app.modules.payments.showNewPaymentModal(${client.id})" title="Registrar Pago">
+                        <button class="action-btn-mini success" 
+                            onclick="app.modules.payments.showNewPaymentModal(${client.id})" 
+                            title="Registrar Pago"
+                            ${app.modules.auth.checkPermission('finance:payments', 'create') ? '' : 'disabled style="opacity:0.4; cursor:not-allowed;"'}>
                             <i class="fas fa-dollar-sign"></i>
                         </button>
                     </div>
@@ -1831,29 +2045,52 @@ export class PaymentsModule {
     toggleAutomationFilters() {
         const scope = document.getElementById('automation-scope').value;
         const routerFilter = document.getElementById('automation-router-filter');
-        if (routerFilter) {
-            routerFilter.style.display = scope === 'router' ? 'block' : 'none';
-        }
+        const zoneFilter = document.getElementById('automation-zone-filter');
+        const collectorFilter = document.getElementById('automation-collector-filter');
+
+        if (routerFilter) routerFilter.style.display = scope === 'router' ? 'block' : 'none';
+        if (zoneFilter) zoneFilter.style.display = scope === 'zone' ? 'block' : 'none';
+        if (collectorFilter) collectorFilter.style.display = scope === 'collector' ? 'block' : 'none';
     }
 
 
     async runBillingCycle() {
-        const scope = document.getElementById('automation-scope').value;
-        const routerId = document.getElementById('automation-router-id').value;
-        const month = document.getElementById('automation-month').value;
-        const year = document.getElementById('automation-year').value;
+        const scope = document.getElementById('automation-scope')?.value || 'all';
+        const routerId = document.getElementById('automation-router-id')?.value;
+        const month = document.getElementById('automation-month')?.value;
+        const year = document.getElementById('automation-year')?.value;
 
-        const monthName = document.getElementById('automation-month').options[document.getElementById('automation-month').selectedIndex]?.text || '';
+        // Helpers para multiselect
+        const getSelectedValues = (id) => {
+            const el = document.getElementById(id);
+            if (!el) return [];
+            return Array.from(el.selectedOptions).map(opt => opt.value).filter(val => val !== "");
+        };
 
-        let confirmMsg = `¿Deseas ejecutar el ciclo de facturación y cortes para ${monthName} ${year}?\n\nEsto generará deudas y procesará suspensiones según los parámetros del router.`;
+        const zoneNames = scope === 'zone' ? getSelectedValues('automation-zone-names') : [];
+        const collectorIds = scope === 'collector' ? getSelectedValues('automation-collector-ids').map(v => parseInt(v)) : [];
+
+        const excludedZones = getSelectedValues('automation-excluded-zones');
+        const excludedRouters = getSelectedValues('automation-excluded-routers').map(v => parseInt(v));
+        const excludedCollectors = getSelectedValues('automation-excluded-collectors').map(v => parseInt(v));
+
+        const monthSelect = document.getElementById('automation-month');
+        const monthName = monthSelect ? monthSelect.options[monthSelect.selectedIndex]?.text : '';
+
+        let confirmMsg = `¿Deseas ejecutar el ciclo de facturación y cortes para ${monthName} ${year}?\n\nEsto generará deudas y procesará suspensiones según los parámetros seleccionados.`;
 
         if (scope === 'router') {
             if (!routerId) {
                 if (window.toast) toast.error('Selecciona un router para continuar');
                 return;
             }
-            const routerName = document.getElementById('automation-router-id').options[document.getElementById('automation-router-id').selectedIndex].text;
+            const routerSelect = document.getElementById('automation-router-id');
+            const routerName = routerSelect ? routerSelect.options[routerSelect.selectedIndex]?.text : `ID: ${routerId}`;
             confirmMsg = `¿Ejecutar ciclo para ${monthName} ${year} SOLO en el router [${routerName}]?`;
+        } else if (scope === 'zone' && zoneNames.length > 0) {
+            confirmMsg = `¿Ejecutar ciclo para ${monthName} ${year} en las zonas: ${zoneNames.join(', ')}?`;
+        } else if (scope === 'collector' && collectorIds.length > 0) {
+            confirmMsg = `¿Ejecutar ciclo para ${monthName} ${year} para los cobradores seleccionados?`;
         }
 
         if (!confirm(confirmMsg)) return;
@@ -1862,14 +2099,21 @@ export class PaymentsModule {
             if (window.app) app.showLoading(true);
             const payload = {
                 year: parseInt(year),
-                month: parseInt(month)
+                month: parseInt(month),
+                automation_scope: scope,
+                zone_names: zoneNames.length > 0 ? zoneNames : undefined,
+                collector_ids: collectorIds.length > 0 ? collectorIds : undefined,
+                excluded_zones: excludedZones.length > 0 ? excludedZones : undefined,
+                excluded_routers: excludedRouters.length > 0 ? excludedRouters : undefined,
+                excluded_collectors: excludedCollectors.length > 0 ? excludedCollectors : undefined
             };
+
             if (scope === 'router') payload.router_id = parseInt(routerId);
 
             const response = await this.api.post('/api/billing/run-cycle', payload);
 
-            if (response.success) {
-                if (window.toast) toast.success('Ciclo iniciado correctamente.');
+            if (response.success || response.message) {
+                if (window.toast) toast.success(response.message || 'Ciclo iniciado correctamente.');
                 this.loadStatistics();
             } else {
                 if (window.toast) toast.error('Error: ' + response.message);
@@ -1877,6 +2121,89 @@ export class PaymentsModule {
         } catch (error) {
             console.error(error);
             if (window.toast) toast.error('Error al ejecutar el ciclo');
+        } finally {
+            if (window.app) app.showLoading(false);
+        }
+    }
+
+    async initAutomationFilters() {
+        try {
+            // 1. Cargar Routers (esto ya puebla los selectores básicos)
+            await this.loadRouters();
+
+            // 2. Extraer zonas únicas de los routers cargados
+            const zones = [...new Set(this.routers.map(r => r.zone).filter(z => z))].sort();
+
+            // 3. Cargar Cobradores
+            const collectors = await this.api.get('/api/users/collectors');
+
+            this.populateAdvancedFilters(zones, collectors);
+        } catch (e) {
+            console.error('Error initializing automation filters:', e);
+        }
+    }
+
+    populateAdvancedFilters(zones, collectors) {
+        // Zonas (Incluir y Excluir)
+        const zoneSelectors = ['automation-zone-names', 'automation-excluded-zones'];
+        zoneSelectors.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.innerHTML = zones.map(z => `<option value="${z}">${z}</option>`).join('');
+            }
+        });
+
+        // Cobradores (Incluir y Excluir)
+        const collectorSelectors = ['automation-collector-ids', 'automation-excluded-collectors'];
+        collectorSelectors.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.innerHTML = collectors.map(c => `<option value="${c.id}">${c.legal_name || c.username}</option>`).join('');
+            }
+        });
+
+        // Routers (Excluir)
+        const excludedRouterSelect = document.getElementById('automation-excluded-routers');
+        if (excludedRouterSelect) {
+            excludedRouterSelect.innerHTML = this.routers.map(r => `<option value="${r.id}">${r.alias}</option>`).join('');
+        }
+    }
+
+    async loadBillingSettings() {
+        try {
+            const response = await this.api.get('/api/billing/settings');
+            if (response.success && response.settings) {
+                const dueTimeEl = document.getElementById('global-billing-due-time');
+                if (dueTimeEl) {
+                    dueTimeEl.value = response.settings.billing_due_time || '23:59';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading billing settings:', error);
+        }
+    }
+
+    async saveBillingSettings() {
+        const dueTime = document.getElementById('global-billing-due-time')?.value;
+        if (!dueTime) {
+            if (window.toast) toast.warning('Por favor especifique una hora válida');
+            return;
+        }
+
+        try {
+            if (window.app) app.showLoading(true);
+            const response = await this.api.post('/api/billing/settings', {
+                billing_due_time: dueTime
+            });
+
+            if (response.success) {
+                if (window.toast) toast.success('Configuración de facturación guardada');
+            } else {
+                if (window.toast) toast.error('Error: ' + response.message);
+            }
+        } catch (error) {
+            console.error('Error saving billing settings:', error);
+            if (window.toast) toast.error('Error al guardar la configuración');
         } finally {
             if (window.app) app.showLoading(false);
         }
@@ -2212,7 +2539,6 @@ export class PaymentsModule {
 
         const selectors = [
             { id: 'report-router-id', defaultLabel: 'TODOS LOS ROUTERS (General)' },
-
             { id: 'automation-router-id', defaultLabel: '-- Seleccionar Router --' }
         ];
 
@@ -2366,7 +2692,7 @@ export class PaymentsModule {
                 </div>
                 
                 <!-- Chart Panel -->
-                <div style="background: white; padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; min-height: 200px;">
+                <div class="glass" style="padding: 20px; border-radius: 16px; min-height: 200px;">
                     <h4 style="margin: 0 0 12px 0; color: #1e293b; font-size: 0.9rem;">Distribución de Clientes (%)</h4>
                     <div style="height: 150px; position: relative;" id="status-chart-container">
                         <!-- Chart rendered by JS -->
@@ -2375,28 +2701,28 @@ export class PaymentsModule {
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                <div style="background: #f8fafc; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0;">
-                    <span style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Meta de Recaudo (Total)</span>
-                    <div style="font-size: 1.15rem; font-weight: 800; color: #1e293b; margin-top: 5px;">$${data.summary.total_theoretical.toLocaleString()}</div>
-                    <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">
-                        Activos: $${(data.summary.total_theoretical_active || 0).toLocaleString()} | 
-                        Bajas: $${(data.summary.total_theoretical_lost || 0).toLocaleString()}
+                <div class="glass" style="padding: 16px; border-radius: 16px;">
+                    <span style="font-size: 0.70rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Meta de Recaudo</span>
+                    <div style="font-size: 1.4rem; font-weight: 900; color: #1e293b; margin-top: 5px;">$${data.summary.total_theoretical.toLocaleString()}</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px; font-weight: 600;">
+                        Act: $${(data.summary.total_theoretical_active || 0).toLocaleString()} | 
+                        Baj: $${(data.summary.total_theoretical_lost || 0).toLocaleString()}
                     </div>
                 </div>
-                <div style="background: #f0fdf4; padding: 12px; border-radius: 12px; border: 1px solid #bcf0da;">
-                    <span style="font-size: 0.65rem; font-weight: 700; color: #059669; text-transform: uppercase;">Total Recogido</span>
-                    <div style="font-size: 1.15rem; font-weight: 800; color: #059669; margin-top: 5px;">$${data.summary.total_collected.toLocaleString()}</div>
-                    <div style="font-size: 0.7rem; color: #64748b; margin-top: 2px;">Ingresos reales liquidados</div>
+                <div class="glass" style="padding: 16px; border-radius: 16px; border-left: 4px solid #10b981;">
+                    <span style="font-size: 0.70rem; font-weight: 800; color: #059669; text-transform: uppercase; letter-spacing: 0.05em;">Total Recogido</span>
+                    <div style="font-size: 1.4rem; font-weight: 900; color: #059669; margin-top: 5px;">$${data.summary.total_collected.toLocaleString()}</div>
+                    <div style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Ingresos liquidados</div>
                 </div>
-                <div style="background: #fef2f2; padding: 12px; border-radius: 12px; border: 1px solid #fee2e2;">
-                    <span style="font-size: 0.65rem; font-weight: 700; color: #991b1b; text-transform: uppercase;">Faltante (Meses Pendientes)</span>
-                    <div style="font-size: 1.15rem; font-weight: 800; color: #dc2626; margin-top: 5px;">$${totalLoss.toLocaleString()}</div>
-                    <div style="font-size: 0.7rem; color: #ef4444; margin-top: 2px;">Diferencia Meta vs Real</div>
+                <div class="glass" style="padding: 16px; border-radius: 16px; border-left: 4px solid #ef4444;">
+                    <span style="font-size: 0.70rem; font-weight: 800; color: #dc2626; text-transform: uppercase; letter-spacing: 0.05em;">Faltante / Morosidad</span>
+                    <div style="font-size: 1.4rem; font-weight: 900; color: #dc2626; margin-top: 5px;">$${totalLoss.toLocaleString()}</div>
+                    <div style="font-size: 0.75rem; color: #ef4444; margin-top: 4px; font-weight: 600;">Diferencia (Pérdida)</div>
                 </div>
-                <div style="background: #eff6ff; padding: 12px; border-radius: 12px; border: 1px solid #bfdbfe;">
-                    <span style="font-size: 0.65rem; font-weight: 700; color: #1d4ed8; text-transform: uppercase;">Clientes Impacto</span>
-                    <div style="font-size: 1.15rem; font-weight: 800; color: #1e40af; margin-top: 5px;">${data.summary.active_clients_count}</div>
-                    <div style="font-size: 0.7rem; color: #60a5fa; margin-top: 2px;">Base activa actual</div>
+                <div class="glass" style="padding: 16px; border-radius: 16px; border-left: 4px solid #6366f1;">
+                    <span style="font-size: 0.70rem; font-weight: 800; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.05em;">Clientes Activos</span>
+                    <div style="font-size: 1.4rem; font-weight: 900; color: #4f46e5; margin-top: 5px;">${data.summary.active_clients_count}</div>
+                    <div style="font-size: 0.75rem; color: #6366f1; margin-top: 4px; font-weight: 600;">Base operativa actual</div>
                 </div>
             </div>
         `;
@@ -2454,7 +2780,7 @@ export class PaymentsModule {
         }
 
         return `
-            <div style="background: white; padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; height: 100%; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+            <div class="glass" style="padding: 20px; border-radius: 16px; height: 100%;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <h4 style="margin: 0; color: #1e293b; font-size: 0.95rem; font-weight: 800;">Análisis Detallado de Índices</h4>
                     <div style="display: flex; gap: 10px;">
@@ -2592,6 +2918,7 @@ export class PaymentsModule {
                 year: year
             });
 
+            this.lastAuditReportData = data;
             this.renderClientsStatusReport(data);
         } catch (e) {
             console.error('Error loading client status report:', e);
@@ -2606,6 +2933,8 @@ export class PaymentsModule {
         const content = document.getElementById('report-data-content');
         const tableHead = document.getElementById('report-table-head');
         const tableBody = document.getElementById('report-table-body');
+        const cardsGrid = document.getElementById('report-cards-grid');
+        const tableView = document.getElementById('report-table-view');
         const tableHeader = document.getElementById('report-table-header');
         const footer = document.getElementById('report-footer-stats');
 
@@ -2613,6 +2942,15 @@ export class PaymentsModule {
 
         placeholder.style.display = 'none';
         content.style.display = 'block';
+
+        // Toggle visibility based on device
+        if (this.isMobile) {
+            if (tableView) tableView.style.display = 'none';
+            if (cardsGrid) cardsGrid.style.display = 'grid';
+        } else {
+            if (tableView) tableView.style.display = 'block';
+            if (cardsGrid) cardsGrid.style.display = 'none';
+        }
 
         const typeNames = {
             'paid': 'Clientes al Día',
@@ -2707,17 +3045,26 @@ export class PaymentsModule {
                         ${c.balance > 0 ? '- ' : (c.balance < 0 ? '+ ' : '')}$${Math.abs(c.balance).toLocaleString()}
                     </td>
                     <td style="text-align: center; padding: 1px 4px !important;">
-                        <span class="premium-status-badge ${c.status.toLowerCase() === 'active' ? 'success' : c.status.toLowerCase() === 'suspended' ? 'warning' : 'secondary'}" style="font-size: 0.45rem; padding: 0px 3px; border-radius: 2px; font-weight: 800;">
-                            ${c.status.toUpperCase()}
+                        <span class="premium-status-badge ${((c.status || (data.type === 'paid' ? 'active' : 'secondary'))).toLowerCase() === 'active' ? 'success' : ((c.status || '')).toLowerCase() === 'suspended' ? 'warning' : 'secondary'}" style="font-size: 0.45rem; padding: 0px 3px; border-radius: 2px; font-weight: 800;">
+                            ${((c.status || (data.type === 'paid' ? 'active' : 'unknown'))).toUpperCase() === 'ACTIVE' ? 'ACTIVO' : ((c.status || '')).toUpperCase() === 'SUSPENDED' ? 'SUSPENDIDO' : 'DEUDOR'}
                         </span>
                     </td>
                     <td style="text-align: center; padding: 1px 4px !important;" class="no-print">
                         <div style="display: flex; gap: 2px; justify-content: center;">
                             <button type="button" 
-                                    onclick="event.preventDefault(); event.stopPropagation(); app.modules.payments.showNewPaymentModal(${c.id})" 
-                                    title="Registrar" style="background: #ecfdf5; border-radius: 2px; padding: 0px 3px; border: 1px solid #a7f3d0; cursor: pointer;">
-                                <i class="fas fa-dollar-sign" style="color: #059669; font-size: 0.6rem;"></i>
+                                    ${c.balance <= 0 ? 'disabled' : ''}
+                                    onclick="event.preventDefault(); event.stopPropagation(); ${c.balance > 0 ? `app.modules.payments.showNewPaymentModal(${c.id})` : ''}" 
+                                    title="${c.balance <= 0 ? 'Al día' : 'Registrar Pago'}" 
+                                    style="background: ${c.balance <= 0 ? '#f8fafc' : '#ecfdf5'}; border-radius: 2px; padding: 0px 3px; border: 1px solid ${c.balance <= 0 ? '#e2e8f0' : '#a7f3d0'}; cursor: ${c.balance <= 0 ? 'not-allowed' : 'pointer'}; opacity: ${c.balance <= 0 ? '0.5' : '1'};">
+                                <i class="fas fa-dollar-sign" style="color: ${c.balance <= 0 ? '#94a3b8' : '#059669'}; font-size: 0.6rem;"></i>
                             </button>
+                            ${c.last_payment_id ? `
+                                <button type="button" 
+                                        onclick="event.preventDefault(); event.stopPropagation(); app.modules.payments.printReceipt(${c.last_payment_id})" 
+                                        title="Imprimir Último Recibo" style="background: #fff; border-radius: 2px; padding: 0px 3px; border: 1px solid #cbd5e1; cursor: pointer;">
+                                    <i class="fas fa-print" style="color: #475569; font-size: 0.6rem;"></i>
+                                </button>
+                            ` : ''}
                             <button type="button" 
                                     onclick="event.preventDefault(); event.stopPropagation(); app.modules.payments.showClientHistory(${c.id})" 
                                     title="Historial" style="background: #f1f5f9; border-radius: 2px; padding: 0px 3px; border: 1px solid #e2e8f0; cursor: pointer;">
@@ -2728,64 +3075,114 @@ export class PaymentsModule {
                 </tr>
             `).join('');
 
+            // Mobile Cards Rendering
+            if (cardsGrid) {
+                cardsGrid.innerHTML = sortedClients.map((c) => {
+                    const balanceColor = c.balance > 0 ? '#dc2626' : (c.balance < 0 ? '#059669' : '#64748b');
+                    const statusClass = c.status.toLowerCase() === 'active' ? 'success' : 'warning';
+
+                    return `
+                    <div class="glass client-report-card" data-id="${c.id}" style="border-left: 4px solid ${balanceColor}; padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: all 0.2s;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <div class="no-print">
+                                    <input type="checkbox" class="client-report-checkbox" data-id="${c.id}" checked style="transform: scale(1.2); cursor: pointer; margin: 0;">
+                                </div>
+                                <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem; line-height: 1.2;">${c.name}</div>
+                            </div>
+                            <span class="premium-status-badge ${((c.status || (data.type === 'paid' ? 'active' : 'secondary'))).toLowerCase() === 'active' ? 'success' : ((c.status || '')).toLowerCase() === 'suspended' ? 'warning' : 'secondary'}" style="font-size: 0.6rem; padding: 2px 6px; border-radius: 4px;">
+                                ${((c.status || (data.type === 'paid' ? 'active' : 'unknown'))).toUpperCase() === 'ACTIVE' ? 'ACTIVO' : ((c.status || '')).toUpperCase() === 'SUSPENDED' ? 'SUSPENDIDO' : 'DEUDOR'}
+                            </span>
+                        </div>
+
+                        <!-- Details Row -->
+                        <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: flex-end; padding-top: 8px; border-top: 1px dashed #e2e8f0;">
+                            <div>
+                                <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 2px;">
+                                    <i class="fas fa-barcode"></i> ${c.code}
+                                </div>
+                                <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">
+                                    <i class="fas fa-network-wired"></i> ${c.router} ${c.zone ? `• ${c.zone}` : ''}
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; margin-bottom: 2px;">Balance</div>
+                                <div style="font-family: 'JetBrains Mono'; font-weight: 900; color: ${balanceColor}; font-size: 1.1rem;">
+                                    ${c.balance > 0 ? '- ' : (c.balance < 0 ? '+ ' : '')}$${Math.abs(c.balance).toLocaleString()}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Actions Row -->
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px;" class="no-print">
+                            ${c.balance > 0 ? `
+                                <button type="button" class="btn-primary" onclick="app.modules.payments.showNewPaymentModal(${c.id})" style="padding: 6px 16px; border-radius: 8px; font-size: 0.75rem; background: #ecfdf5; color: #059669; border: 1px solid #10b981; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-dollar-sign"></i> Pagar
+                                </button>
+                            ` : ''}
+                            ${c.last_payment_id ? `
+                                <button type="button" class="btn-secondary" onclick="app.modules.payments.printReceipt(${c.last_payment_id})" style="padding: 6px 16px; border-radius: 8px; font-size: 0.75rem; background: #fff; color: #475569; border: 1px solid #cbd5e1; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-print"></i> Último Recibo
+                                </button>
+                            ` : ''}
+                            <button type="button" class="btn-secondary" onclick="app.modules.payments.showClientHistory(${c.id})" style="padding: 6px 16px; border-radius: 8px; font-size: 0.75rem; background: #f8fafc; color: #6366f1; border: 1px solid #e2e8f0; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                <i class="fas fa-history"></i> Historial
+                            </button>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+            }
+
             // Add Event Listeners for checkboxes
             const selectAll = document.getElementById('report-select-all');
-            const checkboxes = tableBody.querySelectorAll('.client-report-checkbox');
+            const checkboxes = document.querySelectorAll('.client-report-checkbox');
 
             selectAll.addEventListener('change', (e) => {
                 const checked = e.target.checked;
                 checkboxes.forEach(cb => {
                     cb.checked = checked;
-                    const row = cb.closest('tr');
-                    if (checked) row.classList.remove('no-print-row');
-                    else row.classList.add('no-print-row');
+                    const id = cb.dataset.id;
+                    const row = document.querySelector(`tr[data-client-id="${id}"]`);
+                    const card = document.querySelector(`.client-report-card[data-id="${id}"]`);
+
+                    if (checked) {
+                        if (row) row.classList.remove('no-print-row');
+                        if (card) card.style.opacity = '1';
+                    } else {
+                        if (row) row.classList.add('no-print-row');
+                        if (card) card.style.opacity = '0.5';
+                    }
                 });
             });
 
             checkboxes.forEach(cb => {
                 cb.addEventListener('change', (e) => {
-                    const row = e.target.closest('tr');
-                    if (e.target.checked) row.classList.remove('no-print-row');
-                    else row.classList.add('no-print-row');
+                    const id = e.target.dataset.id;
+                    const row = document.querySelector(`tr[data-client-id="${id}"]`);
+                    const card = document.querySelector(`.client-report-card[data-id="${id}"]`);
+                    const isChecked = e.target.checked;
+
+                    // Sync other checkbox for the same client (if exists in DOM)
+                    const sameClientCheckboxes = document.querySelectorAll(`.client-report-checkbox[data-id="${id}"]`);
+                    sameClientCheckboxes.forEach(scb => scb.checked = isChecked);
+
+                    if (isChecked) {
+                        if (row) row.classList.remove('no-print-row');
+                        if (card) card.style.opacity = '1';
+                    } else {
+                        if (row) row.classList.add('no-print-row');
+                        if (card) card.style.opacity = '0.5';
+                    }
 
                     // Update selectAll state
-                    const allChecked = Array.from(checkboxes).every(c => c.checked);
-                    selectAll.checked = allChecked;
-                    selectAll.indeterminate = !allChecked && Array.from(checkboxes).some(c => c.checked);
+                    const allChecked = Array.from(document.querySelectorAll('.client-report-checkbox:not(#report-select-all)')).every(c => c.checked);
+                    if (selectAll) {
+                        selectAll.checked = allChecked;
+                        selectAll.indeterminate = !allChecked && Array.from(checkboxes).some(c => c.checked);
+                    }
                 });
             });
-
-            // 1. Render to SCREEN Header (Premium Boxes) - DYNAMIC TO FILTER
-            const screenStats = document.getElementById('report-screen-stats');
-            if (screenStats) {
-                screenStats.style.display = 'flex';
-
-                // Contextual colors depending on report type
-                const colors = {
-                    'paid': { bg: '#eff6ff', border: '#bfdbfe', text: '#2563eb', label: '#1d4ed8' },
-                    'debtors': { bg: '#fff1f2', border: '#fecaca', text: '#dc2626', label: '#be123c' },
-                    'missing': { bg: '#fefce8', border: '#fef08a', text: '#a16207', label: '#854d0e' },
-                    'deleted': { bg: '#f1f5f9', border: '#e2e8f0', text: '#475569', label: '#1e293b' }
-                };
-
-                const theme = colors[data.type] || colors.deleted;
-                const labelSuffix = data.type === 'paid' ? ' (Grupo Al Día)' : (data.type === 'debtors' ? ' (Cartera Mora)' : '');
-
-                screenStats.innerHTML = `
-                    <div style="text-align: right; background: ${theme.bg}; padding: 6px 15px; border-radius: 10px; border: 1.5px solid ${theme.border}; min-width: 140px; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
-                        <span style="font-size: 0.65rem; font-weight: 850; color: ${theme.label}; text-transform: uppercase; display: block;">${data.type === 'paid' ? 'Recogido' : 'Cobros'} ${labelSuffix}</span>
-                        <div style="font-size: 1.1rem; font-weight: 950; color: ${theme.text};">$${(data.total_collected || 0).toLocaleString()}</div>
-                    </div>
-                    <div style="text-align: right; background: #fff1f2; padding: 6px 15px; border-radius: 10px; border: 1.5px solid #fecaca; min-width: 140px; opacity: ${data.type === 'paid' ? '0.5' : '1'};">
-                        <span style="font-size: 0.65rem; font-weight: 800; color: #be123c; text-transform: uppercase; display: block;">Deuda Pendiente</span>
-                        <div style="font-size: 1.1rem; font-weight: 900; color: #dc2626;">${data.total_pending > 0 ? '- ' : ''}$${(data.total_pending || 0).toLocaleString()}</div>
-                    </div>
-                    <div style="text-align: right; background: #ecfdf5; padding: 6px 15px; border-radius: 10px; border: 1.5px solid #a7f3d0; min-width: 140px; opacity: ${data.type === 'paid' ? '1' : '0.5'};">
-                        <span style="font-size: 0.65rem; font-weight: 800; color: #047857; text-transform: uppercase; display: block;">Saldos Caja</span>
-                        <div style="font-size: 1.1rem; font-weight: 900; color: #059669;">+ $${(data.total_credit || 0).toLocaleString()}</div>
-                    </div>
-                `;
-            }
 
             // 2. Render to PRINT Header (Elegance)
             const printStatsHeader = document.getElementById('print-stats-header');
@@ -2839,36 +3236,42 @@ export class PaymentsModule {
 
     async loadLossesDetail() {
         const tbody = document.getElementById('losses-table-body');
+        const cardsGrid = document.getElementById('losses-cards-grid');
+        const tableView = document.getElementById('losses-table-view');
         if (!tbody) return;
+
+        // Toggle visibility based on device
+        if (this.isMobile) {
+            if (tableView) tableView.style.display = 'none';
+            if (cardsGrid) cardsGrid.style.display = 'grid';
+        } else {
+            if (tableView) tableView.style.display = 'block';
+            if (cardsGrid) cardsGrid.style.display = 'none';
+        }
 
         try {
             const params = new URLSearchParams();
             if (this.filterState.startDate) params.append('start_date', this.filterState.startDate);
             if (this.filterState.endDate) params.append('end_date', this.filterState.endDate);
 
-            // Fetch losses detail from API
             const losses = await this.api.get(`/api/payments/losses-detail?${params.toString()}`);
 
+            const emptyState = `
+                <div class="empty-state-premium" style="text-align:center; padding: 40px; color: #94a3b8; grid-column: 1 / -1;">
+                    <i class="fas fa-search-dollar" style="font-size: 2rem; opacity:0.1; margin-bottom:10px; display:block;"></i>
+                    <p style="font-weight:600; color:#1e293b;">No hay fugas detectadas</p>
+                </div>
+            `;
+
             if (!losses || losses.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="text-center py-5 text-muted">
-                            <div style="opacity: 0.2; margin-bottom: 15px;">
-                                <i class="fas fa-search-dollar" style="font-size: 3rem;"></i>
-                            </div>
-                            <div style="font-weight: 700; font-size: 1.1rem; color: #475569;">No hay fugas detectadas</div>
-                            <div style="font-size: 0.85rem; color: #94a3b8;">La contabilidad está saneada para este periodo</div>
-                        </td>
-                    </tr>
-                `;
+                tbody.innerHTML = `<tr><td colspan="4">${emptyState}</td></tr>`;
+                if (cardsGrid) cardsGrid.innerHTML = emptyState;
                 return;
             }
 
+            // Desktop Table Rendering
             tbody.innerHTML = losses.map(loss => {
-                const date = loss.date ? new Date(loss.date).toLocaleDateString('es-CO', {
-                    day: '2-digit', month: 'short', year: 'numeric'
-                }) : '---';
-
+                const date = loss.date ? new Date(loss.date).toLocaleDateString() : '---';
                 let catClass = 'bg-light text-secondary';
                 if (loss.category === 'FX Variance') catClass = 'bg-info-soft text-info';
                 if (loss.category === 'Prorating') catClass = 'bg-warning-soft text-warning';
@@ -2876,43 +3279,120 @@ export class PaymentsModule {
 
                 return `
                     <tr class="premium-row">
-                        <td class="ps-4">
+                        <td class="ps-3">
                             <div style="font-weight: 700; color: #1e293b;">${loss.concept}</div>
-                            <div style="font-size: 0.75rem; color: #64748b;">${loss.client_name}</div>
+                            <div style="font-size: 0.75rem; color: #64748b;">${loss.client_name || 'General'}</div>
                         </td>
-                        <td>
-                            <span class="badge ${catClass}" style="font-size: 0.7rem; text-transform: uppercase; font-weight: 800; border-radius: 6px; padding: 4px 8px;">
-                                ${loss.category}
-                            </span>
-                        </td>
-                        <td>
-                            <div style="font-size: 0.85rem; color: #475569;">
-                                <i class="far fa-calendar-alt me-1" style="opacity: 0.5;"></i> ${date}
-                            </div>
-                        </td>
-                        <td>
-                            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #94a3b8;">
-                                ${loss.reference || '---'}
-                            </div>
-                        </td>
-                        <td class="text-end pe-4">
-                            <div style="font-family: 'JetBrains Mono', monospace; font-weight: 900; color: #dc2626; font-size: 1rem;">
-                                -$${(loss.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        <td><span class="badge ${catClass}" style="font-size: 0.65rem;">${loss.category}</span></td>
+                        <td><div style="font-size: 0.8rem; color: #475569;">${date}</div></td>
+                        <td class="text-end pe-3">
+                            <div style="font-family: 'JetBrains Mono'; font-weight: 800; color: #dc2626;">
+                                -$${(loss.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </div>
                         </td>
                     </tr>
                 `;
             }).join('');
 
+            // Mobile Cards Rendering
+            if (cardsGrid) {
+                cardsGrid.innerHTML = losses.map(loss => {
+                    let catColor = '#64748b';
+                    if (loss.category === 'FX Variance') catColor = '#0ea5e9';
+                    if (loss.category === 'Prorating') catColor = '#f59e0b';
+                    if (loss.category === 'Bad Debt') catColor = '#ef4444';
+
+                    return `
+                    <div class="stat-card-premium" style="border-left: 4px solid ${catColor}; flex-direction: row; justify-content: space-between; align-items: center; padding: 12px 16px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+                            <span style="font-weight: 800; color: #1e293b; font-size: 0.9rem;" class="text-truncate">${loss.concept}</span>
+                            <span style="font-size: 0.7rem; color: #64748b;">${loss.category} • ${loss.client_name || 'General'}</span>
+                        </div>
+                        <div style="text-align: right; min-width: 100px;">
+                            <div style="font-family: 'JetBrains Mono'; font-weight: 900; color: #dc2626; font-size: 0.95rem;">-$${(loss.amount || 0).toLocaleString()}</div>
+                            <div style="font-size: 0.65rem; color: #94a3b8;">${new Date(loss.date).toLocaleDateString()}</div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+            }
+
         } catch (error) {
-            console.error('❌ Error loading losses detail:', error);
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="text-center py-4 text-danger">
-                        <i class="fas fa-exclamation-triangle me-2"></i> Error al cargar el detalle de pérdidas.
-                    </td>
-                </tr>
+            console.error('Error loading losses:', error);
+        }
+    }
+
+    async loadExpensesSummary() {
+        const tbody = document.getElementById('expenses-summary-table-body');
+        const cardsGrid = document.getElementById('expenses-summary-cards-grid');
+        const tableView = document.getElementById('expenses-summary-table-view');
+        if (!tbody) return;
+
+        if (this.isMobile) {
+            if (tableView) tableView.style.display = 'none';
+            if (cardsGrid) cardsGrid.style.display = 'grid';
+        } else {
+            if (tableView) tableView.style.display = 'block';
+            if (cardsGrid) cardsGrid.style.display = 'none';
+        }
+
+        try {
+            const params = new URLSearchParams();
+            if (this.filterState.startDate) params.append('start_date', this.filterState.startDate);
+            if (this.filterState.endDate) params.append('end_date', this.filterState.endDate);
+
+            const expenses = await this.api.get(`/api/payments/expenses?${params.toString()}`);
+
+            const emptyState = `
+                <div class="empty-state-premium" style="text-align:center; padding: 40px; color: #94a3b8; grid-column: 1 / -1;">
+                    <i class="fas fa-file-invoice-dollar" style="font-size: 2rem; opacity:0.1; margin-bottom:10px; display:block;"></i>
+                    <p style="font-weight:600; color:#1e293b;">No hay gastos registrados</p>
+                </div>
             `;
+
+            if (!expenses || expenses.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5">${emptyState}</td></tr>`;
+                if (cardsGrid) cardsGrid.innerHTML = emptyState;
+                return;
+            }
+
+            // Desktop Table Rendering
+            tbody.innerHTML = expenses.map(exp => {
+                const date = exp.expense_date ? new Date(exp.expense_date).toLocaleDateString() : '---';
+                return `
+                    <tr class="premium-row">
+                        <td class="ps-3" style="font-size: 0.85rem;">${date}</td>
+                        <td style="font-weight: 600; color: #1e293b;">${exp.description}</td>
+                        <td><span class="status-badge ${exp.category === 'fixed' ? 'active' : 'warning'}" style="font-size:0.65rem;">${exp.category}</span></td>
+                        <td style="text-align: right; font-weight: 800; color: #ef4444;">$${(exp.amount || 0).toLocaleString()}</td>
+                        <td style="text-align: right; padding-right:15px;">
+                             <button class="action-btn-mini" onclick="app.modules.payments.editExpense(${exp.id})"><i class="fas fa-edit"></i></button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Mobile Cards Rendering
+            if (cardsGrid) {
+                cardsGrid.innerHTML = expenses.map(exp => {
+                    return `
+                    <div class="stat-card-premium" style="border-left: 4px solid ${exp.category === 'fixed' ? '#6366f1' : '#f59e0b'}; flex-direction: row; justify-content: space-between; align-items: center; padding: 12px 16px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+                            <span style="font-weight: 800; color: #1e293b; font-size: 0.9rem;" class="text-truncate">${exp.description}</span>
+                            <span style="font-size: 0.7rem; color: #64748b;">${exp.category.toUpperCase()} • ${new Date(exp.expense_date).toLocaleDateString()}</span>
+                        </div>
+                        <div style="text-align: right; min-width: 100px; display: flex; flex-direction: column; align-items: flex-end;">
+                            <div style="font-family: 'JetBrains Mono'; font-weight: 900; color: #ef4444; font-size: 0.95rem;">$${(exp.amount || 0).toLocaleString()}</div>
+                            <button class="action-btn-mini" style="margin-top: 4px;" onclick="app.modules.payments.editExpense(${exp.id})">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+            }
+        } catch (error) {
+            console.error('Error loading expenses summary:', error);
         }
     }
     async loadExchangeRates() {
@@ -2925,6 +3405,284 @@ export class PaymentsModule {
             };
         } catch (e) {
             console.warn('⚠️ Error loading exchange rates, using defaults', e);
+        }
+    }
+
+    // ==========================================
+    // EXPENSES MODULE (Gastos y Deducibles)
+    // ==========================================
+
+    async loadExpenses() {
+        const tbody = document.getElementById('expenses-detailed-table-body');
+        const cardsGrid = document.getElementById('expenses-cards-grid');
+        if (!tbody && !cardsGrid) return;
+
+        const searchEl = document.getElementById('expense-search');
+        const monthEl = document.getElementById('expense-filter-month');
+        const categoryEl = document.getElementById('expense-filter-category');
+
+        const search = searchEl ? searchEl.value.trim() : '';
+        const month = monthEl ? monthEl.value : '';
+        const category = categoryEl ? categoryEl.value : '';
+
+        let params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (category) params.append('category', category);
+
+        if (month) {
+            const [y, m] = month.split('-');
+            params.append('start_date', `${y}-${m}-01`);
+            const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+            params.append('end_date', `${y}-${m}-${lastDay}`);
+        }
+
+        // Show loading state
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4"><div class="spinner"></div> Cargando gastos...</td></tr>`;
+        if (cardsGrid) cardsGrid.innerHTML = `<div class="text-center py-4" style="grid-column: 1/-1;"><div class="spinner"></div></div>`;
+
+        try {
+            const expenses = await this.api.get(`/api/payments/expenses?${params.toString()}`);
+
+            // Update stat cards
+            let totalFixed = 0, totalVariable = 0;
+            (expenses || []).forEach(e => {
+                if (e.category === 'fixed') totalFixed += (e.amount || 0);
+                else totalVariable += (e.amount || 0);
+            });
+
+            const fixedEl = document.getElementById('exp-stat-fixed');
+            const variableEl = document.getElementById('exp-stat-variable');
+            const totalEl = document.getElementById('exp-stat-total');
+
+            if (fixedEl) fixedEl.textContent = `$${totalFixed.toLocaleString('en-US')}`;
+            if (variableEl) variableEl.textContent = `$${totalVariable.toLocaleString('en-US')}`;
+            if (totalEl) totalEl.textContent = `$${(totalFixed + totalVariable).toLocaleString('en-US')}`;
+
+            // Handle Desktop Table
+            if (tbody) {
+                if (!expenses || expenses.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4" style="color: #94a3b8;">
+                        <i class="fas fa-file-invoice-dollar" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+                        No hay gastos registrados para este período
+                    </td></tr>`;
+                } else {
+                    tbody.innerHTML = expenses.map(exp => {
+                        const date = exp.expense_date ? new Date(exp.expense_date).toLocaleDateString('es-ES', {
+                            day: '2-digit', month: 'short', year: 'numeric'
+                        }) : '-';
+                        const catLabel = exp.category === 'fixed'
+                            ? '<span class="status-badge active" style="font-size: 0.75rem;"><i class="fas fa-building"></i> Fijo</span>'
+                            : '<span class="status-badge warning" style="font-size: 0.75rem;"><i class="fas fa-receipt"></i> Variable</span>';
+                        const recurring = exp.is_recurring ? ' <i class="fas fa-sync-alt" style="color: #8b5cf6; font-size: 0.7rem;" title="Recurrente"></i>' : '';
+
+                        return `
+                            <tr data-expense-id="${exp.id}">
+                                <td style="color: #64748b; font-size: 0.85rem;">${date}</td>
+                                <td style="font-weight: 600; color: #1e293b;">${exp.description || '-'}${recurring}</td>
+                                <td>${catLabel}</td>
+                                <td style="text-align: right; font-weight: 700; color: #ef4444; font-size: 0.95rem;">$${(exp.amount || 0).toLocaleString('en-US')}</td>
+                                <td style="color: #94a3b8; font-size: 0.85rem;">${exp.notes || '-'}</td>
+                                <td style="text-align: right;">
+                                    <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                                        <button class="btn-secondary btn-icon" onclick="app.modules.payments.editExpense(${exp.id})" title="Editar">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn-secondary btn-icon" style="color: #ef4444;" onclick="app.modules.payments.deleteExpense(${exp.id})" title="Eliminar">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // Handle Mobile Cards
+            if (cardsGrid) {
+                if (!expenses || expenses.length === 0) {
+                    cardsGrid.innerHTML = `
+                        <div class="text-center py-4" style="color: #94a3b8; width: 100%;">
+                            <i class="fas fa-file-invoice-dollar" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+                            No hay gastos registrados
+                        </div>`;
+                } else {
+                    cardsGrid.innerHTML = expenses.map(exp => {
+                        const date = exp.expense_date ? new Date(exp.expense_date).toLocaleDateString('es-ES', {
+                            day: '2-digit', month: 'short'
+                        }) : '-';
+                        const catIcon = exp.category === 'fixed' ? 'fa-building' : 'fa-receipt';
+                        const catColor = exp.category === 'fixed' ? '#3b82f6' : '#f59e0b';
+
+                        return `
+                        <div class="expenses-card-premium glass">
+                            <div class="card-header">
+                                <div>
+                                    <h4 style="margin: 0; font-size: 1rem; font-weight: 700; color: #1e293b;">${exp.description || 'Sin descripción'}</h4>
+                                    <span style="font-size: 0.75rem; color: #64748b;">${date}</span>
+                                </div>
+                                <span class="expense-monto">$${(exp.amount || 0).toLocaleString('en-US')}</span>
+                            </div>
+                            <div class="expense-details">
+                                <div style="display: flex; align-items: center; gap: 5px;">
+                                    <i class="fas ${catIcon}" style="color: ${catColor};"></i>
+                                    <span>${exp.category === 'fixed' ? 'Fijo' : 'Variable'}</span>
+                                </div>
+                                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                                    <button onclick="app.modules.payments.editExpense(${exp.id})" style="border: none; background: none; color: #6366f1; cursor: pointer;">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button onclick="app.modules.payments.deleteExpense(${exp.id})" style="border: none; background: none; color: #ef4444; cursor: pointer;">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            ${exp.notes ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8f0; font-size: 0.75rem; color: #94a3b8; font-style: italic;">
+                                ${exp.notes}
+                            </div>` : ''}
+                        </div>`;
+                    }).join('');
+                }
+            }
+
+        } catch (error) {
+            console.error('❌ Error loading expenses:', error);
+            if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-danger"><i class="fas fa-exclamation-triangle"></i> Error al cargar gastos</td></tr>`;
+            if (cardsGrid) cardsGrid.innerHTML = `<div class="text-center py-4 text-danger" style="grid-column: 1/-1;"><i class="fas fa-exclamation-triangle"></i> Error al cargar gastos</div>`;
+        }
+    }
+
+    async showNewExpenseModal(expenseData = null) {
+        const isEdit = !!expenseData;
+        let routers = [];
+        try { routers = await this.api.get('/api/routers') || []; } catch (e) { console.warn('Could not load routers for expense modal'); }
+
+        const routerOptions = routers.map(r =>
+            `<option value="${r.id}" ${expenseData && expenseData.router_id === r.id ? 'selected' : ''}>${r.alias}</option>`
+        ).join('');
+
+        const { value: formValues } = await Swal.fire({
+            title: false,
+            html: `
+                <div style="text-align: left;">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <div style="width: 50px; height: 50px; border-radius: 14px; background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.2)); color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 20px; margin: 0 auto;">
+                            <i class="fas fa-file-invoice-dollar"></i>
+                        </div>
+                        <h3 style="color: #1e293b; font-size: 1.3rem; font-weight: 800; margin: 10px 0 0 0;">${isEdit ? 'Editar Gasto' : 'Registrar Nuevo Gasto'}</h3>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label class="form-label-premium">Descripción *</label>
+                        <input id="swal-exp-description" class="swal2-input form-control-premium" style="width: 100%; margin: 0;" placeholder="Ej. Pago Internet Fibra" value="${expenseData?.description || ''}">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="form-group">
+                            <label class="form-label-premium">Monto ($) *</label>
+                            <input id="swal-exp-amount" type="number" step="0.01" class="swal2-input form-control-premium" style="width: 100%; margin: 0;" placeholder="0.00" value="${expenseData?.amount || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label-premium">Categoría</label>
+                            <select id="swal-exp-category" class="swal2-input form-control-premium" style="width: 100%; margin: 0;">
+                                <option value="variable" ${(!expenseData || expenseData?.category === 'variable') ? 'selected' : ''}>Variable</option>
+                                <option value="fixed" ${expenseData?.category === 'fixed' ? 'selected' : ''}>Fijo</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                        <div class="form-group">
+                            <label class="form-label-premium">Router / Nodo</label>
+                            <select id="swal-exp-router" class="swal2-input form-control-premium" style="width: 100%; margin: 0;">
+                                <option value="">-- General (Sin Nodo) --</option>
+                                ${routerOptions}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label-premium">Fecha</label>
+                            <input id="swal-exp-date" type="date" class="swal2-input form-control-premium" style="width: 100%; margin: 0;" value="${expenseData?.expense_date ? expenseData.expense_date.split('T')[0] : new Date().toISOString().split('T')[0]}">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label class="form-label-premium">Notas</label>
+                        <textarea id="swal-exp-notes" class="swal2-textarea form-control-premium" style="width: 100%; margin: 0; min-height: 60px;" placeholder="Notas adicionales...">${expenseData?.notes || ''}</textarea>
+                    </div>
+                    <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="swal-exp-recurring" ${expenseData?.is_recurring ? 'checked' : ''}>
+                        <label for="swal-exp-recurring" style="font-size: 0.85rem; color: #64748b;">Gasto recurrente (mensual)</label>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: `<i class="fas fa-save"></i> ${isEdit ? 'Actualizar' : 'Guardar'}`,
+            cancelButtonText: 'Cancelar',
+            customClass: { popup: 'premium-modal-popup', confirmButton: 'btn-premium', cancelButton: 'btn-secondary' },
+            preConfirm: () => {
+                const desc = document.getElementById('swal-exp-description').value.trim();
+                const amount = document.getElementById('swal-exp-amount').value;
+                if (!desc || !amount) {
+                    Swal.showValidationMessage('Descripción y monto son obligatorios');
+                    return false;
+                }
+                return {
+                    description: desc,
+                    amount: parseFloat(amount),
+                    category: document.getElementById('swal-exp-category').value,
+                    router_id: document.getElementById('swal-exp-router').value || null,
+                    expense_date: document.getElementById('swal-exp-date').value,
+                    notes: document.getElementById('swal-exp-notes').value.trim(),
+                    is_recurring: document.getElementById('swal-exp-recurring').checked
+                };
+            }
+        });
+
+        if (formValues) {
+            try {
+                if (isEdit) {
+                    await this.api.put(`/api/payments/expenses/${expenseData.id}`, formValues);
+                    window.showToast('Gasto actualizado correctamente', 'success');
+                } else {
+                    await this.api.post('/api/payments/expenses', formValues);
+                    window.showToast('Gasto registrado correctamente', 'success');
+                }
+                this.loadExpenses();
+            } catch (error) {
+                console.error('Error saving expense:', error);
+                window.showToast('Error al guardar el gasto', 'error');
+            }
+        }
+    }
+
+    async editExpense(expenseId) {
+        try {
+            const expense = await this.api.get(`/api/payments/expenses/${expenseId}`);
+            if (expense) {
+                this.showNewExpenseModal(expense);
+            }
+        } catch (error) {
+            console.error('Error fetching expense for edit:', error);
+            window.showToast('Error al obtener datos del gasto', 'error');
+        }
+    }
+
+    async deleteExpense(expenseId) {
+        const result = await Swal.fire({
+            title: '¿Eliminar este gasto?',
+            text: 'Esta acción no se puede deshacer.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '<i class="fas fa-trash"></i> Eliminar',
+            cancelButtonText: 'Cancelar',
+            customClass: { confirmButton: 'btn-danger', cancelButton: 'btn-secondary' }
+        });
+
+        if (result.isConfirmed) {
+            try {
+                await this.api.delete(`/api/payments/expenses/${expenseId}`);
+                window.showToast('Gasto eliminado correctamente', 'success');
+                this.loadExpenses();
+            } catch (error) {
+                console.error('Error deleting expense:', error);
+                window.showToast('Error al eliminar el gasto', 'error');
+            }
         }
     }
 }

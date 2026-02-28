@@ -128,7 +128,15 @@
     font-weight: 300;
 }
 
-.header-info-ip {
+.summary-info-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.header-info-ip,
+.header-info-id {
     font-family: 'JetBrains Mono', 'Courier New', monospace;
     font-size: 0.9rem;
     font-weight: 700;
@@ -610,7 +618,7 @@ select.form-control {
     }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1100px) {
     .modal-content {
         width: 100% !important;
         height: 100% !important;
@@ -625,6 +633,28 @@ select.form-control {
 
     .modal-header {
         padding: 1rem !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px !important;
+        position: relative !important;
+    }
+
+    .modal-header .header-titles {
+        padding-right: 40px;
+        /* Space for close btn */
+    }
+
+    .modal-client-summary-box {
+        width: 100% !important;
+        justify-content: space-between !important;
+        padding: 8px 15px !important;
+        margin-top: 5px !important;
+    }
+
+    .modal-header .close-btn {
+        position: absolute !important;
+        top: 15px !important;
+        right: 15px !important;
     }
 
     .modal-body {

@@ -84,90 +84,91 @@
     </style>
 
     <!-- Unified Premium Header & Control Center (Hidden on Print) -->
-    <div class="no-print"
-        style="background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 15px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); position: relative; z-index: 100;">
+    <div class="no-print reports-premium-header"
+        style="background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; z-index: 100;">
 
         <!-- View Title Section + Action Buttons -->
         <div
-            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9;">
-            <div style="display: flex; flex-direction: column;">
-                <div style="display: flex; align-items: baseline; gap: 10px;">
-                    <h1 style="margin: 0; font-size: 1rem; font-weight: 900; color: #0f172a; letter-spacing: -0.01em;">
-                        Reportes</h1>
-                    <p style="margin: 0; color: #94a3b8; font-size: 0.65rem; font-weight: 500;">Auditoría y Recaudación
-                    </p>
-                </div>
-                <!-- Screen Stats Container -->
-                <div id="report-screen-stats" style="display: none; gap: 15px; margin-top: 15px;"></div>
+            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px;">
+            <div>
+                <h1
+                    style="margin: 0; font-size: 1.5rem; font-weight: 900; color: #0f172a; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px;">
+                    Reportes
+                </h1>
+                <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.85rem; font-weight: 600;">Auditoría y
+                    Recaudación Financiera</p>
             </div>
 
             <!-- Global Action Bar -->
-            <div style="display: flex; gap: 6px; align-items: center;">
-                <!-- Financial OK -->
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button class="btn-primary" onclick="app.modules.payments.loadAdvancedFinancialReport()"
-                    style="height: 28px; padding: 0 12px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; background: #6366f1; color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                    <i class="fas fa-chart-pie"></i> ANALIZAR FINANZAS
+                    style="height: 40px; padding: 0 20px; border-radius: 10px; font-size: 0.85rem; font-weight: 800; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);">
+                    <i class="fas fa-chart-pie"></i> ANALIZAR
                 </button>
 
-                <!-- Audit LISTAR -->
                 <button class="btn-primary" onclick="app.modules.payments.loadClientsStatusReport()"
-                    style="height: 28px; padding: 0 12px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; background: #10b981; color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                    <i class="fas fa-list-ul"></i> GENERAR LISTADO
+                    style="height: 40px; padding: 0 20px; border-radius: 10px; font-size: 0.85rem; font-weight: 800; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
+                    <i class="fas fa-list-ul"></i> LISTAR
                 </button>
 
-                <!-- Print Button -->
-                <button class="btn-secondary" onclick="window.print()"
-                    style="height: 28px; padding: 0 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; display: flex; align-items: center; gap: 5px; transition: all 0.2s;">
-                    <i class="fas fa-print"></i> Imprimir
+                <button class="btn-secondary" onclick="window.print()" title="Imprimir Reporte"
+                    style="height: 40px; width: 40px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; font-size: 1rem; font-weight: 700; background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; cursor: pointer;">
+                    <i class="fas fa-print"></i>
                 </button>
             </div>
         </div>
 
-        <!-- Toolbar Section (Filters only) -->
-        <div class="clients-toolbar" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+
+        <!-- Toolbar Section (Filters) -->
+        <div class="reports-toolbar-premium"
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
 
             <!-- Global Filters (Router) -->
-            <div class="filter-item"
-                style="flex: 1.2; min-width: 150px; background: #f8fafc; padding: 4px 10px; border-radius: 8px; border: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px;">
-                <label style="white-space: nowrap; font-weight: 850; color: #475569; text-transform: uppercase;">
-                    <i class="fas fa-server"></i> Router:
-                </label>
+            <div class="filter-item-premium" style="display: flex; flex-direction: column; gap: 6px;">
+                <label
+                    style="font-size: 0.75rem; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;"><i
+                        class="fas fa-server" style="margin-right: 4px; color: #64748b;"></i> Router:</label>
                 <select id="report-router-id" class="select-premium"
-                    style="flex: 1; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
-                    <option value="">TODOS (Gen)</option>
+                    style="width: 100%; height: 42px; border-radius: 10px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 0.9rem; font-weight: 600; color: #0f172a; padding: 0 12px; cursor: pointer; transition: all 0.2s; outline: none;">
+                    <option value="">TODOS LOS ROUTERS</option>
                 </select>
             </div>
 
             <!-- Financial Analysis Control -->
-            <div class="filter-item"
-                style="flex: 1; min-width: 150px; background: #f8fafc; padding: 4px 10px; border-radius: 8px; border: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px;">
-                <label style="white-space: nowrap; font-weight: 850; color: #6366f1; text-transform: uppercase;">
-                    <i class="fas fa-calendar-alt"></i> Periodo:
-                </label>
+            <div class="filter-item-premium" style="display: flex; flex-direction: column; gap: 6px;">
+                <label
+                    style="font-size: 0.75rem; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;"><i
+                        class="fas fa-calendar-alt" style="margin-right: 4px; color: #64748b;"></i> Periodo:</label>
                 <select id="report-financial-period" class="select-premium"
-                    style="flex: 1; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                    style="width: 100%; height: 42px; border-radius: 10px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 0.9rem; font-weight: 600; color: #0f172a; padding: 0 12px; cursor: pointer; transition: all 0.2s; outline: none;">
                     <option value="annual" selected>Balance Anual</option>
                     <option value="semester">Semestral</option>
                     <option value="quarter">Trimestral</option>
                 </select>
             </div>
 
-            <!-- Auditor Lists Control -->
-            <div class="filter-item"
-                style="flex: 2; min-width: 250px; background: #f8fafc; padding: 4px 10px; border-radius: 8px; border: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px;">
-                <label style="white-space: nowrap; font-weight: 850; color: #10b981; text-transform: uppercase;">
-                    <i class="fas fa-filter"></i> Auditoría:
-                </label>
-                <div style="display: flex; gap: 5px; align-items: center; flex: 1;">
-                    <select id="report-client-type" class="select-premium"
-                        style="flex: 1.5; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
-                        <option value="paid">Día</option>
-                        <option value="missing">Faltas</option>
-                        <option value="debtors" selected>Morosos</option>
-                        <option value="deleted">Papelera</option>
-                    </select>
+            <!-- Auditor Lists Control (Audit Type) -->
+            <div class="filter-item-premium" style="display: flex; flex-direction: column; gap: 6px;">
+                <label
+                    style="font-size: 0.75rem; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;"><i
+                        class="fas fa-filter" style="margin-right: 4px; color: #64748b;"></i> Auditoría:</label>
+                <select id="report-client-type" class="select-premium"
+                    style="width: 100%; height: 42px; border-radius: 10px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 0.9rem; font-weight: 600; color: #0f172a; padding: 0 12px; cursor: pointer; transition: all 0.2s; outline: none;">
+                    <option value="paid">Día (Al corriente)</option>
+                    <option value="missing">Faltas (Sin pago)</option>
+                    <option value="debtors" selected>Morosos (Deudores)</option>
+                    <option value="deleted">Papelera (Eliminados)</option>
+                </select>
+            </div>
+
+            <!-- Date Controls -->
+            <div class="filter-item-premium" style="display: flex; flex-direction: column; gap: 6px;">
+                <label
+                    style="font-size: 0.75rem; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;"><i
+                        class="fas fa-clock" style="margin-right: 4px; color: #64748b;"></i> Fecha Auditoría:</label>
+                <div style="display: flex; gap: 6px; width: 100%;">
                     <select id="report-audit-day" class="select-premium"
-                        style="width: 55px; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                        style="width: 65px; min-width: 0; height: 42px; border-radius: 10px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 0.85rem; font-weight: 600; color: #0f172a; padding: 0 4px; cursor: pointer; text-align: center; outline: none;">
                         <option value="">Hoy</option>
                         <option value="1">1</option>
                         <option value="2">2</option>
@@ -202,7 +203,7 @@
                         <option value="31">31</option>
                     </select>
                     <select id="report-audit-month" class="select-premium"
-                        style="flex: 1; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
+                        style="flex: 1; min-width: 0; height: 42px; border-radius: 10px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 0.85rem; font-weight: 600; color: #0f172a; padding: 0 4px; cursor: pointer; outline: none;">
                         <option value="1">Ene</option>
                         <option value="2">Feb</option>
                         <option value="3">Mar</option>
@@ -217,10 +218,10 @@
                         <option value="12">Dic</option>
                     </select>
                     <select id="report-audit-year" class="select-premium"
-                        style="width: 70px; border-radius: 6px; border: 1px solid #e2e8f0; font-weight: 700;">
-                        <option value="2024">24</option>
-                        <option value="2025">25</option>
-                        <option value="2026" selected>26</option>
+                        style="width: 75px; min-width: 0; height: 42px; border-radius: 10px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 0.85rem; font-weight: 600; color: #0f172a; padding: 0 4px; cursor: pointer; outline: none;">
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026" selected>2026</option>
                     </select>
                 </div>
             </div>
@@ -258,11 +259,16 @@
         <div id="report-data-content" style="display: none;">
             <div id="report-table-header" style="margin-bottom: 15px;"></div>
 
-            <div class="table-responsive-premium">
+            <div id="report-table-view" class="table-responsive-premium">
                 <table class="premium-table" id="report-data-table" style="width: 100%; border-collapse: collapse;">
                     <thead id="report-table-head"></thead>
                     <tbody id="report-table-body"></tbody>
                 </table>
+            </div>
+
+            <div id="report-cards-grid" class="cards-grid-premium"
+                style="display: none; grid-template-columns: 1fr; gap: 12px;">
+                <!-- Cards rendered by JS -->
             </div>
 
             <div id="report-footer-stats" style="margin-top: 20px; padding-top: 15px;"></div>

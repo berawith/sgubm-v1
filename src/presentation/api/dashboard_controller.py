@@ -2,9 +2,11 @@
 Dashboard API Controller
 Endpoints con DATOS REALES de la base de datos
 """
-from flask import Blueprint, jsonify, render_template
+from flask import Blueprint, jsonify, render_template, g, request
 from datetime import datetime, timedelta
 from src.infrastructure.database.db_manager import get_db
+from src.infrastructure.database.models import Router, Client
+from src.application.services.auth import login_required, UserRole
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,25 +24,80 @@ def index():
 
 
 @dashboard_bp.route('/api/dashboard/stats')
+@login_required
 def get_stats():
     """
     Retorna estadísticas generales del sistema - DATOS REALES
+    Filtrado por rol (RBAC)
     """
     db = get_db()
     router_repo = db.get_router_repository()
     client_repo = db.get_client_repository()
     payment_repo = db.get_payment_repository()
     
-    # Obtener routers
-    routers = router_repo.get_all()
+    user = g.user
+    
+    # Obtener routers filtrados por alcance del usuario
+    is_restricted_role = user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]
+    
+    # Soporte para filtro por router_id en el query string (frecuente en el frontend)
+    requested_router_id = request.args.get('router_id')
+    try:
+        requested_router_id = int(requested_router_id) if requested_router_id else None
+    except (ValueError, TypeError):
+        requested_router_id = None
+
+    if is_restricted_role:
+        # Combinar router legacy + nuevos assignments
+        assigned_router_ids = set()
+        
+        # If the user has explicitly defined router assignments (Multi-router feature), use ONLY those.
+        has_assignments = hasattr(user, 'assignments') and len(user.assignments) > 0
+        
+        if has_assignments:
+            for assignment in user.assignments:
+                assigned_router_ids.add(assignment.router_id)
+        elif user.assigned_router_id:
+            assigned_router_ids.add(user.assigned_router_id)
+            
+        allowed_router_ids = list(assigned_router_ids)
+        
+        # Si pide un router específico, validar que tenga acceso
+        if requested_router_id:
+            if requested_router_id in allowed_router_ids:
+                router_ids = [requested_router_id]
+            else:
+                # No tiene acceso al router solicitado
+                router_ids = []
+        else:
+            router_ids = allowed_router_ids
+            
+        if router_ids:
+            routers = router_repo.session.query(Router).filter(Router.id.in_(router_ids)).all()
+        else:
+            routers = []
+    else:
+        # Administrador: puede filtrar por cualquier router o ver todos
+        if requested_router_id:
+            routers = [router_repo.get_by_id(requested_router_id)]
+            routers = [r for r in routers if r]
+        else:
+            routers = router_repo.get_all()
+        
+    router_ids = [r.id for r in routers]
+        
     # Comparación robusta status (String)
     routers_online = [r for r in routers if str(r.status).lower() == 'online']
     routers_offline = [r for r in routers if str(r.status).lower() == 'offline']
     routers_warning = [r for r in routers if str(r.status).lower() == 'warning']
     
-    # Obtener todos los clientes de la BD de una sola vez
+    # Obtener clientes
     clients_raw = client_repo.get_all()
     
+    # Filtrar clientes por zona si tiene acceso restringido
+    if is_restricted_role:
+        clients_raw = [c for c in clients_raw if c.router_id in router_ids]
+        
     # Índices para calcular todo en una sola pasada
     total_clients = 0
     active_clients = 0
@@ -66,15 +123,16 @@ def get_stats():
         if status == 'active':
             active_clients += 1
             projected_revenue += (c.monthly_fee or 0)
+            
+            # Conectividad SÓLO para activos
+            if c.is_online:
+                online_clients += 1
+            else:
+                offline_clients += 1
         elif status == 'suspended':
             suspended_clients += 1
         elif status == 'inactive':
             inactive_clients += 1
-            
-        if c.is_online:
-            online_clients += 1
-        else:
-            offline_clients += 1
             
         balance = (c.account_balance or 0)
         if balance <= 0:
@@ -87,7 +145,14 @@ def get_stats():
     today = datetime.now()
     month_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     month_end = today
-    revenue = payment_repo.get_total_by_date_range(month_start, month_end)
+    
+    # Filtrar revenue por routers asignados si restringido O si se solicitó uno específico
+    should_filter_revenue = is_restricted_role or requested_router_id
+    revenue = payment_repo.get_total_by_date_range(
+        month_start, 
+        month_end, 
+        router_ids=router_ids if should_filter_revenue else None
+    )
     
     # Calcular uptime promedio
     uptime_values = []
@@ -126,6 +191,7 @@ def get_stats():
 
 
 @dashboard_bp.route('/api/activity/recent')
+@login_required
 def get_recent_activity():
     """
     Retorna actividad reciente del sistema - DATOS REALES
@@ -136,12 +202,35 @@ def get_recent_activity():
         client_repo = db.get_client_repository()
         router_repo = db.get_router_repository()
         
+        user = g.user
+        
         activities = []
         
         # Últimos pagos
         try:
-            recent_payments = payment_repo.get_all(limit=5)
+            recent_payments = payment_repo.get_all(limit=50) # Aumentar para filtrar
+            added_payments = 0
+            
+            is_restricted_role = user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]
+            
+            allowed_router_ids = set()
+            if is_restricted_role:
+                has_assignments = hasattr(user, 'assignments') and len(user.assignments) > 0
+                
+                if has_assignments:
+                    for a in user.assignments:
+                        allowed_router_ids.add(a.router_id)
+                elif user.assigned_router_id:
+                    allowed_router_ids.add(user.assigned_router_id)
+            
             for payment in recent_payments:
+                if is_restricted_role and allowed_router_ids:
+                    if not payment.client or payment.client.router_id not in allowed_router_ids:
+                        continue
+                        
+                if added_payments >= 5:
+                    break
+                    
                 if payment and payment.payment_date:
                     time_diff = datetime.now() - payment.payment_date
                     
@@ -152,12 +241,17 @@ def get_recent_activity():
                         'message': f"Pago recibido: {client_name} - ${payment.amount:.2f}",
                         'timestamp': payment.payment_date.isoformat()
                     })
+                    added_payments += 1
         except Exception as e:
             print(f"Error loading payments: {e}")
         
         # Clientes suspendidos recientemente
         try:
             suspended_clients = client_repo.get_by_status('suspended')
+            
+            if is_restricted_role and allowed_router_ids:
+                suspended_clients = [c for c in suspended_clients if c.router_id in allowed_router_ids]
+                
             for client in suspended_clients[:3]:
                 if client and client.updated_at:
                     time_diff = datetime.now() - client.updated_at

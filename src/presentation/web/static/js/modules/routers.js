@@ -635,6 +635,41 @@ export class RoutersModule {
         }
     }
 
+    async deleteRouter(routerId) {
+        if (!confirm('¿Está seguro de que desea eliminar este router? Esta acción no se puede deshacer.')) {
+            return;
+        }
+
+        const btn = document.querySelector(`button[onclick="app.modules.routers.deleteRouter(${routerId})"]`);
+        const originalContent = btn ? btn.innerHTML : '';
+
+        if (btn) {
+            btn.innerHTML = '<div class="spinner-mini"></div>';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+        }
+
+        try {
+            await this.api.delete(`/api/routers/${routerId}`);
+            alert('Router eliminado correctamente');
+            await this.loadRouters();
+        } catch (error) {
+            console.error('Error deleting router:', error);
+
+            let msg = error.message;
+            if (error.response && error.response.data && error.response.data.message) {
+                msg = error.response.data.message;
+            }
+            alert(`Error al eliminar router: ${msg}`);
+
+            if (btn) {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        }
+    }
+
     /**
      * Formats an input value with thousands separators while typing
      */

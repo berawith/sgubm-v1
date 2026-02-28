@@ -51,7 +51,7 @@
                         <path d="M12 8V16" />
                     </svg>
                 </div>
-                <h2>Super Agente SGUBM</h2>
+                <h2>Super Agente SGUB</h2>
                 <p>La inteligencia artificial está lista. Seleccione un hilo de conversación para supervisar.</p>
             </div>
 
@@ -744,6 +744,8 @@
 
             <div class="form-group" style="margin-bottom: 15px;">
                 <label>Gemini API Key</label>
+                <!-- Campo de usuario oculto para accesibilidad y gestores de contraseñas -->
+                <input type="text" name="username" value="whatsapp_agent" style="display:none;" autocomplete="username">
                 <input type="password" id="config-gemini-key" class="form-control-quantum" placeholder="sk-..."
                     autocomplete="current-password">
             </div>

@@ -286,8 +286,10 @@ export class MetricsModule {
         }
 
         // Set basic data
-        document.getElementById('metrics-target-name').textContent = client.legal_name || 'Desconocido';
-        document.getElementById('metrics-target-type').textContent = `CLIENTE: ${client.ip_address || 'Sin IP'} - ${client.service_type || 'N/A'}`;
+        const nameEl = document.getElementById('metrics-target-name');
+        const typeEl = document.getElementById('metrics-target-type');
+        if (nameEl) nameEl.textContent = client.legal_name || 'Desconocido';
+        if (typeEl) typeEl.textContent = `CLIENTE: ${client.ip_address || 'Sin IP'} - ${client.service_type || 'N/A'}`;
 
         // Limpiar widgets live por defecto hasta recibir datos
         const liveContainer = document.getElementById('metrics-live-consumption');
@@ -298,7 +300,8 @@ export class MetricsModule {
         }
 
         const now = new Date();
-        document.getElementById('metrics-last-sync').textContent = now.toLocaleTimeString();
+        const lastSyncEl = document.getElementById('metrics-last-sync');
+        if (lastSyncEl) lastSyncEl.textContent = now.toLocaleTimeString();
 
         // Limpiar gráfico previo visualmente
         this.renderTrafficChart([], false);
@@ -344,9 +347,13 @@ export class MetricsModule {
     }
 
     updateIntelligencePanel(intel) {
-        document.getElementById('metrics-profile').textContent = intel.user_profile || 'Normal';
-        document.getElementById('metrics-estimated-gb').textContent = (intel.predicted_monthly_gb || 0) + ' GB';
-        document.getElementById('metrics-peak-hour').textContent = intel.peak_hour || '--:--';
+        const profileEl = document.getElementById('metrics-profile');
+        const estimatedEl = document.getElementById('metrics-estimated-gb');
+        const peakEl = document.getElementById('metrics-peak-hour');
+
+        if (profileEl) profileEl.textContent = intel.user_profile || 'Normal';
+        if (estimatedEl) estimatedEl.textContent = (intel.predicted_monthly_gb || 0) + ' GB';
+        if (peakEl) peakEl.textContent = intel.peak_hour || '--:--';
 
         const recomEl = document.getElementById('metrics-ai-recommendation');
         if (recomEl) {

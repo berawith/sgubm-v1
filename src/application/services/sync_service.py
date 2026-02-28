@@ -82,13 +82,14 @@ class SyncService:
         finally:
             session.close()
     
-    def sync_router_operations(self, router_id: int, router_dict: Dict) -> Dict:
+    def sync_router_operations(self, router_id: int, router_dict: Dict, shared_adapter: MikroTikAdapter = None) -> Dict:
         """
         Sincroniza todas las operaciones pendientes de un router
         
         Args:
             router_id: ID del router
             router_dict: Diccionario con datos del router para conexión
+            shared_adapter: Adaptador ya conectado (opcional)
             
         Returns:
             Dict con estadísticas de sincronización
@@ -96,27 +97,29 @@ class SyncService:
         operations = self.get_pending_operations(router_id)
         
         if not operations:
-            logger.info(f"📭 No hay operaciones pendientes para router {router_id}")
             return {'total': 0, 'completed': 0, 'failed': 0}
         
-        logger.info(f"🔄 Sincronizando {len(operations)} operaciones pendientes para router {router_id}")
-        
-        adapter = None
+        adapter = shared_adapter
         completed = 0
         failed = 0
         session = self.db.session
         
         try:
-            adapter = MikroTikAdapter()
-            connected = adapter.connect(
-                host=router_dict.get('ip_address') or router_dict.get('host'),
-                username=router_dict.get('username'),
-                password=router_dict.get('password'),
-                port=router_dict.get('api_port') or router_dict.get('port', 8728)
-            )
-            
-            if not connected:
-                raise ConnectionError(f"Could not connect to router {router_id}")
+            # Solo conectar si no se proporcionó un adaptador compartido
+            if not adapter:
+                logger.info(f"🔌 Abriendo nueva conexión para sincronización router {router_id}")
+                adapter = MikroTikAdapter()
+                connected = adapter.connect(
+                    host=router_dict.get('ip_address') or router_dict.get('host'),
+                    username=router_dict.get('username'),
+                    password=router_dict.get('password'),
+                    port=router_dict.get('api_port') or router_dict.get('port', 8728)
+                )
+                
+                if not connected:
+                    raise ConnectionError(f"Could not connect to router {router_id}")
+            else:
+                logger.debug(f"♻️ Reutilizando conexión activa para sincronización router {router_id}")
             
             for op in operations:
                 try:
@@ -189,7 +192,7 @@ class SyncService:
             logger.error(f"❌ Error conectando al router para sincronización: {e}")
             
         finally:
-            if adapter:
+            if adapter and not shared_adapter:
                 adapter.disconnect()
             session.close()
         

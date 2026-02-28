@@ -70,7 +70,9 @@ class ExpenseService:
             'category': data.get('category', 'variable'),
             'notes': data.get('notes', ''),
             'is_recurring': data.get('is_recurring', False),
-            'created_by': data.get('created_by', 'admin')
+            'created_by': data.get('created_by', 'admin'),
+            'router_id': int(data['router_id']) if data.get('router_id') else None,
+            'user_id': int(data['user_id']) if data.get('user_id') else None
         }
         
         # El repositorio ya calcula el hash en su método .create()

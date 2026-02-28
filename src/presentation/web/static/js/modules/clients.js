@@ -16,11 +16,13 @@ export class ClientsModule {
             routerId: '',
             status: 'all',
             planId: '',
+            collectorId: '',
             search: '',
             financialStatus: 'all' // 'all', 'morosos', 'paid'
         };
 
         this.socketInitialized = false;
+        this.trafficCache = {}; // Cache for real-time traffic values {clientId: {up, down}}
         this.importSort = { column: '', direction: 'asc' };
         this.sortState = { column: 'id', direction: 'asc' };
         this.trashState = { search: '', clients: [], selectedIds: new Set(), sort: { column: 'updated_at', direction: 'desc' } };
@@ -29,8 +31,15 @@ export class ClientsModule {
         this.currentPage = 1;
         this.pageSize = 50;
         this.totalFiltered = 0;
+        this.selectedIds = new Set();
 
-        // DOM Cache
+        // Online Status & Cache
+        this.onlineStatusMap = {};
+        this.trafficCache = {};
+        this.trafficBuffer = {};
+        this.lastTrafficUpdate = 0;
+
+        // Monitoring
         this.rowCache = new Map();
 
 
@@ -65,11 +74,23 @@ export class ClientsModule {
         this.lastTrafficUpdate = 0;
         this.trafficUpdateInterval = 1000;
 
+        // REAL-TIME DATA REFRESH (SI EL EVENTO ES DE CLIENTE)
+        this.eventBus.subscribe('data_refresh', (data) => {
+            if (this.viewManager.currentSubView === 'clients' || this.viewManager.currentSubView === 'clients-list') {
+                if (data.event_type && data.event_type.startsWith('client.')) {
+                    console.log(`♻️ Real-time: Refreshing clients list due to ${data.event_type}`);
+                    // Throttled refresh to prevent blinking if many events arrive
+                    if (this._refreshTimeout) clearTimeout(this._refreshTimeout);
+                    this._refreshTimeout = setTimeout(() => this.loadClients(), 300);
+                }
+            }
+        });
+
         // Mobile View Detection
-        this.isMobile = window.innerWidth < 1024;
+        this.isMobile = window.innerWidth < 1100;
         window.addEventListener('resize', () => {
             const wasMobile = this.isMobile;
-            this.isMobile = window.innerWidth < 1024;
+            this.isMobile = window.innerWidth < 1100;
             if (wasMobile !== this.isMobile && (this.viewManager.currentSubView === 'clients' || this.viewManager.currentSubView === 'clients-list')) {
                 this.renderClients();
             }
@@ -78,20 +99,39 @@ export class ClientsModule {
         console.log('👥 Clients Module initialized');
     }
 
-    async load() {
-        console.log('👥 Loading Clients List...');
-        this.viewManager.showSubView('clients');
+    async load(params = {}) {
+        console.log('👥 Loading Clients List...', params);
 
         const tbody = document.getElementById('clients-table-body');
         if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading-cell"><div class="spinner"></div><p>Cargando Clientes...</p></td></tr>';
 
         try {
-            await Promise.all([this.loadRouters(), this.loadPlans()]);
+            await Promise.all([this.loadRouters(), this.loadPlans(), this.loadCollectors()]);
 
-            if (!this.filterState.routerId && this.routers.length > 0) {
+            // Handle external filters from navigation
+            if (params.routerId || params.status || params.financialStatus) {
+                if (params.routerId) this.filterState.routerId = params.routerId;
+                if (params.status) this.filterState.status = params.status;
+                if (params.financialStatus) this.filterState.financialStatus = params.financialStatus;
+
+                // Sync UI select elements
+                const routerSelect = document.getElementById('filter-router');
+                const statusSelect = document.getElementById('filter-status');
+                if (routerSelect) routerSelect.value = this.filterState.routerId;
+                if (statusSelect) statusSelect.value = this.filterState.status;
+
+                this.updatePillActiveState();
+            } else if (!this.filterState.routerId && this.routers.length > 0) {
+                // Default fallback if no params provided
                 this.filterState.routerId = this.routers[0].id;
                 const routerSelect = document.getElementById('filter-router');
                 if (routerSelect) routerSelect.value = this.filterState.routerId;
+            }
+
+            // RBAC: If user is a collector, fix the collector filter to their ID
+            const user = window.app?.authService?.getUser();
+            if (user && (user.role === 'collector' || user.role === 'cobrador')) {
+                this.filterState.collectorId = user.id;
             }
 
             await this.loadClients();
@@ -103,7 +143,6 @@ export class ClientsModule {
 
     async loadClientsImport() {
         console.log('👥 Loading Clients Import View...');
-        this.viewManager.showSubView('clients-import');
 
         this.resetImport('view');
 
@@ -139,7 +178,6 @@ export class ClientsModule {
 
     async loadClientsActions() {
         console.log('⚡ Loading Clients Actions View...');
-        this.viewManager.showSubView('clients-actions');
 
         const tbody = document.getElementById('clients-table-body-actions');
         if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading-cell"><div class="spinner"></div><p>Cargando Clientes...</p></td></tr>';
@@ -173,7 +211,6 @@ export class ClientsModule {
 
     async loadTrash() {
         console.log('🗑️ Loading Clients Trash...');
-        this.viewManager.showSubView('clients-trash');
         this.trashState.selectedIds.clear();
         this.updateTrashSelectionUI();
 
@@ -303,6 +340,9 @@ export class ClientsModule {
                             <button class="action-btn" style="color: #10b981;" onclick="app.modules.clients.restoreClientFromTrash(${c.id})" title="Restaurar al Sistema">
                                 <i class="fas fa-undo"></i>
                             </button>
+                            <button class="action-btn" style="color: #6366f1; background: #eef2ff; border-radius: 8px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s;" onclick="app.modules.clients.openSupportForClient(${c.id})" title="Reportar Falla / Soporte">
+                               <i class="fas fa-headset" style="font-size: 0.9rem;"></i>
+                           </button>
                             <button class="action-btn" style="color: #ef4444;" onclick="app.modules.clients.hardDeleteClient(${c.id})" title="Eliminar Definitivamente">
                                 <i class="fas fa-times-circle"></i>
                             </button>
@@ -412,6 +452,13 @@ export class ClientsModule {
         } catch (e) {
             console.error(e);
             alert('Error al restaurar: ' + e.message);
+        }
+    }
+
+    async openSupportForClient(clientId) {
+        console.log(`🧭 Navigating to support for client ${clientId}`);
+        if (window.app && window.app.modules.navigation) {
+            window.app.modules.navigation.navigateToSubView('clients-support', { client_id: clientId });
         }
     }
 
@@ -556,17 +603,17 @@ export class ClientsModule {
                 </td>
                 <td>
                     ${isPending ?
-                    `<span class="status-badge-table suspended">Pendiente</span>
+                    `<span class="status-badge-table status-badge-fin suspended">Pendiente</span>
                          <div class="debt-amount negative">$${client.account_balance.toLocaleString('es-CO', { minimumFractionDigits: 0 })}</div>` :
-                    `<span class="status-badge-table active">Al día</span>
+                    `<span class="status-badge-table status-badge-fin active">Al día</span>
                          <div class="debt-amount positive">$0</div>`
                 }
                 </td>
                 <td>
                     <div style="display: flex; flex-direction: column; gap: 4px;">
                         <span style="font-size: 0.8rem; font-weight: 700;">${this.formatPlanName(client.plan_name)}</span>
-                        <span class="status-badge-table ${isSuspended ? 'suspended' : 'active'}">
-                            ${isSuspended ? 'Bloqueado' : 'Activo'}
+                        <span class="status-badge-table status-badge-connection ${isSuspended ? 'suspended' : 'active'}">
+                            ${isSuspended ? 'Bloqueado' : (isOnline ? 'Online' : 'Offline')}
                         </span>
                     </div>
                 </td>
@@ -590,11 +637,9 @@ export class ClientsModule {
         const dataset = this.actionsClientsFiltered || [];
 
         const total = dataset.length;
-        const suspended = dataset.filter(c => (c.status || '').toLowerCase() === 'suspended').length;
         const pending = dataset.filter(c => (c.account_balance || 0) > 0).length;
 
         document.getElementById('count-total-actions').textContent = total;
-        document.getElementById('count-suspended-actions').textContent = suspended;
         document.getElementById('count-pending-actions').textContent = pending;
     }
 
@@ -610,45 +655,6 @@ export class ClientsModule {
         } else {
             // Si solo cambiaron otros filtros, refilter sin recargar
             this.filterClientsActions();
-        }
-    }
-
-    onSearchInputActions(value) {
-        if (this.searchTimeoutActions) clearTimeout(this.searchTimeoutActions);
-        this.searchTimeoutActions = setTimeout(() => {
-            this.filterClientsActions();
-        }, 500);
-    }
-
-    toggleSelectAllActions(master) {
-        const checkboxes = document.querySelectorAll('.client-checkbox-actions');
-        checkboxes.forEach(cb => cb.checked = master.checked);
-        this.updateSelectionActions();
-    }
-
-    updateSelectionActions() {
-        const checkboxes = document.querySelectorAll('.client-checkbox-actions:checked');
-        const count = checkboxes.length;
-        const buttonsContainer = document.getElementById('bulk-actions-buttons-actions');
-        const countDisplay = document.getElementById('selected-count-display-actions');
-
-        if (countDisplay) countDisplay.textContent = count;
-
-        const countStat = document.getElementById('count-selected-actions');
-        if (countStat) countStat.textContent = count;
-
-        if (buttonsContainer) {
-            if (count > 0) {
-                // Habilitar botones
-                buttonsContainer.style.opacity = '1';
-                buttonsContainer.style.pointerEvents = 'auto';
-            } else {
-                // Deshabilitar botones
-                buttonsContainer.style.opacity = '0.5';
-                buttonsContainer.style.pointerEvents = 'none';
-                const master = document.getElementById('select-all-clients-actions');
-                if (master) master.checked = false;
-            }
         }
     }
 
@@ -677,7 +683,7 @@ export class ClientsModule {
             if (validClientIds.length < clientIds.length) {
                 const removed = clientIds.length - validClientIds.length;
                 console.warn(`⚠️ Removed ${removed} client(s) that don't belong to selected router`);
-                toast.warning(`Se omitieron ${removed} cliente(s) que no pertenecen al router seleccionado`);
+                if (window.toast) toast.warning(`Se omitieron ${removed} cliente(s) que no pertenecen al router seleccionado`);
             }
 
             return validClientIds;
@@ -691,7 +697,15 @@ export class ClientsModule {
         checkboxes.forEach(cb => cb.checked = false);
         const master = document.getElementById('select-all-clients-actions');
         if (master) master.checked = false;
-        this.updateSelectionActions();
+        const buttonsContainer = document.getElementById('bulk-actions-buttons-actions');
+        if (buttonsContainer) {
+            buttonsContainer.style.opacity = '0.5';
+            buttonsContainer.style.pointerEvents = 'none';
+        }
+        const countDisplay = document.getElementById('selected-count-display-actions');
+        if (countDisplay) countDisplay.textContent = '0';
+        const countStat = document.getElementById('count-selected-actions');
+        if (countStat) countStat.textContent = '0';
     }
 
     async processBulkCashPayment() {
@@ -934,6 +948,39 @@ Esta acción es seria y debe usarse con precaución.`;
         } catch (e) { console.warn("Could not load plans for filter", e); }
     }
 
+    async loadCollectors() {
+        try {
+            const users = await this.api.get('/api/users/collectors');
+            this.collectors = users;
+            this.populateCollectorFilter();
+        } catch (e) {
+            console.error('Error loading collectors for filter:', e);
+        }
+    }
+
+    populateCollectorFilter() {
+        const select = document.getElementById('filter-collector');
+        if (!select) return;
+
+        const user = window.app?.authService?.getUser();
+        const isCollector = user && (user.role === 'collector' || user.role === 'cobrador');
+
+        if (isCollector) {
+            // For collectors, only show themselves and disable selection
+            select.innerHTML = `<option value="${user.id}">${user.username}</option>`;
+            select.value = user.id;
+            select.disabled = true;
+            this.filterState.collectorId = user.id;
+        } else {
+            // For admins, show all collectors
+            const currentVal = select.value || this.filterState.collectorId;
+            select.innerHTML = '<option value="">Todos los Cobradores</option>' +
+                this.collectors.map(c => `<option value="${c.id}">${c.username}</option>`).join('');
+            if (currentVal) select.value = currentVal;
+            select.disabled = false;
+        }
+    }
+
     populateRouterFilter() {
         const select = document.getElementById('filter-router');
         if (!select) return;
@@ -964,12 +1011,17 @@ Esta acción es seria y debe usarse con precaución.`;
         const routerSelect = document.getElementById('filter-router');
         const statusSelect = document.getElementById('filter-status');
         const planSelect = document.getElementById('filter-plan');
+        const collectorSelect = document.getElementById('filter-collector');
         const searchInput = document.getElementById('client-search');
 
         const newRouterId = routerSelect ? routerSelect.value : '';
         const oldRouterId = this.filterState.routerId;
 
+        const newCollectorId = collectorSelect ? collectorSelect.value : '';
+        const oldCollectorId = this.filterState.collectorId;
+
         this.filterState.routerId = newRouterId;
+        this.filterState.collectorId = newCollectorId;
         this.filterState.status = statusSelect ? statusSelect.value : 'all';
         this.filterState.planId = planSelect ? planSelect.value : '';
         if (searchInput) this.filterState.search = searchInput.value;
@@ -979,9 +1031,8 @@ Esta acción es seria y debe usarse con precaución.`;
         // Update active class on pills
         this.updatePillActiveState();
 
-        // If Router changed, we must reload from API (as Router is a server-side scope)
-        // If only local filters changed, just re-filter in memory
-        if (newRouterId !== oldRouterId || !this.allClients) {
+        // If Router or Collector changed, we must reload from API
+        if (newRouterId !== oldRouterId || newCollectorId !== oldCollectorId || !this.allClients) {
             this.loadClients();
         } else {
             this.filterClients();
@@ -992,7 +1043,9 @@ Esta acción es seria y debe usarse con precaución.`;
         const { status, financialStatus } = this.filterState;
 
         // Remove active class from all
-        document.querySelectorAll('.stat-pill').forEach(p => p.classList.remove('active-filter'));
+        document.querySelectorAll('.stat-pill').forEach(p => {
+            if (p && p.classList) p.classList.remove('active-filter');
+        });
 
         let pillId = null;
 
@@ -1013,7 +1066,7 @@ Esta acción es seria y debe usarse con precaución.`;
 
         if (pillId) {
             const pillEl = document.getElementById(pillId)?.parentElement;
-            if (pillEl) pillEl.classList.add('active-filter');
+            if (pillEl && pillEl.classList) pillEl.classList.add('active-filter');
         }
     }
 
@@ -1067,6 +1120,10 @@ Esta acción es seria y debe usarse con precaución.`;
 
             if (this.filterState.routerId) {
                 params.push(`router_id=${this.filterState.routerId}`);
+            }
+
+            if (this.filterState.collectorId) {
+                params.push(`assigned_collector_id=${this.filterState.collectorId}`);
             }
 
             // NOTE: We fetch all statuses so we can calculate totals correctly client-side.
@@ -1176,26 +1233,26 @@ Esta acción es seria y debe usarse con precaución.`;
         const dir = this.sortState.direction === 'asc' ? 1 : -1;
 
         filtered.sort((a, b) => {
-            // Default: Online first if no specific column is active-sorting (except if explicitly sorting by online status)
+            if (!a || !b) return 0; // Stability
+
+            // Default: Online first
             if (!col || col === 'id') {
-                const aStatus = this.onlineStatusMap[a.id];
-                const bStatus = this.onlineStatusMap[b.id];
+                const aStatus = (this.onlineStatusMap || {})[a.id];
+                const bStatus = (this.onlineStatusMap || {})[b.id];
                 const aOnline = (aStatus === 'online' || aStatus === 'detected_no_queue');
                 const bOnline = (bStatus === 'online' || bStatus === 'detected_no_queue');
                 if (aOnline && !bOnline) return -1;
                 if (!aOnline && bOnline) return 1;
-                if (col === 'id') return (a.id - b.id) * dir;
-                return a.id - b.id; // Stability
+                if (col === 'id') return (parseInt(a.id) - parseInt(b.id)) * dir;
+                return parseInt(a.id) - parseInt(b.id);
             }
 
             let valA = a[col];
             let valB = b[col];
 
-            // Special case for legal_name (case insensitive)
+            // Special case for legal_name
             if (col === 'legal_name') {
-                valA = (valA || '').toString().toLowerCase();
-                valB = (valB || '').toString().toLowerCase();
-                return valA.localeCompare(valB) * dir;
+                return (String(valA || '')).localeCompare(String(valB || ''), undefined, { numeric: true, sensitivity: 'base' }) * dir;
             }
 
             // Special case for IP
@@ -1212,11 +1269,18 @@ Esta acción es seria y debe usarse con precaución.`;
                 return ((valA || 0) - (valB || 0)) * dir;
             }
 
-            // Generic string/number sort
-            if (typeof valA === 'string') {
-                return valA.localeCompare(valB || '') * dir;
+            // Special case for status/state
+            if (col === 'status') {
+                const aStatus = (this.onlineStatusMap || {})[a.id] || 'offline';
+                const bStatus = (this.onlineStatusMap || {})[b.id] || 'offline';
+                return aStatus.localeCompare(bStatus) * dir;
             }
-            return ((valA || 0) - (valB || 0)) * dir;
+
+            // Generic string/number sort
+            if (typeof valA === 'string' || typeof valB === 'string') {
+                return (String(valA || '')).localeCompare(String(valB || ''), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+            }
+            return ((parseFloat(valA) || 0) - (parseFloat(valB) || 0)) * dir;
         });
 
         this.totalFiltered = filtered.length;
@@ -1232,38 +1296,91 @@ Esta acción es seria y debe usarse con precaución.`;
         this.updateStaticStats();
         this.updatePillActiveState();
         this.populateBulkPlans();
-
-        // IMPORTANT: We do NOT re-populate plan filter here to avoid shrinking the dropdown options while filtering.
-        // We only populate it once on load or if specifically refreshed.
     }
 
-    toggleSelectAll(master) {
-        const checkboxes = document.querySelectorAll('.client-checkbox');
-        checkboxes.forEach(cb => cb.checked = master.checked);
+    sortClients(column) {
+        console.log('🔄 Sorting clients by:', column);
+        if (this.sortState.column === column) {
+            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortState.column = column;
+            this.sortState.direction = 'asc';
+        }
+
+        // Update UI headers
+        document.querySelectorAll('.premium-data-table th.sortable').forEach(th => {
+            if (th.classList) {
+                th.classList.remove('active');
+                th.classList.remove('active-sort');
+            }
+            const icon = th.querySelector('.sort-icon');
+            if (icon) icon.className = 'fas fa-sort sort-icon';
+
+            // Re-match header by data-sort attribute (Template uses both)
+            if (th.dataset.sort === column) {
+                if (th.classList) {
+                    th.classList.add('active');
+                    th.classList.add('active-sort');
+                }
+                if (icon) {
+                    icon.className = this.sortState.direction === 'asc' ? 'fas fa-sort-up sort-icon' : 'fas fa-sort-down sort-icon';
+                }
+            }
+        });
+
+        this.filterClients();
+    }
+
+    toggleSelectAll(input) {
+        if (!this.clients) return;
+        const isChecked = (typeof input === 'boolean') ? input : input.checked;
+
+        // Mark all CURRENT PAGE clients
+        this.clients.forEach(c => {
+            if (isChecked) this.selectedIds.add(parseInt(c.id));
+            else this.selectedIds.delete(parseInt(c.id));
+        });
+
+        // Sync DOM
+        document.querySelectorAll('.client-checkbox').forEach(cb => {
+            if (cb) cb.checked = isChecked;
+        });
+
+        this.updateSelection();
+    }
+
+    toggleClientSelection(checkbox, clientId) {
+        if (checkbox.checked) {
+            this.selectedIds.add(clientId);
+        } else {
+            this.selectedIds.delete(clientId);
+        }
         this.updateSelection();
     }
 
     updateSelection() {
-        const checkboxes = document.querySelectorAll('.client-checkbox:checked');
-        const count = checkboxes.length;
+        const count = this.selectedIds.size;
         const bar = document.getElementById('bulk-actions-bar');
         const label = document.getElementById('selected-count-label');
 
         if (label) label.textContent = count;
 
-        if (count > 0) {
-            bar.classList.add('active');
-        } else {
-            bar.classList.remove('active');
-            const master = document.getElementById('select-all-clients');
-            if (master) master.checked = false;
+        if (bar && bar.classList) {
+            if (count > 0) {
+                bar.classList.add('active');
+            } else {
+                bar.classList.remove('active');
+                const master = document.getElementById('client-select-all');
+                if (master) master.checked = false;
+            }
         }
     }
 
     clearSelection() {
+        this.selectedIds.clear();
         const checkboxes = document.querySelectorAll('.client-checkbox');
         checkboxes.forEach(cb => cb.checked = false);
-        const master = document.getElementById('select-all-clients');
+        const master = document.getElementById('client-select-all');
         if (master) master.checked = false;
         this.updateSelection();
     }
@@ -1318,6 +1435,7 @@ Esta acción es seria y debe usarse con precaución.`;
 
     async applyBulkPlan() {
         const select = document.getElementById('bulk-plan-select');
+        if (!select) return;
         const planId = select.value;
         if (!planId) {
             toast.warning('Por favor seleccione un plan');
@@ -1355,11 +1473,22 @@ Esta acción es seria y debe usarse con precaución.`;
 
         const tbody = document.getElementById('clients-table-body');
         const cardGrid = document.getElementById('clients-cards-grid');
+        const tableView = document.getElementById('clients-table-view');
 
         // Safety check for mobile detection
-        this.isMobile = window.innerWidth < 1024;
+        this.isMobile = window.innerWidth < 1100;
 
-        // Initialize onlineStatusMap for all clients to avoid undefined if socket hasn't emitted yet
+        // Pre-compute RBAC flags (read once, used in every row render)
+        const user = window.app?.authService?.getUser();
+        const role = (user?.role || '').toLowerCase();
+        const isAdmin = role === 'admin' || role === 'superuser' || role === 'administradora';
+
+        const _rp = window.RBAC_PERMS || {};
+        const clientPerms = _rp['clients:list'] || {};
+
+        const canEdit = isAdmin || clientPerms.can_edit === true;
+        const canDelete = isAdmin || clientPerms.can_delete === true;
+
         const onlineMap = this.onlineStatusMap || {};
         this.clients.forEach(c => {
             if (onlineMap[c.id] === undefined) {
@@ -1367,187 +1496,273 @@ Esta acción es seria y debe usarse con precaución.`;
             }
         });
 
-        const html = this.clients.map(client => {
-            if (!client) return '';
-            // Logic for status and colors
-            const isOnline = onlineMap[client.id] === 'online';
-            const isDeleted = (client.status || '').toLowerCase() === 'deleted';
-            const isSuspended = (client.status || '').toLowerCase() === 'suspended';
-
-            let statusColor = 'grey';
-            let statusLabel = isOnline ? 'Online' : 'Offline';
-
-            if (isDeleted) {
-                statusColor = 'cortado';
-                statusLabel = 'Eliminado';
-            } else if (isSuspended) {
-                statusColor = 'suspended';
-                statusLabel = 'Suspendido';
-            } else if (isOnline) {
-                statusColor = 'active';
-            }
-
-            if (this.isMobile) {
-                // Card View (Mobile)
-                const avatarChar = (client.legal_name || '?').charAt(0).toUpperCase();
-                const balance = client.account_balance || 0;
-                const isPositive = balance <= 0;
-                const balanceText = Math.abs(balance).toLocaleString('es-CO');
-
-                return `
-                <div class="client-card-mobile" data-client-id="${client.id}">
-                    <div class="card-mobile-header">
-                        <div class="card-mobile-client-info">
-                            <div class="card-mobile-avatar">${avatarChar}</div>
-                            <div class="card-mobile-name-group">
-                                <span class="card-mobile-name">${client.legal_name}</span>
-                                <span class="card-mobile-code">${client.subscriber_code || '---'}</span>
-                            </div>
-                        </div>
-                        <div class="card-mobile-status">
-                            <span class="status-badge-table ${statusColor}" style="margin: 0;">${statusLabel}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="card-mobile-body">
-                        <div class="card-mobile-data-item">
-                            <span class="data-item-label">Conexión</span>
-                            <span class="data-item-value">${client.ip_address || '---'}</span>
-                        </div>
-                        <div class="card-mobile-data-item">
-                            <span class="data-item-label">Plan</span>
-                            <span class="data-item-value">${this.formatPlanName(client.plan_name)}</span>
-                        </div>
-                        <div class="card-mobile-data-item">
-                            <span class="data-item-label">Router</span>
-                            <span class="data-item-value">${client.router || '---'}</span>
-                        </div>
-                        <div class="card-mobile-data-item">
-                            <span class="data-item-label">Balance</span>
-                            <span class="data-item-value ${isPositive ? 'ok' : 'debt'}">$${balanceText}</span>
-                        </div>
-                        
-                        <!-- Tráfico reubicado al cuerpo de la tarjeta (Recuadro Rojo) -->
-                        <div class="card-mobile-data-item" style="grid-column: span 2; background: rgba(255,255,255,0.5); padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.05); margin-top: 4px;">
-                            <span class="data-item-label" style="margin-bottom: 4px;">Tráfico en Vivo</span>
-                            <div class="card-mobile-traffic" style="font-family: monospace; font-size: 0.95rem; font-weight: 700; display: flex; gap: 20px; align-items: center;">
-                                <div style="color: #10b981; display: flex; align-items: center; gap: 6px;">
-                                    <i class="fas fa-upload"></i> <span class="val-up">0K</span>
-                                </div>
-                                <div style="color: #3b82f6; display: flex; align-items: center; gap: 6px;">
-                                    <i class="fas fa-download"></i> <span class="val-down">0K</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="card-mobile-footer" style="display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px dashed rgba(0,0,0,0.1);">
-                        <div class="card-mobile-actions">
-                            <button class="mobile-action-btn more" onclick="app.modules.clients.showMobileActionMenu(${client.id})" style="background: #f1f5f9; color: #475569; border-radius: 8px; width: 44px; height: 44px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                <i class="fas fa-ellipsis-h" style="font-size: 1.2rem;"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>`;
-            } else {
-                // Table View (Desktop)
-                return `
-                <tr data-client-id="${client.id}">
-                    <td><input type="checkbox" class="client-checkbox" value="${client.id}" onclick="app.modules.clients.updateSelection()"></td>
-                    <td style="font-size: 0.75rem; color: #94a3b8; font-weight: 700;">#${client.id}</td>
-                    <td>
-                        <div class="client-name-cell">
-                            <div class="client-avatar">${(client.legal_name || '?').charAt(0).toUpperCase()}</div>
-                            <div class="client-info">
-                                <span class="client-real-name">${client.legal_name}</span>
-                                <span class="client-code">${client.subscriber_code || '---'}</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td>
-                        <div class="ip-display">${client.ip_address || 'Sin IP'}</div>
-                        <span class="credential-text">${client.mac_address || ''}</span>
-                    </td>
-                    <td>
-                        <div style="font-weight: 600;">${client.router ? client.router.substring(0, 15) : '---'}</div>
-                        <div style="font-size: 0.75rem; color: #64748b;">${client.zone || ''}</div>
-                    </td>
-                    <td>
-                        <div style="display: flex; flex-direction: column; gap: 4px;">
-                            ${(client.account_balance || 0) > 0 ?
-                        `<span class="status-badge-table suspended">Pendiente</span>
-                                 <div class="debt-amount negative">$${client.account_balance.toLocaleString('es-CO', { minimumFractionDigits: 0 })}</div>` :
-                        `<span class="status-badge-table active">Al día</span>
-                                 <div class="debt-amount positive">$${Math.abs(client.account_balance || 0).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</div>`
-                    }
-                        </div>
-                    </td>
-                    <td>
-                        <div style="display: flex; flex-direction: column; gap: 4px;">
-                            <span style="font-size: 0.8rem; font-weight: 700;">${this.formatPlanName(client.plan_name)}</span>
-                            <span class="status-badge-table ${statusColor}">${statusLabel}</span>
-                            ${!isOnline && client.last_seen ? `<span class="last-seen-text">${this.formatLastSeen(client.last_seen)}</span>` : ''}
-                        </div>
-                    </td>
-                    <td>
-                        <div class="traffic-mini">
-                            <div class="traffic-row traffic-up">
-                                <i class="fas fa-upload" style="font-size: 0.6rem;"></i> <span class="val-up">0K</span>
-                            </div>
-                            <div class="traffic-row traffic-down">
-                                <i class="fas fa-download" style="font-size: 0.6rem;"></i> <span class="val-down">0K</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td style="text-align: right;">
-                        <div class="action-menu" style="justify-content: flex-end;">
-                            <button class="action-btn" onclick="app.modules.clients.showClientHistory(${client.id})" title="Kardex / Pagos">
-                                <i class="fas fa-history"></i>
-                            </button>
-    
-                            ${!isDeleted ? `
-                                <button class="action-btn" onclick="app.modules.clients.registerPayment(${client.id})" title="Pagar">
-                                    <i class="fas fa-dollar-sign"></i>
-                                </button>
-                                <button class="action-btn" onclick="app.modules.clients.editClient(${client.id})" title="Editar">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                ${isSuspended ?
-                            `<button class="action-btn" style="color: #10b981; border-color: #10b981;" onclick="app.modules.clients.activateClient(${client.id})" title="Activar">
-                                        <i class="fas fa-play"></i>
-                                     </button>` :
-                            `<button class="action-btn" style="color: #f59e0b; border-color: #f59e0b;" onclick="app.modules.clients.suspendClient(${client.id})" title="Suspender">
-                                        <i class="fas fa-pause"></i>
-                                     </button>`
-                        }
-                            ` : `
-                                <button class="action-btn" style="color: #3b82f6; border-color: #3b82f6;" onclick="app.modules.clients.restoreClient(${client.id})" title="Restaurar">
-                                    <i class="fas fa-undo"></i>
-                                </button>
-                            `}
-    
-                            <button class="action-btn delete" onclick="app.modules.clients.deleteClient(${client.id})" title="Eliminar">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                `;
-            }
-        }).join('');
+        const html = this.clients.map(client => this.renderSingleClientHtml(client, onlineMap, canEdit, canDelete)).join('');
 
         if (this.isMobile && cardGrid) {
-            if (tbody) tbody.innerHTML = ''; // Clear table
+            if (tbody) tbody.innerHTML = '';
             if (tableView) tableView.style.display = 'none';
             cardGrid.style.display = 'grid';
             cardGrid.innerHTML = html;
         } else if (tbody) {
             if (cardGrid) {
-                cardGrid.innerHTML = ''; // Clear cards
+                cardGrid.innerHTML = '';
                 cardGrid.style.display = 'none';
             }
             if (tableView) tableView.style.display = 'block';
             tbody.innerHTML = html;
+        }
+    }
+
+    renderSingleClientHtml(client, onlineMap, canEdit, canDelete) {
+        const status = onlineMap[client.id] || 'offline';
+        const isOnline = status === 'online';
+        const isDeleted = (client.status || '').toLowerCase() === 'deleted';
+        const isSuspended = (client.status || '').toLowerCase() === 'suspended';
+
+        const traffic = this.trafficCache[client.id] || { up: 0, down: 0 };
+        const upText = this.formatSpeed(traffic.up);
+        const downText = this.formatSpeed(traffic.down);
+
+        let statusClass = 'offline';
+        let statusLabel = 'OFFLINE';
+
+        if (isDeleted) {
+            statusClass = 'deleted';
+            statusLabel = 'ELIMINADO';
+        } else if (isSuspended) {
+            statusClass = 'suspended';
+            statusLabel = 'SUSPENDIDO';
+        } else if (isOnline) {
+            statusClass = 'online';
+            statusLabel = 'ONLINE';
+        }
+
+        if (this.isMobile) {
+            // Card View (Mobile Premium) - Mantenido pero con retoques
+            const avatarChar = (client.legal_name || '?').charAt(0).toUpperCase();
+            const balance = client.account_balance || 0;
+            const isPositive = balance <= 0;
+            const balanceText = Math.abs(balance).toLocaleString('es-CO');
+
+            return `
+                <div class="premium-mobile-card client-card-mobile" data-client-id="${client.id}">
+                    <div class="card-row">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <input type="checkbox" class="client-checkbox" value="${client.id}" 
+                                   ${this.selectedIds.has(client.id) ? 'checked' : ''}
+                                   onclick="event.stopPropagation(); app.modules.clients.toggleClientSelection(this, ${client.id})" 
+                                   style="width: 18px; height: 18px; border-radius: 4px;">
+                            <div class="avatar-mini" style="background: var(--primary); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700;">
+                                ${avatarChar}
+                            </div>
+                            <div>
+                                <div class="card-value">${client.legal_name}</div>
+                                <div class="card-label">${client.subscriber_code || '---'}</div>
+                            </div>
+                        </div>
+                        <span class="status-badge-table ${statusClass}">${statusLabel}</span>
+                    </div>
+                    
+                    <div class="card-row">
+                        <span class="card-label">IP / Conexión</span>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                            <span class="card-value" style="font-family: 'JetBrains Mono';">${client.ip_address || '---'}</span>
+                            <div class="traffic-mini-mobile" style="font-size: 0.65rem; color: var(--primary); font-weight: 600;">
+                                <i class="fas fa-arrow-up"></i> <span class="val-up">0 Kbps</span> 
+                                <i class="fas fa-arrow-down" style="margin-left: 4px;"></i> <span class="val-down">0 Kbps</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-row">
+                        <span class="card-label">Plan / Servidor</span>
+                        <div class="card-value" style="text-align: right;">
+                            <div>${this.formatPlanName(client.plan_name)}</div>
+                            <div style="font-size: 0.7rem; color: #64748b;">${client.router || '---'}</div>
+                        </div>
+                    </div>
+
+                    <div class="card-row">
+                        <span class="card-label">Balance de Cuenta</span>
+                        <span class="card-badge financial ${isPositive ? 'ok' : 'debt'}">$${balanceText}</span>
+                    </div>
+                    
+                    <div class="action-menu" style="justify-content: flex-end; gap: 8px;">
+                        <button class="action-btn history" onclick="app.modules.clients.showHistory(${client.id})" title="Historial Transaccional">
+                            <i class="fas fa-file-invoice-doll"></i>
+                        </button>
+                        <button class="action-btn pay" onclick="app.modules.clients.showPaymentModal(${client.id})" title="Registrar Pago">
+                            <i class="fas fa-cash-register"></i>
+                        </button>
+                        <button class="action-btn edit" onclick="app.modules.clients.showEditModal(${client.id})" title="Configuración de Perfil">
+                            <i class="fas fa-user-gear"></i>
+                        </button>
+                        <button class="action-btn suspend" onclick="app.modules.clients.toggleStatus(${client.id})" title="${isSuspended ? 'Reactivar Servicio' : 'Suspender Servicio'}">
+                            <i class="fas fa-user-slash"></i>
+                        </button>
+                        <button class="action-btn delete" onclick="app.modules.clients.deleteClient(${client.id})" title="Eliminar del Sistema">
+                            <i class="fas fa-user-minus"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Table View (Super Premium Desktop)
+            const balance = client.account_balance || 0;
+            const isDebt = balance > 0;
+
+            return `
+            <tr data-client-id="${client.id}" class="premium-row row-hover-effect">
+                <td><input type="checkbox" class="client-checkbox" value="${client.id}" 
+                    ${this.selectedIds.has(client.id) ? 'checked' : ''}
+                    onclick="app.modules.clients.toggleClientSelection(this, ${client.id})"></td>
+                <td style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; opacity: 0.6;">#${client.id}</td>
+                <td>
+                    <div class="client-name-cell">
+                        <div class="client-avatar-glow" style="--glow-color: ${isOnline ? '#10b98133' : '#94a3b833'}">
+                            ${(client.legal_name || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div class="client-info">
+                            <span class="client-real-name">${client.legal_name}</span>
+                            <span class="client-code">${client.subscriber_code || '---'}</span>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div class="ip-premium-badge">
+                        <i class="fas fa-network-wired"></i>
+                        <span>${client.ip_address || '---'}</span>
+                    </div>
+                    <div class="mac-text-mini">${client.mac_address || ''}</div>
+                </td>
+                <td>
+                    <div class="router-info-cell">
+                        <span class="router-name">${client.router ? client.router.substring(0, 18) : '---'}</span>
+                        <div class="collector-tag">
+                            <i class="fas fa-user-tag"></i>
+                            ${client.assigned_collector_name || 'Enrutado Automático'}
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div class="balance-premium-widget ${isDebt ? 'is-debt' : 'is-paid'}">
+                        <span class="balance-label">${isDebt ? 'PENDIENTE' : 'AL DÍA'}</span>
+                        <div class="balance-amount">$${Math.abs(balance).toLocaleString('es-CO')}</div>
+                    </div>
+                </td>
+                <td>
+                    <div class="plan-status-stack">
+                        <span class="plan-bold">${this.formatPlanName(client.plan_name)}</span>
+                        <div class="status-indicator-premium ${statusClass}">
+                            <span class="status-dot-pulse ${isOnline ? 'online' : 'offline'}"></span>
+                            <span class="status-text status-badge-connection">${statusLabel}</span>
+                        </div>
+                        ${!isOnline && client.last_seen ? `<span class="last-seen-mini">${this.formatLastSeen(client.last_seen)}</span>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <div class="traffic-glass-widget" style="opacity: ${isOnline ? '1' : '0.4'}">
+                        <div class="traffic-item up">
+                            <i class="fas fa-arrow-up"></i> <span class="val-up">${isOnline ? upText : '---'}</span>
+                        </div>
+                        <div class="traffic-item down">
+                            <i class="fas fa-arrow-down"></i> <span class="val-down">${isOnline ? downText : '---'}</span>
+                        </div>
+                    </div>
+                </td>
+                <td style="text-align: right;">
+                    <div class="action-menu-premium" style="display: flex; gap: 8px; justify-content: flex-end;">
+                        <button class="action-btn history" onclick="app.modules.clients.showClientHistory(${client.id})" title="Historial Transaccional">
+                            <i class="fas fa-receipt"></i>
+                        </button>
+                        ${!isDeleted ? `
+                            <button class="action-btn pay" onclick="app.modules.clients.registerPayment(${client.id})" title="Registrar Pago">
+                                <i class="fas fa-cash-register"></i>
+                            </button>
+                            ${canEdit ? `
+                                <button class="action-btn edit" onclick="app.modules.clients.editClient(${client.id})" title="Configuración de Perfil">
+                                    <i class="fas fa-user-gear"></i>
+                                </button>
+                                <button class="action-btn suspend" 
+                                        onclick="app.modules.clients.${isSuspended ? 'activateClient' : 'suspendClient'}(${client.id})" 
+                                        title="${isSuspended ? 'Reactivar Servicio' : 'Suspender Servicio'}">
+                                    <i class="fas fa-user-slash"></i>
+                                </button>
+                            ` : ''}
+                        ` : ''}
+                        ${canDelete ? `
+                        <button class="action-btn delete" onclick="app.modules.clients.deleteClient(${client.id})" title="Eliminar del Sistema">
+                            <i class="fas fa-user-minus"></i>
+                        </button>
+                        ` : ''}
+                    </div>
+                </td>
+            </tr>
+            `;
+        }
+    }
+
+    /**
+     * Updates a single client in the local cache and refreshes its UI row
+     * without reloading the entire list.
+     * @param {Object} updatedClient - The updated client data from API
+     */
+    updateClientInUI(updatedClient) {
+        if (!updatedClient || !updatedClient.id) return;
+        console.log('♻️ Granular UI Update for Client:', updatedClient.id);
+
+        // 1. Update in allClients (Persistent Cache)
+        if (this.allClients) {
+            const index = this.allClients.findIndex(c => c.id === updatedClient.id);
+            if (index !== -1) {
+                this.allClients[index] = { ...this.allClients[index], ...updatedClient };
+            }
+        }
+
+        // 2. Update in current view (this.clients)
+        if (this.clients) {
+            const index = this.clients.findIndex(c => c.id === updatedClient.id);
+            if (index !== -1) {
+                this.clients[index] = { ...this.clients[index], ...updatedClient };
+
+                // 3. Re-render only this row/card if it's currently visible
+                this.refreshClientElement(updatedClient.id);
+            }
+        }
+
+        // 4. Update stats in case status/balance changed
+        this.updateStaticStats();
+    }
+
+    refreshClientElement(clientId) {
+        const client = (this.clients || []).find(c => c.id === clientId);
+        if (!client) return;
+
+        // Select row or card
+        const element = document.querySelector(`[data-client-id="${clientId}"]`);
+        if (!element) return;
+
+        // RBAC Check (needed for renderSingleClientHtml)
+        const _rp = window.RBAC_PERMS || {};
+        const canEdit = _rp.clients ? _rp.clients.can_edit !== false : true;
+        const canDelete = _rp.clients ? _rp.clients.can_delete !== false : true;
+        const onlineMap = this.onlineStatusMap || {};
+
+        // Re-generate HTML for this single item
+        const html = this.renderSingleClientHtml(client, onlineMap, canEdit, canDelete);
+
+        if (this.isMobile) {
+            // In mobile, 'element' IS the card. We replace its outerHTML
+            const div = document.createElement('div');
+            div.innerHTML = html;
+            element.replaceWith(div.firstElementChild);
+        } else {
+            // In desktop, 'element' IS the <tr>. We replace its outerHTML
+            const table = document.createElement('table');
+            const tbody = document.createElement('tbody');
+            table.appendChild(tbody);
+            tbody.innerHTML = html;
+            element.replaceWith(tbody.firstElementChild);
         }
     }
 
@@ -1556,8 +1771,7 @@ Esta acción es seria y debe usarse con precaución.`;
         const dataset = this.allClients || this.clients || [];
         const isDeletedView = this.filterState.status === 'deleted';
 
-        const active = dataset.filter(c => (c.status || '').toLowerCase() === 'active').length;
-        const suspended = dataset.filter(c => (c.status || '').toLowerCase() === 'suspended').length;
+        const active = dataset.filter(c => (c.status || '').toLowerCase() === 'active' || (c.status || '').toLowerCase() === 'suspended').length;
         const deleted = dataset.filter(c => (c.status || '').toLowerCase() === 'deleted').length;
 
         // Financiero: Basado en account_balance
@@ -1565,33 +1779,32 @@ Esta acción es seria y debe usarse con precaución.`;
         const pagos = dataset.filter(c => (c.account_balance || 0) <= 0).length;
 
         // Operacional refers to anyone not deleted
-        const totalOperational = active + suspended;
+        const totalOperational = active;
 
         // Online count depends on WebSocket map
         const onlineStatusMap = this.onlineStatusMap || {};
         const online = dataset.filter(c => onlineStatusMap[c.id] === 'online').length;
-        const warning = dataset.filter(c => onlineStatusMap[c.id] === 'detected_no_queue').length;
         const offline = dataset.filter(c => onlineStatusMap[c.id] === 'offline' || !onlineStatusMap[c.id]).length;
 
         // Update UI
         if (isDeletedView) {
             this.setSafeText('count-total', deleted);
             this.setSafeText('count-active', 0);
-            this.setSafeText('count-suspended', 0);
+
             this.setSafeText('count-online', 0);
             this.setSafeText('count-offline', deleted);
             this.setSafeText('count-morosos', 0);
             this.setSafeText('count-pagos', 0);
-            this.setSafeText('count-warning', 0);
+
         } else {
             this.setSafeText('count-total', totalOperational);
             this.setSafeText('count-active', active);
-            this.setSafeText('count-suspended', suspended);
+
             this.setSafeText('count-online', online);
             this.setSafeText('count-offline', offline);
             this.setSafeText('count-morosos', morosos);
             this.setSafeText('count-pagos', pagos);
-            this.setSafeText('count-warning', warning);
+
         }
     }
 
@@ -1715,25 +1928,35 @@ Esta acción es seria y debe usarse con precaución.`;
         // 1. Update internal state and UI Rows
         Object.keys(data).forEach(clientId => {
             this.onlineStatusMap[clientId] = data[clientId].status;
+            this.trafficCache[clientId] = {
+                up: data[clientId].upload || 0,
+                down: data[clientId].download || 0
+            };
 
             // En móviles las filas de desktop están ocultas pero en el DOM. Necesitamos actualizar TODAS.
             const rows = document.querySelectorAll(`[data-client-id="${clientId}"]`);
 
             rows.forEach(row => {
                 const info = data[clientId];
+                if (!info) return; // FIX: Prevent crash if data point is missing
+
                 const isOnline = info.status === 'online';
 
+                // Update Cache for re-renders (Pagination/Sort stability)
+                this.onlineStatusMap[clientId] = info.status;
+                this.trafficCache[clientId] = {
+                    up: info.upload || 0,
+                    down: info.download || 0
+                };
+
                 // Update Status Badge
-                const badge = row.querySelector('.status-badge-table');
-                if (badge && !badge.classList.contains('suspended')) { // Don't override suspended status
-                    badge.className = `status-badge-table ${isOnline ? 'active' : 'grey'}`;
+                const badge = row.querySelector('.status-badge-connection');
+                if (row && badge && badge.classList && !badge.classList.contains('suspended') && !badge.classList.contains('cortado')) {
+                    badge.className = `status-badge-table status-badge-connection ${isOnline ? 'active' : 'grey'}`;
                     badge.textContent = isOnline ? 'Online' : 'Offline';
 
                     // Fix "Detected (No Queue)" on the fly if status changes
-                    if (info.status === 'detected_no_queue') {
-                        badge.className = 'status-badge-table warning';
-                        badge.innerHTML = 'Detected (No Queue) <i class="fas fa-exclamation-triangle" style="margin-left:4px; cursor:pointer;" onclick="event.stopPropagation(); app.modules.clients.fixClientQueue(' + clientId + ')" title="Reparar Cola Simple"></i>';
-                    }
+
 
                     // UX: Manage last-seen text
                     let lastSeenEl = row.querySelector('.last-seen-text');
@@ -1866,7 +2089,7 @@ Esta acción es seria y debe usarse con precaución.`;
             if (this.filterState.search) params.append('search', this.filterState.search);
             if (this.filterState.financialStatus && this.filterState.financialStatus !== 'all') params.append('financial_status', this.filterState.financialStatus);
 
-            window.open(`/ api / clients /export?${params.toString()} `, '_blank');
+            window.open(`/api/clients/export?${params.toString()}`, '_blank');
         } catch (e) {
             console.error('Error exporting clients:', e);
             toast.error('Error al exportar clientes');
@@ -1898,7 +2121,7 @@ Esta acción es seria y debe usarse con precaución.`;
         if (!confirm('¿Suspender este cliente?')) return;
 
         try {
-            await this.api.post(`/ api / clients / ${clientId}/suspend`, {});
+            await this.api.post(`/api/clients/${clientId}/suspend`, {});
             await this.loadClients();
             alert('Cliente suspendido correctamente');
         } catch (error) {
@@ -1956,7 +2179,7 @@ Esta acción es seria y debe usarse con precaución.`;
             const nameEl = document.getElementById('delete-client-name');
             if (modal && nameEl) {
                 nameEl.textContent = client ? client.legal_name : 'Cliente Desconocido';
-                modal.classList.add('active');
+                if (modal.classList) modal.classList.add('active');
             }
         }
     }
@@ -1971,7 +2194,7 @@ Esta acción es seria y debe usarse con precaución.`;
                 this.modalManager.close('delete-client');
             } else {
                 const modal = document.getElementById('delete-client-modal');
-                if (modal) modal.classList.remove('active');
+                if (modal && modal.classList) modal.classList.remove('active');
             }
 
             // Show loading toast? (Assuming window.toast or similar exists, else log)
@@ -2002,23 +2225,37 @@ Esta acción es seria y debe usarse con precaución.`;
         const stText = isSuspended ? 'Activar Servicio' : 'Suspender Servicio';
         const stIcon = isSuspended ? 'fa-play' : 'fa-pause';
 
+        // RBAC: Check permissions for the menu
+        const _rp = window.RBAC_PERMS || {};
+        const clientPerms = _rp['clients:list'] || {};
+        const canEdit = clientPerms.can_edit === true;
+        const canDelete = clientPerms.can_delete === true;
+
         const html = `
             <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+                <!-- Registrar Pago: siempre visible (según requerimientos) -->
                 <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.registerPayment(${clientId}), 300)" style="width: 100%; padding: 14px; background: #10b981; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
                     <i class="fas fa-dollar-sign"></i> Registrar Pago
                 </button>
+
                 <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.showClientHistory(${clientId}), 300)" style="width: 100%; padding: 14px; background: #3b82f6; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
                     <i class="fas fa-history"></i> Historial / Edo. Cuenta
                 </button>
+
+                ${canEdit ? `
                 <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.editClient(${clientId}), 300)" style="width: 100%; padding: 14px; background: #6366f1; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
                     <i class="fas fa-edit"></i> Editar Cliente
                 </button>
                 <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.${isSuspended ? 'activateClient' : 'suspendClient'}(${clientId}), 300)" style="width: 100%; padding: 14px; background: ${stColor}; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
                     <i class="fas ${stIcon}"></i> ${stText}
                 </button>
+                ` : ''}
+
+                ${canDelete ? `
                 <button class="btn-primary" onclick="Swal.close(); setTimeout(() => app.modules.clients.deleteClient(${clientId}), 300)" style="width: 100%; padding: 14px; background: #ef4444; border: none; color: white; border-radius: 12px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
                     <i class="fas fa-trash-alt"></i> Eliminar Cliente
                 </button>
+                ` : ''}
             </div>
         `;
 
@@ -2205,13 +2442,13 @@ Esta acción es seria y debe usarse con precaución.`;
 
         const headers = table.querySelectorAll('th.sortable');
         headers.forEach(th => {
-            const icon = th.querySelector('i');
-            th.classList.remove('active-sort');
+            const icon = th ? th.querySelector('i') : null; // Added null guard for th
+            if (th && th.classList) th.classList.remove('active-sort'); // Added null guard for th
             if (icon) icon.className = 'fas fa-sort';
 
-            const onClickAttr = th.getAttribute('onclick');
+            const onClickAttr = th ? th.getAttribute('onclick') : null; // Added null guard for th
             if (onClickAttr && onClickAttr.includes(`'${this.sortState.column}'`)) {
-                th.classList.add('active-sort');
+                if (th && th.classList) th.classList.add('active-sort'); // Added null guard for th
                 if (icon) {
                     icon.className = this.sortState.direction === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
                 }
@@ -2220,21 +2457,18 @@ Esta acción es seria y debe usarse con precaución.`;
     }
 
     updateSortIcons(target) {
-        const idPrefix = target === 'view' ? 'import-view-' : 'import-';
         const table = document.querySelector(target === 'view' ? '#clients-import-view table' : '#import-clients-modal table');
-
         if (!table) return;
 
         const headers = table.querySelectorAll('th.sortable');
         headers.forEach(th => {
-            const icon = th.querySelector('i');
-            th.classList.remove('active-sort');
+            const icon = th ? th.querySelector('i') : null;
+            if (th && th.classList) th.classList.remove('active-sort');
             if (icon) icon.className = 'fas fa-sort';
 
-            // Si coincide con la columna actual, marcar activa
-            const onClickAttr = th.getAttribute('onclick');
+            const onClickAttr = th ? th.getAttribute('onclick') : null;
             if (onClickAttr && onClickAttr.includes(`'${this.importSort.column}'`)) {
-                th.classList.add('active-sort');
+                if (th && th.classList) th.classList.add('active-sort');
                 if (icon) {
                     icon.className = this.importSort.direction === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
                 }
@@ -2248,32 +2482,78 @@ Esta acción es seria y debe usarse con precaución.`;
 
         const tbody = document.getElementById(`${idPrefix}preview-body`);
         const totalSpan = document.getElementById(`scan${suffix}-total`);
+
+        // Elementos de la Barra Maestra (Solo aplica a 'view')
+        const masterBar = document.getElementById('master-import-bar');
+        const masterIcon = document.getElementById('master-bar-icon');
+        const masterTitle = document.getElementById('master-bar-title');
+        const masterText = document.getElementById('master-bar-text');
+        const extraActions = document.getElementById('master-extra-actions');
+        const btnImport = document.getElementById('btn-master-import');
+
         if (totalSpan) totalSpan.textContent = data.total_found;
 
         this.previewData = data.clients || [];
-
         const needsProvisioning = data.summary?.needs_provisioning || false;
         const discoveredCount = data.summary?.discovered_no_queue || 0;
         const routerId = data.router_id;
         const routerName = data.router_alias;
 
-        let hasDuplicates = false;
+        // Reset de Barra Maestra si existe
+        if (masterBar && target === 'view') {
+            masterBar.style.borderLeft = '4px solid var(--primary-solid)';
+            masterBar.style.background = '#ffffff';
+            if (masterIcon) masterIcon.innerHTML = '<i class="fas fa-broadcast-tower"></i>';
+            if (masterIcon) masterIcon.style.background = 'rgba(99, 102, 241, 0.1)';
+            if (masterTitle) masterTitle.textContent = 'Resultados del Escaneo';
+            if (masterText) masterText.innerHTML = `Se encontraron <span style="font-weight: 850; color: var(--primary-solid);">${data.total_found}</span> clientes en el router.`;
+            if (extraActions) extraActions.innerHTML = '';
+            if (btnImport) btnImport.className = 'btn-primary';
+        }
+
+        // Lógica de Error Crítico
+        if (data.total_found === 0 && data.error_message) {
+            if (masterBar && target === 'view') {
+                masterBar.style.borderLeft = '4px solid #ef4444';
+                if (masterIcon) masterIcon.innerHTML = '<i class="fas fa-exclamation-circle"></i>';
+                if (masterIcon) masterIcon.style.background = 'rgba(239, 68, 68, 0.1)';
+                if (masterTitle) masterTitle.innerHTML = '<span style="color: #b91c1c;">⚠️ Importación Bloqueada</span>';
+                if (masterText) masterText.innerHTML = `<span style="color: #dc2626; font-weight: 600;">${data.error_message}</span>`;
+            }
+        }
+        // Lógica de Transformación a Alerta (Clientes sin Colas)
+        else if (needsProvisioning && discoveredCount > 0 && target === 'view') {
+            if (masterBar) {
+                masterBar.style.borderLeft = '4px solid #f59e0b';
+                if (masterIcon) masterIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+                if (masterIcon) masterIcon.style.background = 'rgba(245, 158, 11, 0.1)';
+                if (masterTitle) masterTitle.innerHTML = `⚠️ <span class="alert-count-badge" style="background:#f59e0b; color:white; padding:2px 8px; border-radius:10px; cursor:pointer;" onclick="app.modules.clients.filterClientsWithoutQueues('${target}')">${discoveredCount}</span> Clientes con Anomalías`;
+                if (masterText) masterText.innerHTML = `Se detectaron clientes sin Simple Queue en <strong>${routerName}</strong>.`;
+
+                if (extraActions) {
+                    extraActions.innerHTML = `
+                        <button class="btn-secondary" style="color: #d97706; border-color: #fbbf24;" onclick="app.modules.clients.redirectToRouterSync(${routerId}, '${routerName}')">
+                            <i class="fas fa-sync-alt"></i> Sincronizar
+                        </button>
+                    `;
+                }
+                if (btnImport) btnImport.className = 'btn-premium';
+            }
+        }
 
         if (!tbody) return;
 
         tbody.innerHTML = this.previewData.map((client, index) => {
-            if (client.exists_in_db) hasDuplicates = true;
-
             const isDuplicate = client.exists_in_db;
             const isDiscovered = client.type === 'discovered';
             const rowClass = isDuplicate ? 'duplicate-row' : (isDiscovered ? 'needs-provision-row' : '');
+            const suffix = target === 'view' ? '-view' : '';
 
             const canSyncIp = isDuplicate && client.ip_changed;
             const checkbox = (isDuplicate && !canSyncIp)
                 ? `<input type="checkbox" disabled>`
                 : `<input type="checkbox" class="import-check${suffix}" data-index="${index}" ${canSyncIp ? 'data-sync-only="true"' : ''} onchange="app.modules.clients.updateSelectedCount('${target}')">`;
 
-            // Lógica de Estados Granulares
             let statusBadge = '';
             let restoreBtn = '';
 
@@ -2300,7 +2580,6 @@ Esta acción es seria y debe usarse con precaución.`;
                 statusBadge = `<span class="status-badge-table online">Nuevo</span>`;
             }
 
-            // Lógica de IP cambiada
             const ipDisplay = client.ip_changed
                 ? `<div class="ip-sync-container dual-ip">
                     <div class="ip-diff">
@@ -2315,73 +2594,27 @@ Esta acción es seria y debe usarse con precaución.`;
                 : client.ip_address;
 
             return `<tr class="${rowClass}">
-                <td>${checkbox}</td>
-                <td>
+                <td data-label="Seleccion">${checkbox}</td>
+                <td data-label="Usuario / Nombre">
                     <div class="user-info-cell">
                         <strong>${client.username}</strong>
                     </div>
                 </td>
-                <td>
-                    <span class="badge" style="font-size: 0.7rem; padding: 3px 10px; border-radius: 12px; background: ${client.type === 'pppoe' ? '#dbeafe' : '#f3e8ff'}; color: ${client.type === 'pppoe' ? '#1e40af' : '#6b21a8'}; border: 1px solid ${client.type === 'pppoe' ? '#93c5fd' : '#d8b4fe'}; text-transform: uppercase; font-weight: 700; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <td data-label="Gestión">
+                    <span class="badge" style="background: ${client.type === 'pppoe' ? '#e0e7ff' : '#f3e8ff'}; color: ${client.type === 'pppoe' ? '#4338ca' : '#7e22ce'}; border: 1px solid rgba(0,0,0,0.05); text-transform: uppercase; font-weight: 700; display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.7rem;">
                         ${client.type === 'pppoe' ? 'PPPoE' : (client.type === 'simple_queue' ? 'S. QUEUE' : (client.type || 'N/A').toUpperCase())}
                     </span>
                 </td>
-                <td class="ip-cell">${ipDisplay}</td>
-                <td>${client.profile}</td>
-                <td>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                <td data-label="IP / MikroTik" class="ip-cell">${ipDisplay}</td>
+                <td data-label="Plan / Perfil">${client.profile}</td>
+                <td data-label="Estado Actual">
+                    <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
                         ${statusBadge}
                         ${restoreBtn}
                     </div>
                 </td>
             </tr>`;
         }).join('');
-
-        const dupMsg = document.getElementById(`scan${suffix}-duplicates`);
-        if (dupMsg) dupMsg.style.display = hasDuplicates ? 'block' : 'none';
-
-        // Re-integrar alerta de auto-provisioning
-        const toolbar = document.getElementById(`${idPrefix}toolbar-top`);
-        const alertId = `auto-provision-alert${suffix}`;
-        const oldAlert = document.getElementById(alertId);
-        if (oldAlert) oldAlert.remove();
-
-        if (needsProvisioning && discoveredCount > 0) {
-            const alertDiv = document.createElement('div');
-            alertDiv.id = alertId;
-            alertDiv.className = 'premium-alert';
-
-            alertDiv.innerHTML = `
-                <div class="alert-icon">
-                    <i class="fas fa-exclamation-triangle"></i>
-                </div>
-                <div class="alert-content">
-                    <h4>⚠️ <span class="alert-count-badge" onclick="app.modules.clients.filterClientsWithoutQueues('${target}')">${discoveredCount}</span> cliente${discoveredCount > 1 ? 's' : ''} sin Simple Queue</h4>
-                    <p>
-                        Se detectaron <span class="alert-count-badge" onclick="app.modules.clients.filterClientsWithoutQueues('${target}')">${discoveredCount}</span> clientes conectados pero sin Simple Queue en <strong>${routerName}</strong>.
-                    </p>
-                </div>
-                <div class="alert-actions">
-                    <button class="btn-alert-sync" onclick="app.modules.clients.redirectToRouterSync(${routerId}, '${routerName}')">
-                        <i class="fas fa-sync-alt"></i> Sincronizar
-                    </button>
-                    <button class="btn-primary" onclick="app.modules.clients.executeImport('${target}')">
-                        Importar (<span id="selected-count-alert${suffix}">0</span>)
-                    </button>
-                    <button id="btn-bulk-sync-ips${suffix}" class="btn-premium" style="display:none; margin-left: 10px;" onclick="app.modules.clients.syncSelectedIps('${target}')">
-                        <i class="fas fa-sync"></i> Corregir IPs (<span id="sync-count-alert${suffix}">0</span>)
-                    </button>
-                </div>
-            `;
-
-            const table = tbody.closest('table');
-            if (table && table.parentNode) {
-                table.parentNode.insertBefore(alertDiv, table);
-                if (toolbar) toolbar.style.display = 'none';
-            }
-        } else {
-            if (toolbar) toolbar.style.display = 'flex';
-        }
 
         const selectAll = document.getElementById(`select-all${suffix}-import`);
         if (selectAll) {
@@ -2399,9 +2632,9 @@ Esta acción es seria y debe usarse con precaución.`;
         const idPrefix = target === 'view' ? 'import-view-' : 'import-';
         const rows = document.querySelectorAll(`#${idPrefix}preview-body tr`);
         rows.forEach(row => {
-            if (row.classList.contains('needs-provision-row')) {
+            if (row && row.classList && row.classList.contains('needs-provision-row')) {
                 row.style.display = '';
-            } else {
+            } else if (row) {
                 row.style.display = 'none';
             }
         });
@@ -2410,7 +2643,7 @@ Esta acción es seria y debe usarse con precaución.`;
     redirectToRouterSync(routerId, routerName) {
         if (confirm(`¿Deseas sincronizar el router "${routerName}" para crear Simple Queues automáticamente?`)) {
             const modal = document.getElementById('import-clients-modal');
-            if (modal) modal.classList.remove('active');
+            if (modal && modal.classList) modal.classList.remove('active');
 
             this.eventBus.publish('navigate', { view: 'routers' });
             setTimeout(() => {
@@ -2530,7 +2763,7 @@ Esta acción es seria y debe usarse con precaución.`;
 
                 if (target === 'modal') {
                     const modal = document.getElementById('import-clients-modal');
-                    if (modal) modal.classList.remove('active');
+                    if (modal && modal.classList) modal.classList.remove('active');
                 } else {
                     this.eventBus.publish('navigate', { view: 'clients' });
                 }
@@ -2590,43 +2823,6 @@ Esta acción es seria y debe usarse con precaución.`;
                     }
                 };
             }
-        });
-    }
-
-    setFilter(type) {
-        this.currentFilter = type;
-        document.querySelectorAll('.client-stats-bar .stat-item').forEach(el => el.classList.remove('active'));
-        const activeId = {
-            'ALL': 'count-total',
-            'ACTIVE': 'count-active',
-            'SUSPENDED': 'count-suspended',
-            'ONLINE': 'count-online',
-            'OFFLINE': 'count-offline'
-        }[type];
-        const activeEl = document.getElementById(activeId)?.parentElement;
-        if (activeEl) activeEl.classList.add('active');
-        this.applyFilter();
-    }
-
-    applyFilter() {
-        const cards = document.querySelectorAll('.client-card');
-        const searchTerm = document.getElementById('client-search')?.value.toLowerCase() || '';
-        cards.forEach(card => {
-            const clientId = card.getAttribute('data-client-id');
-            const client = this.clients.find(c => c.id == clientId);
-            if (!client) return;
-            const status = client.status.toUpperCase();
-            const isOnline = (this.onlineStatusMap && this.onlineStatusMap[clientId] === 'online');
-            let visible = true;
-            if (this.currentFilter === 'ACTIVE') visible = (status === 'ACTIVE');
-            else if (this.currentFilter === 'SUSPENDED') visible = (status === 'SUSPENDED');
-            else if (this.currentFilter === 'ONLINE') visible = isOnline;
-            else if (this.currentFilter === 'OFFLINE') visible = !isOnline;
-            if (visible && searchTerm) {
-                const text = (client.username + ' ' + client.legal_name + ' ' + (client.ip_address || '')).toLowerCase();
-                visible = text.includes(searchTerm);
-            }
-            card.style.display = visible ? 'flex' : 'none';
         });
     }
 }

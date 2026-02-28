@@ -14,6 +14,44 @@ export class NavigationModule {
     init() {
         console.log('🧭 Navigation Module initialized');
         this.attachEvents();
+        // Mapeo compartido para RBAC
+        this.viewToModule = {
+            'dashboard': 'dashboard',
+            'routers': 'routers:list',
+            'plans': 'plans',
+            'clients': 'clients:list',
+            'clients-import': 'clients:import',
+            'clients-actions': 'clients:actions',
+            'clients-trash': 'clients:trash',
+            'clients-alerts': 'clients:list',
+            'clients-support': 'clients:list',
+            'finance-overview': 'finance:reports',
+            'payments-list': 'finance:payments',
+            'invoices': 'finance:invoices',
+            'reports': 'finance:reports',
+            'promises': 'finance:promises',
+            'expenses': 'finance:expenses',
+            'automation': 'automation',
+            'sync': 'sync',
+            'system': 'system:users',
+            'system-reciclador': 'system:users',
+            'trash': 'trash',
+            'whatsapp': 'whatsapp:chats',
+            'collector-finance': 'collector-finance',
+        };
+    }
+
+    _isViewAllowed(view) {
+        // Dashboard is a special case: it should generally be allowed for all logged users
+        // to avoid redirect loops, or at least handled gracefully.
+        if (view === 'dashboard') return true;
+
+        if (!window.app || !window.app.modules.auth) return true;
+
+        const module = this.viewToModule[view];
+        if (!module) return true; // Si no está mapeado, asumimos que es público o no restringido
+
+        return window.app.modules.auth.checkPermission(module, 'view');
     }
 
     attachEvents() {
@@ -55,6 +93,21 @@ export class NavigationModule {
                 submenuClientes.classList.toggle('expanded');
                 // Colapsar otros submenús si estuviera abierto
                 this.collapseSubmenu('finanzas');
+                this.collapseSubmenu('sistema');
+            });
+        }
+
+        // Manejar submenu toggle (Sistema)
+        const navSistema = document.getElementById('nav-sistema');
+        const submenuSistema = document.getElementById('sistema-submenu');
+
+        if (navSistema && submenuSistema) {
+            navSistema.addEventListener('click', (e) => {
+                e.preventDefault();
+                navSistema.classList.toggle('expanded');
+                submenuSistema.classList.toggle('expanded');
+                this.collapseSubmenu('finanzas');
+                this.collapseSubmenu('clientes');
             });
         }
 
@@ -81,6 +134,22 @@ export class NavigationModule {
                 this.updateOverlay();
             });
         }
+        // Special handler for Collector Finance (top-level nav item)
+        const navCF = document.getElementById('nav-collector-finance');
+        if (navCF) {
+            navCF.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                navCF.classList.add('active');
+                if (window.app) {
+                    this.viewManager.showSubView('collector-finance');
+                    if (window.app.modules.collectorFinance) {
+                        window.app.modules.collectorFinance.init();
+                    }
+                }
+                this.closeSidebar();
+            });
+        }
     }
 
     updateOverlay() {
@@ -90,14 +159,17 @@ export class NavigationModule {
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.className = 'sidebar-overlay';
+            overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 90; backdrop-filter: blur(2px); transition: opacity 0.3s ease; opacity: 0; pointer-events: none;';
             document.body.appendChild(overlay);
             overlay.addEventListener('click', () => this.closeSidebar());
         }
 
         if (sidebar && sidebar.classList.contains('active')) {
-            overlay.style.display = 'block';
+            overlay.style.pointerEvents = 'auto';
+            overlay.style.opacity = '1';
         } else {
-            overlay.style.display = 'none';
+            overlay.style.opacity = '0';
+            overlay.style.pointerEvents = 'none';
         }
     }
 
@@ -111,6 +183,22 @@ export class NavigationModule {
 
     navigate(view, params = {}) {
         if (this._currentNavigatingView === view) return;
+
+        // RBAC Guard
+        if (!this._isViewAllowed(view)) {
+            console.warn(`🚫 Access denied to view: ${view}. Redirecting to safe fallback.`);
+
+            // Si el dashboard está prohibido (raro) o ya estamos en el dashboard, 
+            // evitamos el bucle infinito. 
+            if (view === 'dashboard') {
+                console.error('CRITICAL: Dashboard access denied. Stopping navigation.');
+                return;
+            }
+
+            this.navigate('dashboard');
+            return;
+        }
+
         this._currentNavigatingView = view;
 
         console.log(`🧭 Navigating to: ${view}`);
@@ -132,6 +220,7 @@ export class NavigationModule {
             // Colapsar submenús
             this.collapseSubmenu('finanzas');
             this.collapseSubmenu('clientes');
+            this.collapseSubmenu('sistema');
 
             // Limpiar estado de submenu items
             document.querySelectorAll('.submenu-item').forEach(item => {
@@ -142,7 +231,7 @@ export class NavigationModule {
             this.eventBus.publish('navigate', { view, ...params });
 
             // Actualizar título de la página
-            document.title = `SGUBM - ${view.charAt(0).toUpperCase() + view.slice(1)}`;
+            document.title = `SGUB - ${view.charAt(0).toUpperCase() + view.slice(1)}`;
         } finally {
             // Reset state to allow future navigations to same view if needed (e.g. refresh)
             setTimeout(() => { this._currentNavigatingView = null; }, 500);
@@ -171,6 +260,14 @@ export class NavigationModule {
         const subView = subViewRaw.replace(/_/g, '-');
 
         if (this._currentNavigatingSubView === subView) return;
+
+        // RBAC Guard
+        if (!this._isViewAllowed(subView)) {
+            console.warn(`🚫 Access denied to sub-view: ${subView}. Redirecting to dashboard.`);
+            this.navigate('dashboard');
+            return;
+        }
+
         this._currentNavigatingSubView = subView;
 
         try {
@@ -181,6 +278,8 @@ export class NavigationModule {
                 'clients-import': 'clientes',
                 'clients-actions': 'clientes',
                 'clients-trash': 'clientes',
+                'clients-alerts': 'clientes',
+                'clients-support': 'clientes',
                 'finance-overview': 'finanzas',
                 'payments-list': 'finanzas',
                 'invoices': 'finanzas',
@@ -191,7 +290,10 @@ export class NavigationModule {
 
                 'automation': 'finanzas',
                 'sync': 'finanzas',
-                'trash': 'finanzas'
+                'trash': 'finanzas',
+                'whatsapp': 'finanzas',
+                'system': 'sistema',
+                'system-reciclador': 'sistema'
             };
 
             const parentPrefix = parentMenuMap[subView];
@@ -236,7 +338,12 @@ export class NavigationModule {
                 'clients': 'clients',
                 'clients-import': 'clients',
                 'clients-actions': 'clients',
-                'clients-trash': 'clients'
+                'clients-trash': 'clients',
+                'clients-alerts': 'clients_alerts',
+                'clients-support': 'clients_support',
+                'system': 'users',
+                'system-reciclador': 'reciclador',
+                'collector-finance': 'collectorFinance'
             };
 
             const loadMethodMap = {
@@ -252,7 +359,12 @@ export class NavigationModule {
                 'clients-import': 'loadClientsImport',
                 'clients-actions': 'loadClientsActions',
                 'clients-trash': 'loadTrash',
-                'sync': 'initSync'
+                'clients-alerts': 'load',
+                'clients-support': 'loadTickets',
+                'system': 'load',
+                'system-reciclador': 'load',
+                'sync': 'initSync',
+                'collector-finance': 'load'
             };
 
             const parentModule = moduleMap[subView];
@@ -276,7 +388,8 @@ export class NavigationModule {
 
             // Actualizar URL sin recargar
             const parent = moduleMap[subView];
-            const url = `/${parent}/${subView}`;
+            const isSelfRouted = subView === 'collector-finance';
+            const url = isSelfRouted ? `/collector-finance` : `/${parent}/${subView}`;
             window.history.pushState({ view: subView, isSubView: true, params }, '', url);
 
             // Actualizar título de la página
@@ -294,9 +407,13 @@ export class NavigationModule {
                 'clients': 'Clientes',
                 'clients-import': 'Importar Clientes',
                 'clients-trash': 'Papelera de Clientes',
-                'whatsapp': 'WhatsApp Agent'
+                'clients-alerts': 'Alertas de Pago',
+                'whatsapp': 'WhatsApp Agent',
+                'system': 'Ajustes de Sistema',
+                'system-reciclador': 'Consola Reciclador',
+                'collector-finance': 'Mis Finanzas'
             };
-            document.title = `SGUBM - ${titles[subView] || subView}`;
+            document.title = `SGUB - ${titles[subView] || subView}`;
         } finally {
             // Reset state to allow future navigations
             setTimeout(() => { this._currentNavigatingSubView = null; }, 500);

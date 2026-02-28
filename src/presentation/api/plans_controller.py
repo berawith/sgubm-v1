@@ -3,6 +3,7 @@ from src.infrastructure.database.db_manager import get_db
 from src.infrastructure.database.models import InternetPlan, Client, Router
 from src.infrastructure.mikrotik.adapter import MikroTikAdapter
 from src.application.services.audit_service import AuditService
+from src.application.services.auth import login_required, admin_required
 from sqlalchemy.exc import IntegrityError
 import logging
 
@@ -48,11 +49,13 @@ def sync_plan_to_routers(plan, db):
             logger.error(f"Error syncing plan {plan.name} to {router.alias}: {e}")
 
 @plans_bp.route('/plans-manager', methods=['GET'])
+@admin_required
 def plans_manager_view():
     """Vista principal del Gestor de Planes"""
     return render_template('modules/plans_manager.html')
 
 @plans_bp.route('/api/plans', methods=['GET'])
+@login_required
 def get_plans():
     """Obtener todos los planes"""
     db = get_db()
@@ -73,6 +76,7 @@ def get_plans():
         return jsonify({'error': str(e)}), 500
 
 @plans_bp.route('/api/plans', methods=['POST'])
+@admin_required
 def create_plan():
     """Crear nuevo plan (y opcionalmente Profile en MikroTik)"""
     data = request.json
@@ -118,6 +122,7 @@ def create_plan():
         return jsonify({'error': str(e)}), 500
 
 @plans_bp.route('/api/plans/<int:plan_id>', methods=['PUT'])
+@admin_required
 def update_plan(plan_id):
     """Actualizar plan"""
     data = request.json
@@ -189,6 +194,7 @@ def update_plan(plan_id):
         return jsonify({'error': str(e)}), 500
 
 @plans_bp.route('/api/plans/<int:plan_id>', methods=['DELETE'])
+@admin_required
 def delete_plan(plan_id):
     """Eliminar plan (Solo si no tiene clientes)"""
     db = get_db()

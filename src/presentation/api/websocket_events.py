@@ -23,13 +23,51 @@ def register_socket_events(socketio):
     event_bus.subscribe(SystemEvents.WHATSAPP_MESSAGE_RECEIVED, on_whatsapp_event)
     event_bus.subscribe(SystemEvents.WHATSAPP_MESSAGE_SENT, on_whatsapp_event)
 
+    # ---------------------------------------------------------
+    # BRIDGE BUSINESS EVENTS TO SOCKETIO (REAL-TIME SYNC)
+    # ---------------------------------------------------------
+    def on_business_event(data):
+        """Generic handler for business events (CRUD)"""
+        # data usually contains: { 'type': ..., 'id': ..., 'tenant_id': ..., 'action': ... }
+        tenant_id = data.get('tenant_id')
+        event_type = data.get('event_type')
+        
+        if tenant_id and event_type:
+            room = f"tenant_{tenant_id}"
+            socketio.emit('data_refresh', data, room=room)
+            logger.debug(f"📢 Business event {event_type} broadcasted to room {room}")
+
+    # Suscribirse a eventos de negocio comunes
+    business_events = [
+        SystemEvents.CLIENT_CREATED, SystemEvents.CLIENT_UPDATED, SystemEvents.CLIENT_DELETED,
+        SystemEvents.CLIENT_SUSPENDED, SystemEvents.CLIENT_RESTORED,
+        SystemEvents.PAYMENT_RECEIVED,
+        SystemEvents.INCIDENT_REPORTED,
+        "support.ticket_created", "support.ticket_updated"
+    ]
+    
+    for event_name in business_events:
+        event_bus.subscribe(event_name, on_business_event)
+    # ---------------------------------------------------------
+
     @socketio.on('connect')
     def on_connect():
         logger.info(f"Client connected: {request.sid}")
+        # Intentar determinar el tenant desde el host o params si es posible
+        # Por ahora, el cliente se unirá a su sala de tenant explícitamente al cargar
 
     @socketio.on('disconnect')
     def on_disconnect():
         logger.info(f"Client disconnected: {request.sid}")
+
+    @socketio.on('join_tenant')
+    def handle_join_tenant(data):
+        tenant_id = data.get('tenant_id')
+        if tenant_id:
+            room = f"tenant_{tenant_id}"
+            join_room(room)
+            logger.info(f"Client {request.sid} joined tenant room {room}")
+            emit('joined_tenant', {'tenant_id': tenant_id, 'status': 'sync_active'})
 
     @socketio.on('join_router')
     def handle_join_router(data):

@@ -264,7 +264,8 @@
     border-radius: 50%;
     background: inherit;
     opacity: 0.3;
-    animation: pulse 2s infinite;
+    display: none;
+    /* Hidden by default */
 }
 
 @keyframes pulse {
@@ -282,19 +283,27 @@
 }
 
 .status-indicator.online {
-    background: #00f2fe;
-    box-shadow: 0 0 12px rgba(0, 242, 254, 0.5);
+    background: #10b981;
+    /* Premium Green */
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
 }
 
 .status-indicator.warning {
     background: #fee140;
-    box-shadow: 0 0 12px rgba(254, 225, 64, 0.5);
+    box-shadow: 0 0 12px rgba(254, 225, 64, 0.4);
 }
 
 .status-indicator.offline {
     background: #f5576c;
     box-shadow: 0 0 12px rgba(245, 87, 108, 0.5);
 }
+
+/* Active pulse only for offline state */
+.status-indicator.offline::after {
+    display: block;
+    animation: pulse 2s infinite;
+}
+
 
 .servers-mini-list {
     display: flex;
@@ -359,41 +368,94 @@
 
 /* Activity Card */
 .activity-card {
-    background: #ffffff;
-    border: 1px solid #f1f5f9;
-    border-radius: 12px;
-    padding: 20px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+    transition: box-shadow 0.3s ease;
+}
+
+.activity-card:hover {
+    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08);
 }
 
 .activity-list {
     display: flex;
     flex-direction: column;
+    gap: 2px;
+    padding-top: 16px;
+    position: relative;
+}
+
+.activity-list::before {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 16px;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.02));
+    border-radius: 2px;
+    z-index: 0;
 }
 
 .activity-item {
     display: flex;
     gap: 16px;
-    padding: 12px 0;
-    border-bottom: 1px solid #f8fafc;
-    transition: all 0.2s ease;
-}
-
-.activity-item:last-child {
-    border-bottom: none;
+    padding: 10px 12px;
+    border-radius: 12px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: default;
+    position: relative;
+    z-index: 1;
 }
 
 .activity-item:hover {
-    background: #fcfdfe;
+    background: rgba(99, 102, 241, 0.04);
+    transform: translateX(4px);
 }
 
 .activity-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-sm);
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    font-size: 0.85rem;
+    color: #fff;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+    position: relative;
+    z-index: 2;
+}
+
+.activity-icon.payment {
+    background: linear-gradient(135deg, #10b981, #059669);
+    box-shadow: 0 3px 10px rgba(16, 185, 129, 0.35);
+}
+
+.activity-icon.suspended {
+    background: linear-gradient(135deg, #f43f5e, #e11d48);
+    box-shadow: 0 3px 10px rgba(244, 63, 94, 0.35);
+}
+
+.activity-icon.client {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    box-shadow: 0 3px 10px rgba(59, 130, 246, 0.35);
+}
+
+.activity-icon.system {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    box-shadow: 0 3px 10px rgba(139, 92, 246, 0.35);
+}
+
+.activity-icon.alert {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    box-shadow: 0 3px 10px rgba(245, 158, 11, 0.35);
 }
 
 .activity-icon.info {
@@ -416,6 +478,49 @@
 
 .activity-content {
     flex: 1;
+}
+
+.activity-live-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    margin-right: 5px;
+    vertical-align: middle;
+    animation: livePulse 1.8s ease-in-out infinite;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+@keyframes livePulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale(0.7);
+    }
+}
+
+.activity-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.activity-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.activity-list::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.15);
+    border-radius: 4px;
+}
+
+.activity-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.3);
 }
 
 .activity-title {
@@ -1029,8 +1134,17 @@
     box-shadow: none;
     cursor: not-allowed;
 }
+
 /* HOTFIX MÓVIL BRUTE FORCE */
 @media screen and (max-width: 1100px) {
-    .charts-grid { grid-template-columns: 1fr !important; width: 100% !important; }
-    .stat-card, .chart-card { width: 100% !important; max-width: none !important; }
+    .charts-grid {
+        grid-template-columns: 1fr !important;
+        width: 100% !important;
+    }
+
+    .stat-card,
+    .chart-card {
+        width: 100% !important;
+        max-width: none !important;
+    }
 }

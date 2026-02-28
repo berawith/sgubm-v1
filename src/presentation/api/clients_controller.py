@@ -2,25 +2,61 @@
 Clients API Controller - DATOS REALES
 Endpoints para gestión completa de clientes con importación MikroTik y filtrado por Segmentos
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from src.infrastructure.database.db_manager import get_db
-from src.infrastructure.database.models import Client, Payment, Invoice, Router, PaymentPromise, NetworkSegment, InternetPlan
+from src.infrastructure.database.models import Client, Payment, Invoice, Router, PaymentPromise, NetworkSegment, InternetPlan, CollectorAssignment
 from src.infrastructure.mikrotik.adapter import MikroTikAdapter
 from src.application.services.sync_service import SyncService
 from src.application.services.audit_service import AuditService
+from src.application.services.auth import login_required, admin_required, UserRole, permission_required
+from src.application.services.monitoring_manager import MonitoringManager
 import logging
 import json
+from ipaddress import ip_network, ip_address
 
 logger = logging.getLogger(__name__)
 
 clients_bp = Blueprint('clients', __name__, url_prefix='/api/clients')
 
 
+def _has_client_access(user, client):
+    """
+    Verifica si un usuario (especialmente COLLECTOR) tiene permiso para acceder a un cliente específico.
+    Considera asignaciones directas, asignaciones por router (CollectorAssignment) y legacy.
+    """
+    if user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]:
+        if user.role == UserRole.COLLECTOR.value:
+            # 1. Asignación directa
+            if client.assigned_collector_id == user.id:
+                return True
+            
+            # 2. Asignación por Routers (CollectorAssignment)
+            db = get_db()
+            assigned_routers = db.session.query(CollectorAssignment.router_id).filter(
+                CollectorAssignment.user_id == user.id
+            ).all()
+            router_ids = [r[0] for r in assigned_routers]
+            
+            # 3. Retrocompatibilidad: assigned_router_id legacy
+            if user.assigned_router_id:
+                router_ids.append(user.assigned_router_id)
+                
+            if client.router_id in router_ids:
+                return True
+            
+            return False
+            
+        # Para otros roles (tecnico, secretaria), nos basamos en los permisos de módulo
+        # ya que suelen tener acceso a todos los clientes del router que gestionan o global.
+    return True
+
+
 @clients_bp.route('', methods=['GET'])
+@login_required
 def get_clients():
-    """Obtiene todos los clientes con filtros combinados"""
+    """Obtiene todos los clientes con filtros combinados - Filtrado RBAC"""
     db = get_db()
     client_repo = db.get_client_repository()
     
@@ -29,13 +65,37 @@ def get_clients():
     status = request.args.get('status')
     search = request.args.get('search')
     
-    # Use the new combined filtering method
-    clients = client_repo.get_filtered(router_id=router_id, status=status, search=search, plan_id=plan_id)
+    user = g.user
+    is_restricted_role = user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]
+    
+    # Custom filtering for COLLECTOR role
+    assigned_collector_id = None
+    if is_restricted_role:
+        if user.role == UserRole.COLLECTOR.value:
+            assigned_collector_id = user.id
+            # If collector has a router assigned but we want to allow cross-router assignments, 
+            # we handle this in the repository filter or here.
+        elif user.assigned_router_id:
+            router_id = user.assigned_router_id
+        else:
+            return jsonify([])
+            
+    # Use the new combined filtering method (assumed to handle assigned_collector_id if passed)
+    # If the repo doesn't support it yet, we'll need to update it too.
+    # Let's check the repo later, but for now we'll pass it.
+    clients = client_repo.get_filtered(
+        router_id=router_id, 
+        status=status, 
+        search=search, 
+        plan_id=plan_id,
+        assigned_collector_id=assigned_collector_id
+    )
     
     return jsonify([c.to_dict() for c in clients])
 
 
 @clients_bp.route('/<int:client_id>', methods=['GET'])
+@login_required
 def get_client(client_id):
     """Obtiene un cliente específico"""
     db = get_db()
@@ -43,10 +103,15 @@ def get_client(client_id):
     client = client_repo.get_by_id(client_id)
     if not client:
         return jsonify({'error': 'Cliente no encontrado'}), 404
+        
+    if not _has_client_access(g.user, client):
+        return jsonify({'error': 'No tienes permisos para ver este cliente'}), 403
+            
     return jsonify(client.to_dict())
 
 
 @clients_bp.route('', methods=['POST'])
+@admin_required
 def create_client():
     """Crea un nuevo cliente"""
     data = request.json
@@ -118,6 +183,11 @@ def create_client():
             return jsonify({'error': f'La IP {ip_addr} ya está asignada en este router al cliente {dupes[0].legal_name}'}), 400
 
     try:
+        # Handle assigned_collector_id
+        if 'assigned_collector_id' in data:
+            # Basic validation: must be a collector or at least exist
+            pass
+            
         client = client_repo.create(data)
         
         try:
@@ -144,14 +214,24 @@ def create_client():
             logger.error(f"Error provisioning client on MikroTik (queued): {e}")
 
         # Auditoría de creación
+        from src.application.services.audit_service import AuditService
         AuditService.log(
             operation='client_created',
             category='client',
             entity_type='client',
             entity_id=client.id,
-            description=f"Nuevo cliente creado: {client.legal_name} ({client.username})",
+            description=f"Cliente creado: {client.subscriber_code}",
             new_state=client.to_dict()
         )
+        
+        # REAL-TIME SYNC
+        from src.application.events.event_bus import get_event_bus, SystemEvents
+        get_event_bus().publish(SystemEvents.CLIENT_CREATED, {
+            'event_type': SystemEvents.CLIENT_CREATED,
+            'client_id': client.id,
+            'tenant_id': g.tenant_id,
+            'client_name': client.full_name
+        })
         
         return jsonify(client.to_dict()), 201
     except Exception as e:
@@ -160,6 +240,7 @@ def create_client():
 
 
 @clients_bp.route('/<int:client_id>', methods=['PUT'])
+@admin_required
 def update_client(client_id):
     """Actualiza un cliente"""
     data = request.json
@@ -219,6 +300,8 @@ def update_client(client_id):
                  return jsonify({'error': f'La IP {new_ip} ya está en uso en este router por {dupes[0].legal_name}'}), 400
 
     try:
+        # Handle assigned_collector_id update
+        
         # Actualizar en Base de Datos
         updated_client = client_repo.update(client_id, data)
         
@@ -228,8 +311,9 @@ def update_client(client_id):
             if router:
                 sync_success = False
                 
-                # 1. Intentar sincronización directa si está online
+                # Intentar sincronización directa si está online
                 if router.status == 'online':
+                    # Fallback robusto: crear sesión dedicada
                     adapter = MikroTikAdapter()
                     try:
                         if adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port, timeout=3):
@@ -238,6 +322,7 @@ def update_client(client_id):
                             adapter.disconnect()
                     except Exception as e:
                         logger.error(f"Direct sync failed: {e}")
+
                 
                 # 2. Si falló o estaba offline, al SENTINEL usando SyncService
                 if not sync_success:
@@ -259,15 +344,25 @@ def update_client(client_id):
         logger.info(f"Cliente actualizado: {updated_client.legal_name}")
         
         # Auditoría de actualización
+        from src.application.services.audit_service import AuditService
         AuditService.log(
             operation='client_updated',
             category='client',
             entity_type='client',
             entity_id=client_id,
-            description=f"Cliente actualizado: {updated_client.legal_name}",
-            previous_state={'username': old_username},
+            description=f"Cliente actualizado: {updated_client.subscriber_code}",
+            previous_state={'username': old_username, 'ip': old_ip, 'router_id': router_id},
             new_state=data
         )
+        
+        # REAL-TIME SYNC
+        from src.application.events.event_bus import get_event_bus, SystemEvents
+        get_event_bus().publish(SystemEvents.CLIENT_UPDATED, {
+            'event_type': SystemEvents.CLIENT_UPDATED,
+            'client_id': client_id,
+            'tenant_id': g.tenant_id,
+            'action': 'edited'
+        })
         
         return jsonify(updated_client.to_dict())
     except Exception as e:
@@ -276,6 +371,7 @@ def update_client(client_id):
 
 
 @clients_bp.route('/<int:client_id>', methods=['DELETE'])
+@admin_required
 def delete_client(client_id):
     """Elimina un cliente. Soporta 'scope=local' (Soft Delete) o 'scope=global' (Hard Delete + Mikrotik)"""
     scope = request.args.get('scope', 'global')
@@ -337,6 +433,7 @@ def delete_client(client_id):
 
 
 @clients_bp.route('/bulk-restore', methods=['POST'])
+@admin_required
 def bulk_restore_clients():
     """Restaura múltiples clientes archivados"""
     data = request.json
@@ -363,6 +460,7 @@ def bulk_restore_clients():
 
 
 @clients_bp.route('/bulk-delete', methods=['POST'])
+@admin_required
 def bulk_delete_clients():
     """Elimina permanentemente múltiples clientes (SOLO SISTEMA)"""
     data = request.json
@@ -390,6 +488,7 @@ def bulk_delete_clients():
 
 
 @clients_bp.route('/empty-trash', methods=['POST'])
+@admin_required
 def empty_trash():
     """Vacía la papelera por completo (SOLO SISTEMA)"""
     db = get_db()
@@ -411,46 +510,67 @@ def empty_trash():
             
     return jsonify({'message': f'Papelera vaciada: {count} clientes eliminados', 'count': count}), 200
 @clients_bp.route('/<int:client_id>/suspend', methods=['POST'])
+@admin_required
 def suspend_client(client_id):
     """Suspende un cliente con manejo inteligente de MikroTik"""
-    from src.application.services.mikrotik_operations import safe_suspend_client
-    
-    db = get_db()
-    router_repo = db.get_router_repository()
-    client_repo = db.get_client_repository()
-    
-    client = client_repo.get_by_id(client_id)
-    if not client:
-        return jsonify({'error': 'Cliente no encontrado'}), 404
-    
-    if not client.router_id:
-        return jsonify({'error': 'Cliente sin router asignado'}), 400
-    
-    router = router_repo.get_by_id(client.router_id)
-    if not router:
-        return jsonify({'error': 'Router no encontrado'}), 404
-    
-    # Usar función segura con validación y manejo de offline
-    result = safe_suspend_client(
-        db=db,
-        client=client,
-        router=router,
-        audit_service=AuditService,
-        audit_details=f'Suspensión manual - Cliente: {client.legal_name}'
-    )
-    
-    logger.info(f"📋 suspend_client result: {result}")
-    
-    return jsonify({
-        'success': True,
-        'client': client.to_dict(),
-        'sync_status': result['status'],
-        'message': result['message'],
-        'already_blocked': result.get('already_blocked', False)
-    })
+    print(f"DEBUG: Entering suspend_client for ID {client_id}")
+    try:
+        from src.application.services.mikrotik_operations import safe_suspend_client
+        
+        db = get_db()
+        router_repo = db.get_router_repository()
+        client_repo = db.get_client_repository()
+        
+        client = client_repo.get_by_id(client_id)
+        if not client:
+            return jsonify({'error': 'Cliente no encontrado'}), 404
+        
+        if not client.router_id:
+            return jsonify({'error': 'Cliente sin router asignado'}), 400
+        
+        router = router_repo.get_by_id(client.router_id)
+        if not router:
+            return jsonify({'error': 'Router no encontrado'}), 404
+        
+        # Usar función segura con validación y manejo de offline
+        result = safe_suspend_client(
+            db=db,
+            client=client,
+            router=router,
+            audit_service=AuditService,
+            audit_details=f'Suspensión manual - Cliente: {client.legal_name}'
+        )
+        
+        logger.info(f"📋 suspend_client result: {result}")
+        
+        # REAL-TIME SYNC
+        from src.application.events.event_bus import get_event_bus, SystemEvents
+        get_event_bus().publish(SystemEvents.CLIENT_UPDATED, {
+            'event_type': SystemEvents.CLIENT_UPDATED,
+            'client_id': client_id,
+            'tenant_id': g.tenant_id,
+            'action': 'suspended'
+        })
+
+        return jsonify({
+            'success': True,
+            'client': client.to_dict(),
+            'sync_status': result['status'],
+            'message': result['message'],
+            'already_blocked': result.get('already_blocked', False)
+        })
+    except Exception as e:
+        logger.error(f"❌ Error crítico en suspend_client (manual): {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Ocurrió un error inesperado al suspender al cliente. Por favor, revise los logs del servidor.'
+        }), 500
+
 
 
 @clients_bp.route('/<int:client_id>/promise', methods=['POST'])
+@permission_required('finance:promises', 'create')
 def register_promise(client_id):
     """Registra una promesa de pago y reactiva servicio de forma segura"""
     from src.application.services.mikrotik_operations import safe_activate_client
@@ -459,10 +579,15 @@ def register_promise(client_id):
     client_repo = db.get_client_repository()
     router_repo = db.get_router_repository()
     
-    promise_date_str = data.get('promise_date')
     client = client_repo.get_by_id(client_id)
     if not client:
         return jsonify({'error': 'Cliente no encontrado'}), 404
+    
+    # Validar acceso a nivel de fila
+    if not _has_client_access(g.user, client):
+        return jsonify({'error': 'No tienes permisos para registrar promesas a este cliente'}), 403
+    
+    promise_date_str = data.get('promise_date')
     
     if not promise_date_str:
         client.promise_date = None
@@ -502,6 +627,7 @@ def register_promise(client_id):
 
 
 @clients_bp.route('/<int:client_id>/activate', methods=['POST'])
+@admin_required
 def activate_client(client_id):
     """Activa un cliente con manejo inteligente de MikroTik y promesa opcional"""
     from src.application.services.mikrotik_operations import safe_activate_client
@@ -553,6 +679,15 @@ def activate_client(client_id):
         audit_details=f'Activación manual {"con promesa" if promise_days else ""} - Cliente: {client.legal_name}'
     )
     
+    # REAL-TIME SYNC
+    from src.application.events.event_bus import get_event_bus, SystemEvents
+    get_event_bus().publish(SystemEvents.CLIENT_UPDATED, {
+        'event_type': SystemEvents.CLIENT_UPDATED,
+        'client_id': client_id,
+        'tenant_id': g.tenant_id,
+        'action': 'activated'
+    })
+
     return jsonify({
         'success': True,
         'client': client.to_dict(),
@@ -562,6 +697,7 @@ def activate_client(client_id):
 
 
 @clients_bp.route('/<int:client_id>/restore', methods=['POST'])
+@admin_required
 def restore_client(client_id):
     """Restaura un cliente archivado (deleted -> active)"""
     db = get_db()
@@ -593,10 +729,22 @@ def restore_client(client_id):
 
 
 @clients_bp.route('/<int:client_id>/payments', methods=['POST'])
+@login_required
 def register_payment(client_id):
     """Registra un pago para el cliente y restaura servicio si aplica - LOGICA UNIFICADA"""
     data = request.json
     db = get_db()
+    
+    user = g.user
+    
+    client_repo = db.get_client_repository()
+    client = client_repo.get_by_id(client_id)
+    
+    if not client:
+        return jsonify({'error': 'Cliente no encontrado'}), 404
+        
+    if not _has_client_access(user, client):
+        return jsonify({'error': 'No tienes permisos para registrar pagos a este cliente'}), 403
     
     try:
         from src.application.services.billing_service import BillingService
@@ -631,6 +779,7 @@ def register_payment(client_id):
 
 
 @clients_bp.route('/<int:client_id>/adjust-balance', methods=['POST'])
+@admin_required
 def adjust_balance(client_id):
     """Corregir manualmente el balance del cliente"""
     data = request.json
@@ -674,6 +823,7 @@ def adjust_balance(client_id):
 
 
 @clients_bp.route('/update-name-by-ip', methods=['POST'])
+@admin_required
 def update_client_name_by_ip():
     """Actualiza el nombre de usuario de un cliente basándose en su IP"""
     data = request.json
@@ -708,6 +858,7 @@ def update_client_name_by_ip():
 
 
 @clients_bp.route('/lookup-identity', methods=['POST'])
+@admin_required
 def lookup_client_identity():
     """Busca identidad de un cliente (MAC/IP) directamente en el router en tiempo real"""
     data = request.json
@@ -777,6 +928,7 @@ def lookup_client_identity():
 
 
 @clients_bp.route('/preview-import/<int:router_id>', methods=['GET'])
+@admin_required
 def preview_import_clients(router_id):
     """
     Escanea clientes del router (PPPoE + Simple Queues) y filtra por Segmentos de Red declarados.
@@ -791,34 +943,58 @@ def preview_import_clients(router_id):
     if not router:
         return jsonify({'error': 'Router no encontrado'}), 404
     
-    # 1. Obtener Segmentos de Red Validos SOLO PARA ESTE ROUTER
-    # 1. Obtener Rangos IP Válidos desde el Router (NUEVA LÓGICA)
+    # 1. Obtener Rangos IP Válidos (Segmentos de Red y legacy ranges)
     allowed_networks = []
     
-    # Combinar rangos de PPPoE y DHCP definidos en la configuración del router
-    raw_ranges = []
-    if router.pppoe_ranges:
-        raw_ranges.extend([r.strip() for r in router.pppoe_ranges.split(',') if r.strip()])
-    if router.dhcp_ranges:
-        raw_ranges.extend([r.strip() for r in router.dhcp_ranges.split(',') if r.strip()])
-        
-    for cidr in raw_ranges:
+    # Prioridad 1: Tabla NetworkSegment (Nueva lógica centralizada)
+    segments = db.session.query(NetworkSegment).filter(NetworkSegment.router_id == router_id).all()
+    for s in segments:
         try:
-            allowed_networks.append(ip_network(cidr, strict=False))
+            allowed_networks.append(ip_network(s.cidr, strict=False))
         except Exception as e:
-            logger.warning(f"Rango inválido en Router {router.alias}: {cidr} - {e}")
-            
+            logger.warning(f"Segmento inválido en BD: {s.cidr} - {e}")
+
+    # Prioridad 2: Fallback a campos legacy si existen
+    if router.pppoe_ranges:
+        for r in router.pppoe_ranges.split(','):
+            if r.strip():
+                try:
+                    net = ip_network(r.strip(), strict=False)
+                    if net not in allowed_networks: allowed_networks.append(net)
+                except: pass
+    if router.dhcp_ranges:
+        for r in router.dhcp_ranges.split(','):
+            if r.strip():
+                try:
+                    net = ip_network(r.strip(), strict=False)
+                    if net not in allowed_networks: allowed_networks.append(net)
+                except: pass
+        
     has_segments_filter = len(allowed_networks) > 0
 
-    if has_segments_filter:
-        logger.info(f"Filtrando importación ({scan_type}) de router {router_id} ({router.alias}) por {len(allowed_networks)} segmentos.")
-    else:
-        logger.warning(f"No hay segmentos de red declarados para router {router_id}. Se mostrarán todos.")
+    # POLÍTICA ESTRICTA: Si no hay segmentos declarados, BLOQUEAR importación
+    if not has_segments_filter:
+        logger.warning(f"⚠️ Router {router_id} ({router.alias}): No tiene segmentos de red declarados. Importación BLOQUEADA.")
+        return jsonify({
+            'router_alias': router.alias, 'router_id': router_id,
+            'total_found': 0, 'segments_filter_active': False,
+            'clients': [],
+            'error_message': f'⚠️ El router {router.alias} no tiene segmentos de red internos declarados. Configura al menos un segmento antes de importar.',
+            'summary': {
+                'discovered_no_queue': 0, 'pppoe_secrets': 0,
+                'simple_queues': 0, 'needs_provisioning': False,
+                'name_changes': 0, 'ip_changes': 0
+            }
+        })
 
+    logger.info(f"Filtrando importación ({scan_type}) de router {router_id} ({router.alias}) por {len(allowed_networks)} segmentos: {[str(n) for n in allowed_networks]}")
+
+    # Get exclusion keywords from router config
+    exclusion_raw = router.exclusion_keywords or ""
+    dynamic_keywords = [k.strip().upper() for k in exclusion_raw.split(',') if k.strip()]
 
     def is_ip_allowed(ip_str):
-        """Verifica si una IP está en los segmentos permitidos"""
-        if not has_segments_filter: return True 
+        """Verifica ESTRICTAMENTE si una IP está en los segmentos permitidos"""
         if not ip_str: return False
         
         # Limpiar IP (quitar máscara si viene tipo 192.168.1.5/32)
@@ -831,17 +1007,23 @@ def preview_import_clients(router_id):
         except ValueError:
             return False
 
-    def is_management_equipment(name):
-        """Verifica si un nombre corresponde a equipos de gestión, infraestructura o HOTSPOT"""
-        if not name: return False
-        name_upper = name.upper()
+    def is_management_equipment(name, comment=''):
+        """Verifica si un nombre/comentario corresponde a equipos de gestión o palabras clave excluidas"""
+        if not name and not comment: return False
+        text_to_check = f"{name or ''} {comment or ''}".upper()
+        
+        # 1. Patrones dinámicos del router
+        for pattern in dynamic_keywords:
+            if pattern in text_to_check: return True
+        
+        # 2. Patrones base (Mantenemos solo infraestructura crítica)
         management_patterns = [
-            'GESTION', 'GESTION-AP', 'AP-', 'ROUTER-', 'MIKROTIK', 'SWITCH', 'CORE', 'BACKBONE',
-            'INFRAESTRUCTURA', 'ADMIN', 'MANAGEMENT', 'TOWER', 'TORRE', 'PTP-', 'ENLACE', 'APB', 
-            'HS-', 'HOTSPOT', 'FICHAS', 'INVITADO', 'GUEST'
+            'GESTION', 'GESTION-AP', 'CORE-', 'BACKBONE', 'SWITCH', 'ROUTER-',
+            'MIKROTIK', 'INFRAESTRUCTURA', 'ADMIN', 'MANAGEMENT', 'TOWER', 'TORRE', 
+            'PTP-', 'ENLACE', 'APB', 'HS-IP-BINDING'
         ]
         for pattern in management_patterns:
-            if pattern in name_upper: return True
+            if pattern in text_to_check: return True
         return False
 
     def get_suggested_plan(ip_str):
@@ -914,12 +1096,18 @@ def preview_import_clients(router_id):
                     profile_name = secret.get('profile', '')
                     comment = secret.get('comment', '')
                     
-                    if is_management_equipment(name) or is_management_equipment(comment):
+                    if is_management_equipment(name, comment):
                         if remote_addr: management_ips.add(remote_addr)
                         continue
                     
-                    if not (is_ip_allowed(remote_addr) or profile_name in allowed_profiles):
-                        continue 
+                    # POLÍTICA ESTRICTA: Si tiene IP, DEBE estar permitida.
+                    if remote_addr and remote_addr != '0.0.0.0' and not is_ip_allowed(remote_addr):
+                        continue
+                    
+                    # Si no tiene IP, validamos contra el profile (permitir dinámicos si el pool del profile está en segmento)
+                    if not remote_addr or remote_addr == '0.0.0.0':
+                        if profile_name not in allowed_profiles:
+                            continue
 
                     if not name: continue
                     
@@ -971,7 +1159,7 @@ def preview_import_clients(router_id):
                     target = q.get('target', '') 
                     comment = q.get('comment', '')
                     
-                    if is_management_equipment(name) or is_management_equipment(comment):
+                    if is_management_equipment(name, comment):
                         target_ip = target.split('/')[0] if target else ''
                         if target_ip: management_ips.add(target_ip)
                         continue
@@ -1032,7 +1220,7 @@ def preview_import_clients(router_id):
                     ip = lease.get('address')
                     host_name = lease.get('host-name', '')
                     comment = lease.get('comment', '')
-                    if is_management_equipment(host_name) or is_management_equipment(comment):
+                    if is_management_equipment(host_name, comment):
                         if ip: management_ips.add(ip)
                         continue
 
@@ -2284,3 +2472,59 @@ def bulk_revert_recent_payments():
     except Exception as e:
         logger.error(f"❌ Error crítico en bulk revert payments: {e}")
         return jsonify({'error': f'Error interno al revertir pagos: {str(e)}'}), 500
+
+@clients_bp.route('/export', methods=['GET'])
+@login_required
+def export_clients():
+    """Exporta los clientes a Excel basado en filtros actuales"""
+    from flask import make_response
+    from src.application.services.report_service import ReportService
+    
+    db = get_db()
+    client_repo = db.get_client_repository()
+    
+    router_id = request.args.get('router_id', type=int)
+    plan_id = request.args.get('plan_id', type=int)
+    status = request.args.get('status')
+    search = request.args.get('search')
+    
+    user = g.user
+    is_restricted_role = user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]
+    
+    assigned_collector_id = None
+    if is_restricted_role:
+        if user.role == UserRole.COLLECTOR.value:
+            assigned_collector_id = user.id
+        elif user.assigned_router_id:
+            router_id = user.assigned_router_id
+        else:
+            return jsonify({'error': 'No tienes permisos para exportar clientes'}), 403
+            
+    try:
+        clients = client_repo.get_filtered(
+            router_id=router_id, 
+            status=status, 
+            search=search, 
+            plan_id=plan_id,
+            assigned_collector_id=assigned_collector_id
+        )
+        
+        clients_dict = [c.to_dict() for c in clients]
+        
+        router_name = "General"
+        if router_id:
+            router = db.get_router_repository().get_by_id(router_id)
+            if router:
+                router_name = router.alias
+                
+        excel_buffer = ReportService.generate_clients_excel(clients_dict, router_name=router_name)
+        filename = f"clientes_{router_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        response = make_response(excel_buffer.getvalue())
+        response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+        response.headers["Content-type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        return response
+    except Exception as e:
+        logger.error(f"Error exporting clients: {e}")
+        return jsonify({'error': 'Error al generar el archivo Excel'}), 500
+

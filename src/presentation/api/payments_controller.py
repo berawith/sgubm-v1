@@ -2,13 +2,15 @@
 Payments API Controller - DATOS REALES
 Endpoints para gestión y contabilidad de pagos
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g, render_template
 from datetime import datetime, timedelta, timedelta
 from typing import List, Dict, Any
 from src.infrastructure.database.db_manager import get_db
-from src.infrastructure.database.models import ClientStatus, PaymentStatus, Client, Expense
+from src.infrastructure.database.models import ClientStatus, PaymentStatus, Client, Payment, Expense, CollectorAssignment, Router
 from src.application.services.audit_service import AuditService
+from src.application.services.mikrotik_operations import safe_suspend_client
 from src.application.services.expense_service import ExpenseService
+from src.application.services.auth import login_required, admin_required, UserRole, permission_required
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,12 +18,51 @@ logger = logging.getLogger(__name__)
 payments_bp = Blueprint('payments', __name__, url_prefix='/api/payments')
 
 
+def _has_payment_access(user, client_id=None, router_id=None):
+    """
+    Verifica si un usuario (especialmente COLLECTOR) tiene permiso para acceder a pagos de un cliente o router.
+    """
+    if user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]:
+        if user.role == UserRole.COLLECTOR.value:
+            db = get_db()
+            
+            # 1. Obtener todos los routers asignados (Legacy + Assignments)
+            assigned_router_ids = []
+            if user.assigned_router_id:
+                assigned_router_ids.append(user.assigned_router_id)
+            
+            if hasattr(user, 'assignments') and user.assignments:
+                for a in user.assignments:
+                    if a.router_id not in assigned_router_ids:
+                        assigned_router_ids.append(a.router_id)
+            
+            # Caso 1: Validar por Router ID
+            if router_id:
+                return router_id in assigned_router_ids
+            
+            # Caso 2: Validar por Client ID
+            if client_id:
+                client = db.session.query(Client).get(client_id)
+                if not client:
+                    return False
+                
+                # Acceso si el cliente está asignado directamente al cobrador
+                if client.assigned_collector_id == user.id:
+                    return True
+                
+                # Acceso si el router del cliente está asignado al cobrador
+                return client.router_id in assigned_router_ids
+            
+            return False
+    return True
+
+
 @payments_bp.route('/<int:payment_id>/print', methods=['GET'])
+@login_required
 def print_payment_receipt(payment_id):
     """
     Renderiza la vista de impresión de un recibo de pago
     """
-    from flask import render_template
     db = get_db()
     payment_repo = db.get_payment_repository()
     client_repo = db.get_client_repository()
@@ -31,11 +72,18 @@ def print_payment_receipt(payment_id):
         return "Pago no encontrado", 404
         
     client = client_repo.get_by_id(payment.client_id)
+    if not client:
+        return "Cliente asociado no encontrado", 404
+
+    # Validar acceso
+    if not _has_payment_access(g.user, client_id=payment.client_id, router_id=client.router_id):
+        return "No tienes permisos para ver este recibo", 403
     
     return render_template('billing/receipt_print.html', payment=payment, client=client)
 
 
 @payments_bp.route('', methods=['GET'])
+@login_required
 def get_payments():
     """
     Obtiene listado de pagos con filtros - DATOS REALES
@@ -63,7 +111,14 @@ def get_payments():
             
     if end_date:
         try:
-            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            # Si viene con Z o +HH:MM, es un timestamp completo
+            if 'T' in end_date:
+                end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            else:
+                # Si es solo fecha YYYY-MM-DD, ajustamos al final del día
+                from datetime import time
+                base_dt = datetime.fromisoformat(end_date)
+                end_dt = datetime.combine(base_dt.date(), time(23, 59, 59, 999999))
         except ValueError:
             pass
 
@@ -76,10 +131,206 @@ def get_payments():
         limit=limit
     )
     
+    user = g.user
+    is_restricted_role = user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]
+    
+    if is_restricted_role:
+        # Obtener routers asignados para filtrado colectivo
+        assigned_router_ids = []
+        if user.assigned_router_id:
+            assigned_router_ids.append(user.assigned_router_id)
+        if hasattr(user, 'assignments') and user.assignments:
+            assigned_router_ids.extend([a.router_id for a in user.assignments])
+            
+        # Filtrar pagos
+        payments = [
+            p for p in payments 
+            if p.client and (
+                p.client.assigned_collector_id == user.id or 
+                p.client.router_id in assigned_router_ids
+            )
+        ]
+            
     return jsonify([p.to_dict() for p in payments])
 
 
+# --- ENDPOINTS PARA PAGOS REPORTADOS (COBRADORES) ---
+
+@payments_bp.route('/reported/pending', methods=['GET'])
+@admin_required
+def get_pending_reported_payments():
+    """Obtiene todos los pagos en confirmación reportados por cobradores"""
+    db = get_db()
+    payment_repo = db.get_payment_repository()
+    
+    limit = request.args.get('limit', default=100, type=int)
+    payments = payment_repo.get_filtered(status='pending', limit=limit)
+    
+    res = []
+    for p in payments:
+        p_dict = p.to_dict()
+        if p.client:
+            p_dict['client_name'] = p.client.legal_name
+            p_dict['subscriber_code'] = p.client.subscriber_code
+            p_dict['collector_name'] = 'Cobrador' # Assuming collector from session or derived
+        res.append(p_dict)
+        
+    return jsonify(res)
+
+
+@payments_bp.route('/reported/<int:report_id>/approve', methods=['POST'])
+@admin_required
+def approve_reported_payment(report_id):
+    """
+    Aprueba un pago en confirmación reportado por un cobrador.
+    """
+    try:
+        from src.application.services.billing_service import BillingService
+        service = BillingService()
+        
+        # Confirmamos el pago (aplica contabilidad)
+        payment = service.confirm_payment(report_id)
+        
+        from src.application.services.audit_service import AuditService
+        AuditService.log(
+            operation='reported_payment_approved',
+            category='accounting',
+            entity_type='payment',
+            entity_id=payment.id,
+            description=f"Pago en confirmación de {payment.amount} aprobado por administrador.",
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Pago confirmado correctamente',
+            'payment_id': payment.id,
+            'new_balance': payment.client.account_balance if payment.client else 0
+        }), 200
+        
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error approving pending payment {report_id}: {str(e)}")
+        return jsonify({'error': 'Error interno al procesar la aprobación'}), 500
+
+
+@payments_bp.route('/reported/<int:report_id>/reject', methods=['POST'])
+@admin_required
+def reject_reported_payment(report_id):
+    """
+    Rechaza un pago en confirmación.
+    """
+    data = request.json or {}
+    reason = data.get('reason', 'Rechazado por el administrador')
+    
+    db = get_db()
+    payment_repo = db.get_payment_repository()
+    
+    payment = payment_repo.get_by_id(report_id)
+    if not payment:
+        return jsonify({'error': 'Pago no encontrado'}), 404
+        
+    if payment.status != 'pending':
+        return jsonify({'error': f'El pago ya no está pendiente (Estado: {payment.status})'}), 400
+        
+    try:
+        # Se actualiza a 'rejected', guardando el motivo específico en la BD
+        payment.status = 'rejected'
+        payment.rejection_reason = reason
+        payment.notes = (payment.notes or "") + f" | Rechazado: {reason}"
+        db.session.commit()
+        
+        from src.application.services.audit_service import AuditService
+        AuditService.log(
+            operation='reported_payment_rejected',
+            category='accounting',
+            entity_type='client',
+            entity_id=payment.client_id,
+            description=f"Pago en confirmación de ${payment.amount} rechazado. Motivo: {reason}"
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Pago rechazado correctamente'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error rejecting pending payment {report_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': 'Error interno al rechazar el pago'}), 500
+
+@payments_bp.route('/alerts', methods=['GET'])
+@login_required # Cobradores y administradores pueden entrar
+def get_alerts():
+    """Obtiene pagos pendientes y rechazados para la vista de alertas del cobrador"""
+    db = get_db()
+    payment_repo = db.get_payment_repository()
+    
+    # Filtramos por registered_by si es cobrador. El campo 'registered_by' no siempre existe o es exacto, pero
+    # la info de collector_id está en las métricas, o en el usuario actual si se guarda al crear el pago.
+    # En create_payment el cobrador hace: service.register_payment(data['collector_id'] = g.user.id) // Ocurrió un error en create payment (usa registered_by).
+    # Como fallback traemos status in ('pending', 'rejected') y si es collector filtramos.
+    
+    limit = request.args.get('limit', default=100, type=int)
+    
+    if g.user.role == UserRole.COLLECTOR.value:
+        all_pending = payment_repo.get_filtered(status='pending', limit=limit * 5)
+        all_rejected = payment_repo.get_filtered(status='rejected', limit=limit * 5)
+        
+        collector_username = g.user.username.lower() if g.user.username else ''
+        payments_pending = [p for p in all_pending if p.registered_by and p.registered_by.lower() == collector_username][:limit]
+        payments_rejected = [p for p in all_rejected if p.registered_by and p.registered_by.lower() == collector_username][:limit]
+    else:
+        # Para admins o vistas generales (opcional)
+        payments_pending = payment_repo.get_filtered(status='pending', limit=limit)
+        payments_rejected = payment_repo.get_filtered(status='rejected', limit=limit)
+        
+    res = []
+    for p in payments_pending + payments_rejected:
+        p_dict = p.to_dict()
+        if p.client:
+            p_dict['client_name'] = p.client.legal_name
+            p_dict['subscriber_code'] = p.client.subscriber_code
+        res.append(p_dict)
+        
+    # Ordenar por fecha desc
+    res.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+    return jsonify(res)
+
+@payments_bp.route('/alerts/<int:alert_id>', methods=['DELETE'])
+@login_required
+def delete_alert(alert_id):
+    """Elimina definitivamente una alerta (pago rechazado) de la vista del cobrador"""
+    db = get_db()
+    payment_repo = db.get_payment_repository()
+    
+    payment = payment_repo.get_by_id(alert_id)
+    if not payment:
+        return jsonify({'error': 'Alerta no encontrada'}), 404
+        
+    if payment.status != 'rejected':
+        return jsonify({'error': 'Solo se pueden eliminar alertas rechazadas'}), 400
+        
+    # Validar que le pertenezca al cobrador, salvo admin
+    if g.user.role == UserRole.COLLECTOR.value:
+        if payment.registered_by != g.user.identifier:
+            return jsonify({'error': 'No tienes permiso para borrar esta alerta'}), 403
+            
+    try:
+        db.session.delete(payment)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Alerta eliminada correctamente'})
+    except Exception as e:
+        logger.error(f"Error borrando alerta {alert_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': 'Error interno al borrar la alerta'}), 500
+
+# --------------------------------------------------------------------------
+
+
+
 @payments_bp.route('/<int:payment_id>', methods=['GET'])
+@login_required
 def get_payment(payment_id):
     """
     Obtiene un pago específico
@@ -91,26 +342,121 @@ def get_payment(payment_id):
     if not payment:
         return jsonify({'error': 'Pago no encontrado'}), 404
     
+    # Validar acceso a nivel de fila
+    if not _has_payment_access(g.user, client_id=payment.client_id):
+        return jsonify({'error': 'No tienes permisos para ver este pago'}), 403
+    
     return jsonify(payment.to_dict())
 
 
+@payments_bp.route('/<int:payment_id>/alert', methods=['POST'])
+@login_required
+def increment_payment_alert(payment_id):
+    """
+    Incrementa el contador de alertas de un pago pendiente.
+    """
+    db = get_db()
+    payment_repo = db.get_payment_repository()
+    
+    payment = payment_repo.get_by_id(payment_id)
+    if not payment:
+        return jsonify({'error': 'Pago no encontrado'}), 404
+        
+    if payment.status != 'pending':
+        return jsonify({'error': 'El pago ya no está pendiente'}), 400
+        
+    try:
+        payment.alert_count = (payment.alert_count or 0) + 1
+        
+        from src.application.services.audit_service import AuditService
+        AuditService.log(
+            operation='pending_payment_alert_sent',
+            category='accounting',
+            entity_type='payment',
+            entity_id=payment.id,
+            description=f"Alerta #{payment.alert_count} enviada para pago pendiente."
+        )
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Alerta enviada correctamente. (Total: {payment.alert_count})',
+            'alert_count': payment.alert_count
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error incrementing payment alert {payment_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': 'Error interno al enviar la alerta'}), 500
+
 @payments_bp.route('', methods=['POST'])
+@login_required
 def create_payment():
     """
     Registra un nuevo pago - USA LOGICA CENTRALIZADA
     """
     data = request.json
     client_id = data.get('client_id')
-    amount = float(data.get('amount', 0))
+    parts = data.get('parts', [])
     
-    if not client_id or amount <= 0:
-        return jsonify({'error': 'ID de cliente o monto inválido'}), 400
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        amount = 0
+        
+    if not client_id:
+        return jsonify({'error': 'ID de cliente requerido'}), 400
+
+    if amount <= 0 and not parts:
+        return jsonify({'error': 'Monto o componentes de pago (parts) requeridos'}), 400
+        
+    # Validar acceso a nivel de fila
+    if not _has_payment_access(g.user, client_id=client_id):
+        return jsonify({'error': 'No tienes permisos para registrar pagos a este cliente'}), 403
         
     try:
+        db = get_db()
+        
+        # Validación: No permitir más de un pago "en confirmación" por cliente
+        payment_repo = db.get_payment_repository()
+        existing_pending = payment_repo.get_filtered(client_id=client_id, status='pending')
+        if existing_pending:
+            return jsonify({
+                'error': 'PAYMENT_PENDING', 
+                'message': 'El cliente ya tiene un pago en proceso de confirmación.',
+                'pending_payment_id': existing_pending[0].id
+            }), 409
+            
+        # --- NUEVO: Interceptar Cobradores (Cabradores solo reportan, no registran) ---
+        if g.user.role == UserRole.COLLECTOR.value:
+            try:
+                from src.application.services.billing_service import BillingService
+                service = BillingService()
+                
+                data['collector_id'] = g.user.id
+                new_payment = service.register_payment(client_id, amount, data, status='pending')
+                db.session.commit()
+                
+                logger.info(f"Pago en confirmación (ID {new_payment.id}) guardado. Cobrador ID: {g.user.id}, Cliente ID: {client_id}, Monto: {amount}")
+                
+                return jsonify({
+                    'success': True,
+                    'is_report': True,
+                    'message': 'Pago reportado exitosamente. Pendiente de autorización administrativa.'
+                }), 201
+            except Exception as e:
+                import traceback
+                with open('debug_error.txt', 'w') as f:
+                    f.write(traceback.format_exc())
+                logger.error(f"Error in collector report: {traceback.format_exc()}")
+                db.session.rollback()
+                return jsonify({'error': 'Error interno al reportar el pago'}), 500
+            
+            
+        # --- Flujo normal para Admins/Secretarias ---
         from src.application.services.billing_service import BillingService
         service = BillingService()
-        
-        db = get_db() # Get DB early for transaction management
         
         # El servicio maneja: 
         # - Registro en tabla payments
@@ -126,11 +472,31 @@ def create_payment():
         # Obtener balance actualizado para la respuesta
         client = db.session.query(Client).get(client_id)
         
+        # REAL-TIME SYNC
+        from src.application.events.event_bus import get_event_bus, SystemEvents
+        event_bus = get_event_bus()
+        
+        # Publicar que se recibió el pago
+        event_bus.publish(SystemEvents.PAYMENT_RECEIVED, {
+            'event_type': SystemEvents.PAYMENT_RECEIVED,
+            'client_id': client_id,
+            'amount': amount,
+            'tenant_id': g.tenant_id
+        })
+        
+        # Publicar que el cliente se actualizó (para refrescar el dashboard/listado)
+        event_bus.publish(SystemEvents.CLIENT_UPDATED, {
+            'event_type': SystemEvents.CLIENT_UPDATED,
+            'client_id': client_id,
+            'tenant_id': g.tenant_id,
+            'action': 'payment_registered'
+        })
+
         return jsonify({
-            'success': True, 
+            'success': True,
+            'message': 'Pago registrado exitosamente',
             'payment_id': new_payment.id,
-            'new_balance': client.account_balance,
-            'message': 'Pago registrado exitosamente'
+            'new_balance': client.account_balance if client else 0
         }), 201
         
     except ValueError as ve:
@@ -146,43 +512,96 @@ def create_payment():
 
 
 @payments_bp.route('/<int:payment_id>', methods=['PUT'])
+@admin_required
 def update_payment(payment_id):
     """
-    Actualiza un pago existente
+    Actualiza un pago existente (incluye parts/detalles)
     """
     data = request.json
     
     db = get_db()
+    session = db.session
     payment_repo = db.get_payment_repository()
     
-    # 1. Filtrar y Sanitizar datos
-    allowed_fields = ['amount', 'payment_method', 'reference', 'notes', 'payment_date', 'currency']
-    update_data = {k: v for k, v in data.items() if k in allowed_fields}
-    
-    # 2. Convertir fechas
-    if 'payment_date' in update_data and update_data['payment_date']:
-        try:
-            # Intentar formato completo ISO
-            update_data['payment_date'] = datetime.fromisoformat(update_data['payment_date'].replace('Z', '+00:00'))
-        except ValueError:
-            try:
-                # Intentar solo fecha YYYY-MM-DD
-                update_data['payment_date'] = datetime.strptime(update_data['payment_date'], '%Y-%m-%d')
-            except ValueError:
-                return jsonify({'error': 'Formato de fecha inválido. Use ISO 8601 o YYYY-MM-DD'}), 400
-
     try:
-        payment = payment_repo.update(payment_id, update_data)
+        payment = session.query(Payment).filter_by(id=payment_id).first()
         if not payment:
             return jsonify({'error': 'Pago no encontrado'}), 404
         
-        # Auditoría de actualización
+        # --- Handle parts (payment details) ---
+        parts = data.get('parts', [])
+        
+        if parts:
+            from src.infrastructure.database.models import PaymentDetail
+            from src.domain.services.currency_service import CurrencyService
+            
+            settings_repo = db.get_system_setting_repository()
+            currency_service = CurrencyService(settings_repo)
+            base_currency = settings_repo.get_value('ERP_BASE_CURRENCY', 'USD')
+            
+            # Delete existing details
+            for old_detail in payment.details:
+                session.delete(old_detail)
+            session.flush()
+            
+            # Create new details from parts
+            total_cop = 0.0
+            total_base = 0.0
+            is_mixed = len(parts) > 1
+            
+            for part in parts:
+                p_amount = float(part.get('amount', 0))
+                p_currency = part.get('currency', 'COP')
+                p_method = part.get('method', 'cash')
+                p_rate = currency_service.get_rate(p_currency, base_currency)
+                p_base = currency_service.get_base_amount(p_amount, p_currency)
+                p_cop = currency_service.convert(p_amount, p_currency, 'COP')
+                
+                total_cop += p_cop
+                total_base += p_base
+                
+                detail = PaymentDetail(
+                    payment_id=payment.id,
+                    amount=p_amount,
+                    currency=p_currency,
+                    method=p_method,
+                    exchange_rate=p_rate,
+                    base_amount=p_base,
+                    reference=part.get('reference', ''),
+                    notes=part.get('notes', '')
+                )
+                session.add(detail)
+            
+            # Update payment totals from parts
+            payment.amount = total_cop
+            payment.currency = 'COP'
+            payment.base_amount = total_base
+            payment.payment_method = 'mixed' if is_mixed else parts[0].get('method', 'cash')
+            payment.reference = 'Mixed Payment' if is_mixed else (parts[0].get('reference', '') or payment.reference)
+        
+        # --- Handle flat fields ---
+        if 'notes' in data:
+            payment.notes = data['notes']
+        
+        if 'payment_date' in data and data['payment_date']:
+            try:
+                payment.payment_date = datetime.fromisoformat(data['payment_date'].replace('Z', '+00:00'))
+            except (ValueError, TypeError):
+                try:
+                    payment.payment_date = datetime.strptime(data['payment_date'], '%Y-%m-%d')
+                except (ValueError, TypeError):
+                    return jsonify({'error': 'Formato de fecha inválido'}), 400
+        
+        
+        session.commit()
+        
+        # Auditoría
         AuditService.log(
             operation='payment_updated',
             category='accounting',
             entity_type='payment',
             entity_id=payment_id,
-            description=f"Pago actualizado. Nuevos datos: {update_data}"
+            description=f"Pago actualizado. Monto: ${payment.amount}, Método: {payment.payment_method}"
         )
         
         logger.info(f"Pago actualizado: ID {payment_id}")
@@ -190,11 +609,12 @@ def update_payment(payment_id):
         
     except Exception as e:
         logger.error(f"Error updating payment {payment_id}: {str(e)}")
-        db.session.rollback()
+        session.rollback()
         return jsonify({'error': 'Error interno al actualizar el pago'}), 500
 
 
 @payments_bp.route('/<int:payment_id>', methods=['DELETE'])
+@admin_required
 def delete_payment(payment_id):
     """Anula un pago y lo mueve a la papelera (lógica de borrado lógico/archivo)"""
     try:
@@ -236,7 +656,13 @@ def delete_payment(payment_id):
         
         # 3. Restaurar balance al cliente (Sumar el monto de vuelta a la deuda)
         client_repo = db.get_client_repository()
-        client_repo.update_balance(payment.client_id, payment.amount, operation='add', commit=False)
+        
+        # IMPORTANTE: Solo sumar si el pago NO estaba ya cancelado/revertido
+        from src.infrastructure.database.models import PaymentStatus
+        if payment.status != PaymentStatus.CANCELLED.value:
+            client_repo.update_balance(payment.client_id, payment.amount, operation='add', commit=False)
+        else:
+            logger.info(f"ℹ️ Saltando restauración de balance para pago {payment_id} ya revertido anteriormente.")
         
         # 4. Auditoría (sin commit interno)
         AuditService.log(
@@ -248,8 +674,32 @@ def delete_payment(payment_id):
             commit=False
         )
         
+        # 5. Suspender al cliente automáticamente (Requerimiento de usuario)
+        client = client_repo.get_by_id(payment.client_id)
+        if client:
+            router = db.session.query(Router).get(client.router_id)
+            if router:
+                safe_suspend_client(
+                    db=db,
+                    client=client,
+                    router=router,
+                    audit_service=AuditService,
+                    audit_details=f"Suspensión automática por anulación de pago ID {payment_id}",
+                    commit=False
+                )
+        
         # COMMIT FINAL: Si llegamos aquí sin errores, guardamos todo atómicamente
         db.session.commit()
+        
+        # REAL-TIME SYNC
+        from src.application.events.event_bus import get_event_bus, SystemEvents
+        event_bus = get_event_bus()
+        event_bus.publish(SystemEvents.CLIENT_UPDATED, {
+            'event_type': SystemEvents.CLIENT_UPDATED,
+            'client_id': payment.client_id,
+            'tenant_id': g.tenant_id,
+            'action': 'payment_deleted'
+        })
         
         logger.info(f"Pago archivado y eliminado: ID {payment_id}")
         return jsonify({'message': 'Pago anulado y movido a papelera correctamente'}), 200
@@ -262,6 +712,7 @@ def delete_payment(payment_id):
 
 
 @payments_bp.route('/<int:payment_id>/revert', methods=['POST'])
+@admin_required
 def revert_payment(payment_id):
     """
     Revierte un pago (diferente de delete):
@@ -334,11 +785,22 @@ f"Monto: ${payment.amount:,.2f}. Cliente: {client.legal_name}. Motivo: {reason}"
         
         logger.info(f"Payment reverted: ID {payment_id}, Current Cycle: {is_current_cycle}")
         
+        # REAL-TIME SYNC
+        from src.application.events.event_bus import get_event_bus, SystemEvents
+        event_bus = get_event_bus()
+        
+        event_bus.publish(SystemEvents.CLIENT_UPDATED, {
+            'event_type': SystemEvents.CLIENT_UPDATED,
+            'client_id': client.id,
+            'tenant_id': g.tenant_id,
+            'action': 'payment_reverted'
+        })
+
         return jsonify({
             'message': f'Pago revertido exitosamente.{suspension_info}',
             'payment_id': payment_id,
             'client_id': client.id,
-            'new_balance': float(client.debt_balance)
+            'new_balance': float(client.account_balance)
         }), 200
         
     except Exception as e:
@@ -349,6 +811,7 @@ f"Monto: ${payment.amount:,.2f}. Cliente: {client.legal_name}. Motivo: {reason}"
 
 
 @payments_bp.route('/deleted', methods=['GET'])
+@admin_required
 def get_deleted_payments():
     """Obtiene lista de pagos eliminados"""
     db = get_db()
@@ -358,6 +821,7 @@ def get_deleted_payments():
 
 
 @payments_bp.route('/deleted/<int:deleted_id>/restore', methods=['POST'])
+@admin_required
 def restore_payment(deleted_id):
     """Restaura un pago desde la papelera"""
     db = get_db()
@@ -410,6 +874,7 @@ def restore_payment(deleted_id):
 
 
 @payments_bp.route('/deleted/<int:deleted_id>', methods=['DELETE'])
+@admin_required
 def delete_permanently(deleted_id):
     """Elimina permanentemente un registro de la papelera"""
     db = get_db()
@@ -425,6 +890,7 @@ def delete_permanently(deleted_id):
 
 
 @payments_bp.route('/deleted/clear', methods=['DELETE'])
+@admin_required
 def clear_trash():
     """Vacía completamente la papelera"""
     db = get_db()
@@ -439,6 +905,7 @@ def clear_trash():
 
 
 @payments_bp.route('/deleted/delete-batch', methods=['POST'])
+@admin_required
 def delete_batch_permanently():
     """Elimina múltiples registros de la papelera de forma permanente"""
     data = request.json
@@ -459,6 +926,7 @@ def delete_batch_permanently():
 
 
 @payments_bp.route('/revert-batch', methods=['POST'])
+@admin_required
 def revert_batch():
     """
     Revierte múltiples pagos de forma masiva
@@ -493,6 +961,7 @@ def revert_batch():
 
 
 @payments_bp.route('/today', methods=['GET'])
+@login_required
 def get_today_payments():
     """
     Obtiene pagos del día actual
@@ -511,6 +980,7 @@ def get_today_payments():
 
 
 @payments_bp.route('/statistics', methods=['GET'])
+@login_required
 def get_statistics():
     """
     Obtiene estadísticas y contabilidad de pagos
@@ -549,35 +1019,75 @@ def get_statistics():
                      report_end = report_end.replace(hour=23, minute=59, second=59)
             except: pass
 
-        # repositorios
+        user = g.user
+        is_restricted_role = user.role not in [UserRole.ADMIN.value, UserRole.ADMIN_FEM.value, UserRole.PARTNER.value]
+        
+        # Obtener todos los routers asignados (Legacy + Assignments)
+        assigned_router_ids = []
+        if is_restricted_role:
+            if user.assigned_router_id:
+                assigned_router_ids.append(user.assigned_router_id)
+            
+            # Nuevas asignaciones multi-router
+            if hasattr(user, 'assignments') and user.assignments:
+                for a in user.assignments:
+                    if a.router_id not in assigned_router_ids:
+                        assigned_router_ids.append(a.router_id)
+        
+        # Obtener todos los clientes (una sola vez para optimizar y filtrar si es necesario)
         client_repo = db.get_client_repository()
+        all_clients_raw = client_repo.get_all()
+        
+        if is_restricted_role:
+            if assigned_router_ids:
+                all_clients = [c for c in all_clients_raw if c.router_id in assigned_router_ids]
+            else:
+                # Si es un rol restringido pero NO tiene routers asignados, no debería ver nada
+                all_clients = []
+        else:
+            # Optimización: Solo traer los campos necesarios en lugar de objetos completos si solo necesitamos IDs
+            all_clients = all_clients_raw
+            
+        # Helper to get filtered payments
+        def get_filtered_payments(start, end, method=None):
+            # Usar la lista de router_ids si existe
+            payments = payment_repo.get_filtered(
+                start_date=start, 
+                end_date=end, 
+                method=method, 
+                limit=10000,
+                router_ids=assigned_router_ids if is_restricted_role else None
+            )
+            return payments
+            
+        def get_payments_total(start, end):
+            return sum(p.amount for p in get_filtered_payments(start, end))
+
+        # Calcular totales Fijos (Siempre útiles) - AHORA FILTRADOS
+        today_total = get_payments_total(today_start, now)
+        week_total = get_payments_total(week_start, now)
+        month_total = get_payments_total(month_start, now)
+        year_total = get_payments_total(year_start, now)
+        all_time_total = get_payments_total(datetime(2000, 1, 1), now)
+
         expense_repo = db.get_expense_repository()
-
-        # Calcular totales Fijos (Siempre útiles)
-        today_total = payment_repo.get_total_by_date_range(today_start, now)
-        week_total = payment_repo.get_total_by_date_range(week_start, now)
-        month_total = payment_repo.get_total_by_date_range(month_start, now)
-        year_total = payment_repo.get_total_by_date_range(year_start, now)
-        all_time_total = payment_repo.get_total_by_date_range(datetime(2000, 1, 1), now)
-
-        # Gastos Fijos
-        today_expenses = expense_repo.get_total_by_date_range(today_start, now)
-        week_expenses = expense_repo.get_total_by_date_range(week_start, now)
-        month_expenses = expense_repo.get_total_by_date_range(month_start, now)
-        year_expenses = expense_repo.get_total_by_date_range(year_start, now)
-        all_time_expenses = expense_repo.get_total_by_date_range(datetime(2000, 1, 1), now)
         
-        # Calcular total del periodo seleccionado (para la tarjeta "Este Mes" o "Periodo")
-        # Obtener todos (sin filtro de status en repo)
-        raw_period_payments = payment_repo.get_filtered(
-            start_date=report_start, 
-            end_date=report_end, 
-            method=method_filter,
-            limit=5000 
-        )
+        # Gastos Fijos - NO FILTRADOS POR ROUTER (Los gastos son globales de la empresa)
+        # Requerimiento: Si es cobrador quizás NO deba ver gastos. Mostraremos 0 o global según RBAC.
+        # Por ahora, los gastos se ocultan (0) para roles restringidos.
+        if is_restricted_role:
+             today_expenses = week_expenses = month_expenses = year_expenses = all_time_expenses = 0
+             filtered_expenses = 0
+        else:
+             today_expenses = expense_repo.get_total_by_date_range(today_start, now)
+             week_expenses = expense_repo.get_total_by_date_range(week_start, now)
+             month_expenses = expense_repo.get_total_by_date_range(month_start, now)
+             year_expenses = expense_repo.get_total_by_date_range(year_start, now)
+             all_time_expenses = expense_repo.get_total_by_date_range(datetime(2000, 1, 1), now)
+             filtered_expenses = expense_repo.get_total_by_date_range(report_start, report_end)
         
-        # Gastos del periodo filtrado
-        filtered_expenses = expense_repo.get_total_by_date_range(report_start, report_end)
+        # Calcular total del periodo seleccionado
+        raw_period_payments = get_filtered_payments(report_start, report_end, method_filter)
 
         # Statuses considered as "Successful/Collected"
         SUCCESS_STATUSES = ['paid', 'verified', 'approved', 'success']
@@ -610,23 +1120,21 @@ def get_statistics():
 
         # --- Desglose de Gastos por Categoría ---
         expense_categories = {}
-        # Obtener gastos reales del periodo para desglose
-        from src.infrastructure.database.models import Expense
-        period_expenses = db.session.query(Expense).filter(
-            Expense.expense_date >= report_start,
-            Expense.expense_date <= report_end
-        ).all()
+        if not is_restricted_role:
+            from src.infrastructure.database.models import Expense
+            period_expenses = db.session.query(Expense).filter(
+                Expense.expense_date >= report_start,
+                Expense.expense_date <= report_end
+            ).all()
 
-        for exp in period_expenses:
-            cat = exp.category or 'otros'
-            if cat not in expense_categories:
-                expense_categories[cat] = {'count': 0, 'total': 0.0}
-            expense_categories[cat]['count'] += 1
-            expense_categories[cat]['total'] += float(exp.amount or 0)
+            for exp in period_expenses:
+                cat = exp.category or 'otros'
+                if cat not in expense_categories:
+                    expense_categories[cat] = {'count': 0, 'total': 0.0}
+                expense_categories[cat]['count'] += 1
+                expense_categories[cat]['total'] += float(exp.amount or 0)
         
-        # Métricas de Deuda (Balances de Clientes)
-        # Obtener todos los clientes (una sola vez para optimizar)
-        all_clients = client_repo.get_all()
+        # Métricas de Deuda (Balances de Clientes) ya usa `all_clients` que filtramos arriba
         
         # Filtramos operacionales (excluyendo eliminados) para consistencia con Dashboard
         operational_clients = [c for c in all_clients if str(c.status).lower() != 'deleted']
@@ -661,15 +1169,22 @@ def get_statistics():
         from src.infrastructure.database.models import Invoice, InvoiceItem
         
         # Usamos el rango del reporte para calcular descuentos otorgados en ese periodo
-        period_invoices = db.session.query(Invoice).filter(
+        period_invoices_query = db.session.query(Invoice).filter(
             Invoice.issue_date >= report_start,
             Invoice.issue_date <= report_end
-        ).all()
+        )
+        
+        period_invoices = period_invoices_query.all()
         
         prorated_loss_month = 0.0
+        allowed_client_ids = {c.id for c in all_clients}
         for inv in period_invoices:
+            # Filtrar si es restringido
+            if is_restricted_role and inv.client_id not in allowed_client_ids:
+                continue
+                
             # Calcular original sumando items
-            original_val = sum(item.amount for item in inv.items)
+            original_val = sum(item.total for item in inv.items)
             current_val = inv.total_amount
             
             # Si el monto actual es menor al original (y mayor a 0 para evitar anuladas), es descuento
@@ -696,8 +1211,8 @@ def get_statistics():
                 next_month = (month_start_i + timedelta(days=32)).replace(day=1)
                 month_end_i = next_month - timedelta(seconds=1)
                 
-            collected = payment_repo.get_total_by_date_range(month_start_i, month_end_i)
-            expenses_i = expense_repo.get_total_by_date_range(month_start_i, month_end_i)
+            collected = get_payments_total(month_start_i, month_end_i)
+            expenses_i = 0 if is_restricted_role else expense_repo.get_total_by_date_range(month_start_i, month_end_i)
             
             # Cálculo de Meta Histórica (Theoretical)
             clients_that_month = []
@@ -726,11 +1241,13 @@ def get_statistics():
             })
             
         # Variables adicionales para counts
-        month_payments = payment_repo.get_by_date_range(month_start, now)
+        month_payments = get_filtered_payments(month_start, now)
         paid_client_ids = set(p.client_id for p in month_payments)
         
         # Obtener pagos recientes
-        recent_payments = payment_repo.get_all(limit=5)
+        recent_payments = get_filtered_payments(datetime(2000, 1, 1), now)
+        recent_payments.sort(key=lambda x: x.payment_date or datetime.min, reverse=True)
+        recent_payments = recent_payments[:5]
         
         return jsonify({
             'totals': {
@@ -762,10 +1279,10 @@ def get_statistics():
                 'combined_losses': float(prorated_loss_month or 0) + float(total_bad_debt or 0) + (abs(float(total_fx_variance_val)) if float(total_fx_variance_val) < 0 else 0)
             },
             'counts': {
-                'today': len(payment_repo.get_by_date_range(today_start, now)),
-                'week': len(payment_repo.get_by_date_range(week_start, now)),
+                'today': len(get_filtered_payments(today_start, now)),
+                'week': len(get_filtered_payments(week_start, now)),
                 'month': len(month_payments),
-                'year': len(payment_repo.get_by_date_range(year_start, now)),
+                'year': len(get_filtered_payments(year_start, now)),
                 'debt_clients': clients_with_debt,
                 'paid_clients': len(paid_client_ids)
             },
@@ -783,6 +1300,7 @@ def get_statistics():
 
 
 @payments_bp.route('/losses-detail', methods=['GET'])
+@admin_required
 def get_losses_detail():
     """
     Obtiene el desglose detallado de todas las 'fugas' financieras:
@@ -833,7 +1351,7 @@ def get_losses_detail():
         ).all()
 
         for inv in invoices:
-            original_val = sum(item.amount for item in inv.items)
+            original_val = sum(item.total for item in inv.items)
             current_val = inv.total_amount
             if current_val > 0 and original_val > current_val + 0.01:
                 losses.append({
@@ -875,6 +1393,7 @@ def get_losses_detail():
 
 
 @payments_bp.route('/report', methods=['POST'])
+@admin_required
 def generate_report():
     """
     Genera reporte de pagos para un rango de fechas
@@ -927,6 +1446,7 @@ def generate_report():
 
 
 @payments_bp.route('/export', methods=['GET'])
+@admin_required
 def export_payments():
     """
     Exporta el listado de pagos a CSV con filtros
@@ -1003,6 +1523,7 @@ def export_payments():
 
 
 @payments_bp.route('/export-debtors', methods=['GET'])
+@admin_required
 def export_debtors():
     """
     Exporta el listado de clientes con deuda a CSV
@@ -1046,6 +1567,7 @@ def export_debtors():
 
 
 @payments_bp.route('/export-pdf', methods=['GET'])
+@admin_required
 def export_payments_pdf():
     """
     Exporta el listado de pagos o morosos a PDF premium
@@ -1238,6 +1760,7 @@ def export_payments_pdf():
 
 
 @payments_bp.route('/export-excel', methods=['GET'])
+@admin_required
 def export_payments_excel():
     """
     Exporta el listado de pagos o morosos a Excel formateado
@@ -1285,6 +1808,7 @@ def export_payments_excel():
 
 
 @payments_bp.route('/rates', methods=['GET'])
+@login_required
 def get_exchange_rates():
     """
     Obtiene las tasas de cambio vigentes para el ERP (Soporta BCV y Comercial p/ VES)
@@ -1306,6 +1830,7 @@ def get_exchange_rates():
 
 
 @payments_bp.route('/rates', methods=['POST'])
+@admin_required
 def update_exchange_rates():
     """
     Actualiza las tasas de cambio (BCV, Comercial, COP)
@@ -1345,6 +1870,7 @@ def update_exchange_rates():
 
 
 @payments_bp.route('/balance-summary', methods=['GET'])
+@login_required
 def balance_summary():
     """
     Resumen de balances de todos los clientes
@@ -1373,6 +1899,7 @@ def balance_summary():
 # ==========================================
 
 @payments_bp.route('/expenses', methods=['GET'])
+@login_required
 def get_expenses():
     """Obtiene lista de gastos con filtros"""
     db = get_db()
@@ -1412,6 +1939,7 @@ def get_expenses():
 
 
 @payments_bp.route('/expenses', methods=['POST'])
+@admin_required
 def create_expense():
     """Registra un nuevo gasto usando el servicio ERP"""
     data = request.json
@@ -1435,6 +1963,7 @@ def create_expense():
 
 
 @payments_bp.route('/expenses/<int:expense_id>', methods=['GET'])
+@login_required
 def get_expense(expense_id):
     """Obtiene un gasto específico"""
     db = get_db()
@@ -1448,6 +1977,7 @@ def get_expense(expense_id):
 
 
 @payments_bp.route('/expenses/<int:expense_id>', methods=['PUT'])
+@admin_required
 def update_expense(expense_id):
     """Actualiza un gasto existente"""
     data = request.json
@@ -1455,7 +1985,7 @@ def update_expense(expense_id):
     repo = db.get_expense_repository()
     
     # 1. Filtrar campos permitidos
-    allowed_fields = ['description', 'amount', 'currency', 'category', 'notes', 'expense_date', 'base_amount', 'exchange_rate', 'is_recurring', 'tax_deductible']
+    allowed_fields = ['description', 'amount', 'currency', 'category', 'notes', 'expense_date', 'base_amount', 'exchange_rate', 'is_recurring', 'tax_deductible', 'router_id', 'user_id']
     update_data = {k: v for k, v in data.items() if k in allowed_fields}
     
     # 2. Convertir fecha si existe
@@ -1473,6 +2003,13 @@ def update_expense(expense_id):
             except ValueError:
                 return jsonify({'error': 'Formato de fecha de gasto inválido. Use YYYY-MM-DD, DD/MM/YYYY o ISO 8601'}), 400
     
+    # 3. Convertir router_id a int si existe
+    if 'router_id' in update_data:
+        if update_data['router_id'] and str(update_data['router_id']).strip():
+            update_data['router_id'] = int(update_data['router_id'])
+        else:
+            update_data['router_id'] = None
+
     try:
         updated_expense = repo.update(expense_id, update_data)
         if not updated_expense:
@@ -1490,6 +2027,7 @@ def update_expense(expense_id):
 
 
 @payments_bp.route('/expenses/<int:expense_id>', methods=['DELETE'])
+@admin_required
 def delete_expense(expense_id):
     """Elimina un gasto"""
     try:
@@ -1506,6 +2044,7 @@ def delete_expense(expense_id):
 
 
 @payments_bp.route('/expenses/summary', methods=['GET'])
+@login_required
 def get_expenses_summary():
     """Obtiene resumen de gastos del mes actual (o especificado)"""
     try:
