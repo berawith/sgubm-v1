@@ -78,64 +78,53 @@ class AutomationManager:
 
     def _check_and_run_tasks(self):
         """Verifica qué tareas tocan ahora para CADA TENANT"""
-        from src.infrastructure.database.db_manager import get_db, get_app
+        from src.infrastructure.database.db_manager import get_db
         from src.infrastructure.database.models import Tenant
-        from flask import g
         
-        app = get_app()
-        if not app:
-            logger.error("AutomationManager: App not initialized yet.")
-            return
-
-        with app.app_context():
-            db = get_db()
-            try:
-                # Obtener todos los tenants activos
-                tenants = db.session.query(Tenant).filter(Tenant.is_active == 1).all()
+        db = get_db()
+        try:
+            # Obtener todos los tenants activos
+            tenants = db.session.query(Tenant).filter(Tenant.is_active == 1).all()
+            
+            now = datetime.now()
+            today = now.date()
+            
+            for tenant in tenants:
+                # REPLACED: Contexto manual por tenant_id
+                # En FastAPI manejamos el tenant_id explícitamente en el servicio si es necesario
+                service = BillingService()
                 
-                now = datetime.now()
-                today = now.date()
-                
-                for tenant in tenants:
-                    # SIMULAR CONTEXTO DE TENANT PARA ESTE HILO
-                    g.tenant_id = tenant.id
-                    g.tenant_name = tenant.name
-                    
-                    service = BillingService()
-                    
-                    # 1. Ciclo de Facturación (Aprobación Requerida el Día 1)
-                    if today.day == 1 and self.last_check_date != today:
-                        logger.info(f"📅 AutomationManager [{tenant.name}]: Día 1 detectado. Solicitando aprobación de ciclo...")
-                        service.request_cycle_approval(tenant.id, today.year, today.month)
+                # 1. Ciclo de Facturación (Aprobación Requerida el Día 1)
+                if today.day == 1 and self.last_check_date != today:
+                    logger.info(f"📅 AutomationManager [{tenant.name}]: Día 1 detectado. Solicitando aprobación de ciclo...")
+                    service.request_cycle_approval(tenant.id, today.year, today.month)
 
-                    # 2. Verificar Notificaciones Pendientes (Recordatorios Horarios)
-                    self._process_notification_reminders(db, tenant.id)
+                # 2. Verificar Notificaciones Pendientes (Recordatorios Horarios)
+                self._process_notification_reminders(db, tenant.id)
 
-                    # 3. Ciclo de Suspensiones (Horario)
-                    try:
-                        if now.minute == 0: 
-                            logger.info(f"⚡ AutomationManager [{tenant.name}]: Verificación horaria de suspensiones...")
-                            service.process_suspensions()
-                    except Exception as e:
-                        logger.error(f"Error suspendiendo tenant {tenant.name}: {e}")
-                
-                # Tareas Globales
-                if self.last_check_date != today:
-                    try:
-                        logger.info("🧹 AutomationManager: Ejecutando limpieza global de historial...")
-                        g.tenant_id = None
-                        self._clean_traffic_history()
-                        self.last_check_date = today
-                    except Exception as e:
-                        logger.error(f"Error limpieza global: {e}")
+                # 3. Ciclo de Suspensiones (Horario)
+                try:
+                    if now.minute == 0: 
+                        logger.info(f"⚡ AutomationManager [{tenant.name}]: Verificación horaria de suspensiones...")
+                        # Aseguramos que el servicio sepa para qué tenant es
+                        service.process_suspensions(tenant_id=tenant.id)
+                except Exception as e:
+                    logger.error(f"Error suspendiendo tenant {tenant.name}: {e}")
+            
+            # Tareas Globales
+            if self.last_check_date != today:
+                try:
+                    logger.info("🧹 AutomationManager: Ejecutando limpieza global de historial...")
+                    self._clean_traffic_history()
+                    self.last_check_date = today
+                except Exception as e:
+                    logger.error(f"Error limpieza global: {e}")
 
-            except Exception as e:
-                logger.error(f"Error crítico en _check_and_run_tasks: {e}")
-            finally:
-                if 'db' in locals():
-                    db.remove_session()
-                if hasattr(g, 'tenant_id'):
-                    del g.tenant_id
+        except Exception as e:
+            logger.error(f"Error crítico en _check_and_run_tasks: {e}")
+        finally:
+            if 'db' in locals():
+                db.remove_session()
 
     def _process_notification_reminders(self, db, tenant_id):
         """Busca notificaciones de aprobación pendientes y maneja recordatorios"""
@@ -177,14 +166,11 @@ class AutomationManager:
                 return
 
             def process_router(router):
-                # SIMULAR CONTEXTO DE TENANT EN EL HILO
-                from flask import g
-                g.tenant_id = router.tenant_id
-                
                 from src.infrastructure.database.db_manager import get_db as get_local_db
                 local_db = get_local_db()
                 
                 try:
+                    # tenant_id = router.tenant_id
                     client_repo = local_db.get_client_repository()
                     traffic_repo = local_db.get_traffic_repository()
                     manager = MonitoringManager.get_instance()

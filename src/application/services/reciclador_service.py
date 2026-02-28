@@ -4,9 +4,7 @@ import logging
 import os
 import sys
 from datetime import datetime
-from flask import request, g, has_request_context
-
-from src.infrastructure.database.db_manager import get_db, get_app
+from src.infrastructure.database.db_manager import get_db
 from src.infrastructure.database.models import SystemIncident
 from src.application.events.event_bus import get_event_bus, SystemEvents
 
@@ -23,50 +21,35 @@ class RecicladorService:
         Captura una excepción con todo el contexto posible y la guarda en la BD.
         """
         try:
-
             # 1. Extraer detalles básicos
             error_type = type(exception).__name__
             message = str(exception)
             stack = traceback.format_exc()
             
-            # 2. Obtener contexto de request si existe
-            url = None
-            method = None
-            params = None
-            payload = None
-            ip = None
-            user_id = None
-            username = None
-            tenant_id = None
+            # 2. Obtener contexto
+            url, method, params, payload, ip, user_id, username, tenant_id = [None]*8
             
-            if has_request_context():
-                url = request.url
-                method = request.method
-                params = json.dumps(request.args.to_dict()) if request.args else None
+            # Intentar extraer de context (FastAPI friendly)
+            if context:
+                if 'request' in context:
+                    req = context['request']
+                    try:
+                        url = str(req.url)
+                        method = req.method
+                        ip = req.client.host if hasattr(req, 'client') else None
+                    except: pass
                 
-                # Intentar obtener payload (ofuscando contraseñas)
-                try:
-                    if request.is_json:
-                        data = request.get_json(silent=True) or {}
-                        # Ofuscación simple
-                        safe_data = {k: ('********' if 'password' in k.lower() or 'token' in k.lower() else v) 
-                                   for k, v in data.items()}
-                        payload = json.dumps(safe_data)
-                except:
-                    payload = "[Error retrieving payload]"
+                if 'user' in context:
+                    user = context['user']
+                    user_id = getattr(user, 'id', None)
+                    username = getattr(user, 'username', None)
                 
-                ip = request.remote_addr
-                user_id = getattr(g, 'user_id', None)
-                username = getattr(g, 'user', None).username if hasattr(getattr(g, 'user', None), 'username') else None
-                tenant_id = getattr(g, 'tenant_id', None)
-            
+                tenant_id = context.get('tenant_id') or context.get('tenant')
+
             # 2.5 Priorizar context para tenant_id (útil en hilos de fondo)
-            if context and 'tenant_id' in context:
-                tenant_id = context['tenant_id']
-            elif context and 'router_id' in context:
+            if not tenant_id and context and 'router_id' in context:
                 # Fallback: intentar inferir tenant desde el router si estamos en monitoreo
                 try:
-                    from src.infrastructure.database.db_manager import get_db
                     from src.infrastructure.database.models import Router
                     router = get_db().session.query(Router).get(context['router_id'])
                     if router:

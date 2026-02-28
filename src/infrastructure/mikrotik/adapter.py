@@ -159,6 +159,11 @@ class MikroTikAdapter(INetworkService):
     def get_all_last_seen(self) -> Dict[str, str]:
         return self.system.get_all_last_seen()
 
+    def get_system_info(self) -> Dict[str, Any]:
+        """Obtiene información de recursos del sistema (CPU, Memeria, etc.)."""
+        if not self.system: return {}
+        return self.system.get_resource_usage()
+
     def ping_bulk(self, targets: List[str], count: int = 2) -> Dict[str, Any]:
         return self.system.ping(targets, count)
 
@@ -167,6 +172,11 @@ class MikroTikAdapter(INetworkService):
 
     def get_interfaces(self) -> List[Dict]:
         return self.system.get_interfaces()
+
+    def get_interface_traffic(self, interface_name: str) -> Dict[str, int]:
+        """Obtiene tráfico acumulativo o en tiempo real de una interfaz."""
+        if not self.system: return {'tx': 0, 'rx': 0}
+        return self.system.get_interface_traffic(interface_name)
 
     def get_arp_table(self) -> List[Dict]:
         """Proxy para compatibilidad con TrafficSurgicalEngine."""

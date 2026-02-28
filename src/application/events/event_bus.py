@@ -78,7 +78,25 @@ class EventBus:
         if event_name in self._subscribers:
             for handler in self._subscribers[event_name]:
                 try:
-                    handler(event.data)
+                    import asyncio
+                    import inspect
+                    
+                    result = handler(event.data)
+                    
+                    # Si el handler devolvió una corrutina (es async), intentar programarla
+                    if inspect.iscoroutine(result):
+                        try:
+                            # Intentar obtener el loop actual (si estamos en el hilo principal)
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                loop.create_task(result)
+                            else:
+                                # Si no está corriendo, no podemos hacer mucho aquí sin saber el loop
+                                pass
+                        except RuntimeException:
+                            # Fuera del loop, usar threadsafe si es necesario (avanzado)
+                            pass
+                    
                     logger.debug(f"Event {event_name} handled successfully")
                 except Exception as e:
                     logger.error(f"Error handling event {event_name}: {str(e)}")

@@ -77,7 +77,9 @@ class QueueCapability(CapabilityBase):
                 rate_str = queue_map.get(target, '0/0')
                 parts = rate_str.split('/')
                 if len(parts) == 2:
-                    results[target] = {'tx': int(parts[0]), 'rx': int(parts[1])}
+                    # En MikroTik Simple Queues, rate es upload/download
+                    # Para el frontend: tx=download, rx=upload
+                    results[target] = {'tx': int(parts[1]), 'rx': int(parts[0])}
                 else:
                     results[target] = {'tx': 0, 'rx': 0}
             return results

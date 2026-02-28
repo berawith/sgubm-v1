@@ -4,65 +4,57 @@
 @tailwind utilities;
 
 :root {
-    /* Colors - Deep Premium Palette */
-    --primary: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-    --primary-solid: #6366f1;
-    --primary-glow: rgba(99, 102, 241, 0.4);
-    --secondary: linear-gradient(135deg, #f472b6 0%, #db2777 100%);
-    --success: linear-gradient(135deg, #34d399 0%, #059669 100%);
-    --warning: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
-    --danger: linear-gradient(135deg, #f87171 0%, #dc2626 100%);
+    /* Colors - Deep Premium Palette (HSL for precision) */
+    --p-h: 235;
+    --p-s: 85%;
+    --p-l: 65%;
+    --primary: hsla(var(--p-h), var(--p-s), var(--p-l), 1);
+    --primary-gradient: linear-gradient(135deg, hsl(var(--p-h), var(--p-s), var(--p-l)) 0%, hsl(var(--p-h), var(--p-s), calc(var(--p-l) - 10%)) 100%);
+    --primary-glow: hsla(var(--p-h), var(--p-s), var(--p-l), 0.4);
 
-    /* Pure Solid Colors */
+    --s-h: 330;
+    --s-s: 85%;
+    --s-l: 65%;
+    --secondary-gradient: linear-gradient(135deg, hsl(var(--s-h), var(--s-s), var(--s-l)) 0%, hsl(var(--s-h), var(--s-s), calc(var(--s-l) - 10%)) 100%);
+
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+
+    /* Slate Palette */
     --slate-50: #f8fafc;
     --slate-100: #f1f5f9;
     --slate-200: #e2e8f0;
+    --slate-400: #94a3b8;
+    --slate-600: #475569;
     --slate-800: #1e293b;
     --slate-900: #0f172a;
 
-    /* Glassmanaged Semantics - More depth */
-    --glass-bg: rgba(255, 255, 255, 0.85);
+    /* Background Semantics */
+    --bg-main: #f5f7fa;
+    --bg-card: rgba(255, 255, 255, 0.7);
+
+    /* Glassmorphism Engine (Ultra Premium) */
+    --glass-blur-sm: 8px;
+    --glass-blur-md: 16px;
+    --glass-blur-lg: 32px;
+    --glass-opacity: 0.08;
     --glass-border: rgba(255, 255, 255, 0.5);
-    --glass-shadow: rgba(0, 0, 0, 0.08);
+    --glass-reflect: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 60%);
 
-    /* Backgrounds */
-    --bg-primary: var(--slate-50);
-    --bg-secondary: #ffffff;
-    --bg-tertiary: var(--slate-100);
-
-    /* Text Colors */
-    --text-primary: var(--slate-900);
-    --text-secondary: var(--slate-800);
-    --text-muted: var(--slate-600);
+    /* Shadows - Deep & Sophisticated */
+    --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.03);
+    --shadow-premium: 0 20px 50px -12px rgba(0, 0, 0, 0.12);
+    --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.02);
 
     /* Spacing & Radius */
-    --spacing-xs: 0.25rem;
-    --spacing-sm: 0.5rem;
-    --spacing-md: 1rem;
-    --spacing-lg: 1.5rem;
-    --spacing-xl: 2rem;
-    --radius-sm: 6px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
-    --radius-xl: 16px;
+    --radius-premium: 24px;
+    --radius-card: 20px;
+    --radius-inner: 12px;
 
     /* Transitions */
-    --transition-fast: 0.1s ease;
-    --transition-base: 0.2s ease;
-    --transition-slow: 0.3s ease;
-    --transition-premium: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-
-    /* Shadows - Ultra Minimalist & Deep */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.02);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.03);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.04);
-    --shadow-premium: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
-    --shadow-glow: 0 0 0 4px rgba(79, 70, 229, 0.06);
-
-    /* Glass Tokens */
-    --glass-blur: 12px;
-    --glass-opacity: 0.1;
-    --glass-reflect: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 50%);
+    --t-premium: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    --t-fast: all 0.2s ease;
 }
 
 /* ============================================================================   Ultra-Premium Utility Classes   ============================================================================ */
@@ -123,14 +115,13 @@
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background-color: var(--bg-primary);
-    /* Color solido mas limpio */
-    color: var(--text-primary);
+    font-family: 'Outfit', 'Inter', -apple-system, sans-serif;
+    background-color: var(--bg-main);
+    color: var(--slate-900);
     line-height: 1.6;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
 }
 
 /* ============================================================================   Layout   ============================================================================ */
@@ -147,30 +138,34 @@ body {
 
 .sidebar {
     position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 240px;
-    background: rgba(255, 255, 255, 0.4);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border-right: 1px solid rgba(255, 255, 255, 0.3);
+    left: 12px;
+    top: 12px;
+    bottom: 12px;
+    width: 260px;
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(var(--glass-blur-lg));
+    -webkit-backdrop-filter: blur(var(--glass-blur-lg));
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-premium);
     display: flex;
     flex-direction: column;
     z-index: 100;
-    box-shadow: 10px 0 30px var(--glass-shadow);
+    box-shadow: var(--shadow-premium);
+    transition: var(--t-premium);
 }
 
 .main-content {
-    margin-left: 240px;
+    margin-left: 284px;
+    /* 260 width + 12 left + 12 gap */
     min-height: 100vh;
-    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg) var(--spacing-lg);
+    padding: 24px 32px;
+    background: var(--bg-main);
 }
 
 /* ============================================================================   Sidebar   ============================================================================ */
 .sidebar-header {
-    padding: 24px 20px;
-    border-bottom: 1px solid var(--slate-50);
+    padding: 32px 24px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.02);
 }
 
 .logo {

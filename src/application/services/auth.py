@@ -3,6 +3,10 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import request, jsonify, g
 from werkzeug.security import generate_password_hash, check_password_hash
+from typing import Optional, TYPE_CHECKING
+if TYPE_CHECKING:
+    from fastapi import Request
+from fastapi import Depends
 
 from src.infrastructure.database.db_manager import get_db
 from src.infrastructure.database.models import User, UserSession, UserRole, RolePermission
@@ -313,10 +317,58 @@ def permission_required(module, action='view'):
         return decorated_function
     return decorator
 
-# Se mantiene para retrocompatibilidad pero ahora usa la lógica de bypass robusta
-def admin_required(f):
-    """
-    Decorador para proteger rutas que solo el administrador puede ver/ejecutar.
-    Usa el sistema granular pero garantiza el bypass de SuperAdmin.
-    """
     return permission_required('system:users', 'view')(f)
+
+# --- DEPENDENCIAS PARA FASTAPI ---
+async def get_current_user(request: "Request"):
+    """
+    Dependencia de FastAPI para obtener el usuario autenticado.
+    Soporta Header, Query Param y Cookie.
+    """
+    token = None
+    
+    # 1. Header
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+    
+    # 2. Query Param
+    if not token:
+        token = request.query_params.get('token')
+    
+    # 3. Cookie
+    if not token:
+        token = request.cookies.get('auth_token')
+        
+    if not token:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="No se proporcionó token de autenticación")
+        
+    user = AuthService.validate_session(token)
+    
+    if not user:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Sesión inválida o expirada")
+        
+    if not user.is_active:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="El usuario ha sido desactivado")
+        
+    # Inyectar en el estado de la petición para uso posterior (similar a 'g' en Flask)
+    request.state.user = user
+    request.state.tenant_id = user.tenant_id
+    
+    return user
+
+def fastapi_permission_required(module: str, action: str = 'view'):
+    """Dependencia de FastAPI para validación de RBAC granular"""
+    async def dependency(user: User = Depends(get_current_user)):
+        has_permission = AuthService.check_permission(user.role, module, action)
+        if not has_permission:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Permiso Denegado. Se requiere privilegio [{action}] en el módulo [{module}]."
+            )
+        return user
+    return dependency

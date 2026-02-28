@@ -8,13 +8,14 @@ import logging
 import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
-from flask_socketio import SocketIO
-from cachetools import TTLCache
-from src.infrastructure.mikrotik.adapter import MikroTikAdapter, normalize_name
-from src.infrastructure.database.db_manager import get_db, get_app
+import asyncio
+from typing import Dict, List, Any, Optional, Set
+# from flask_socketio import SocketIO -> Eliminado
+# from src.infrastructure.database.db_manager import get_db, get_app -> Ver abajo
 from src.application.services.traffic_engine import TrafficSurgicalEngine
 from src.application.services.monitoring_utils import MikroTikTimeParser
 from src.application.services.status_resolver import StatusResolver
+from src.infrastructure.mikrotik.adapter import MikroTikAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +37,10 @@ class MonitoringManager:
         self.client_metadata_cache = {}
         self.last_emitted_data: Dict[int, Dict] = {} # {router_id: {client_id: last_data}}
         self.global_traffic = {'tx': 0, 'rx': 0}
-        self.socketio: Optional[SocketIO] = None
+        self.socketio: Optional[Any] = None
         self._active_syncs: Set[int] = set() # {router_id} para evitar hilos de sync duplicados
         self._sync_lock = threading.Lock()
+        self.loop = None
 
     @classmethod
     def get_instance(cls):
@@ -47,9 +49,26 @@ class MonitoringManager:
                 cls._instance = MonitoringManager()
             return cls._instance
 
-    def init_socketio(self, socketio: SocketIO):
-        self.socketio = socketio
-        logger.info("MonitoringManager: SocketIO injected")
+    def init_socketio(self, sio):
+        self.sio = sio
+        try:
+            self.loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.loop = asyncio.get_event_loop()
+        logger.info(f"MonitoringManager: AsyncServer injected and loop captured: {self.loop}")
+
+    def _safe_emit(self, event, data, room=None):
+        """Emite eventos de forma segura desde hilos de fondo al loop asíncrono"""
+        if not hasattr(self, 'sio') or not self.sio:
+            return
+            
+        try:
+            if room:
+                asyncio.run_coroutine_threadsafe(self.sio.emit(event, data, room=room), self.loop)
+            else:
+                asyncio.run_coroutine_threadsafe(self.sio.emit(event, data), self.loop)
+        except Exception as e:
+            logger.error(f"Error in _safe_emit ({event}): {e}")
 
     def start_router_monitoring(self, router_id: int):
         """Starts a dedicated thread for monitoring a specific router"""
@@ -117,324 +136,194 @@ class MonitoringManager:
     def _monitor_loop(self, router_id: int, stop_event: threading.Event):
         """Main loop for monitoring a router"""
         from src.infrastructure.database.models import Router
-        from src.infrastructure.database.db_manager import get_db, get_app
+        from src.infrastructure.database.db_manager import get_db
         
-        app = get_app()
-        if not app:
-            logger.error(f"MonitoringManager: App not initialized for router {router_id}")
-            return
+        db = get_db()
+        adapter = None
+        
+        try:
+            # 1. Get router details from DB
+            session = db.session
+            router = session.query(Router).get(router_id)
+            if not router:
+                logger.error(f"Router {router_id} not found in database")
+                return
 
-        with app.app_context():
-            adapter = None
-            db = get_db()
+            # 2. Establish persistent connection
+            adapter = MikroTikAdapter()
             
-            try:
-                # 1. Get router details from DB
-                session = db.session
-                router = session.query(Router).get(router_id)
-                if not router:
-                    logger.error(f"Router {router_id} not found in database")
+            # Reintentar conexión inicial si falla (Resiliencia ante routers offline)
+            while not stop_event.is_set():
+                connected = adapter.connect(
+                    host=router.host_address,
+                    username=router.api_username,
+                    password=router.api_password,
+                    port=router.api_port,
+                    timeout=5
+                )
+                
+                if connected:
+                    break
+                
+                # Reportar estado offline pero seguir intentando
+                logger.warning(f"Router {router_id} ({router.alias}) offline. Reintentando en 30s...")
+                self._safe_emit('router_status', {
+                    'router_id': router_id,
+                    'status': 'offline',
+                    'error': 'No se pudo establecer conexión inicial'
+                }, room=f"router_{router_id}")
+                
+                # Esperar 30 segundos antes de reintentar (permitiendo interrupción)
+                if stop_event.wait(30):
                     return
 
-                # SIMULAR CONTEXTO DE TENANT EN EL HILO DE MONITOREO
-                from flask import g
-                g.tenant_id = router.tenant_id
-                g.tenant_name = f"Router_{router.alias}"
-
-                # 2. Establish persistent connection
-                adapter = MikroTikAdapter()
+            self.router_sessions[router_id] = adapter
+            
+            # 3. Fast monitoring loop
+            last_metrics_check = 0
+            while not stop_event.is_set():
+                now = time.time()
                 
-                # Reintentar conexión inicial si falla (Resiliencia ante routers offline)
-                while not stop_event.is_set():
-                    connected = adapter.connect(
-                        host=router.host_address,
-                        username=router.api_username,
-                        password=router.api_password,
-                        port=router.api_port,
-                        timeout=5
-                    )
-                    
-                    if connected:
-                        break
-                    
-                    # Reportar estado offline pero seguir intentando
-                    logger.warning(f"Router {router_id} ({router.alias}) offline. Reintentando en 30s...")
-                    if self.socketio:
-                        self.socketio.emit('router_status', {
-                            'router_id': router_id,
-                            'status': 'offline',
-                            'error': 'No se pudo establecer conexión inicial'
-                        }, room=f"router_{router_id}")
-                    
-                    # Esperar 30 segundos antes de reintentar (permitiendo interrupción)
-                    if stop_event.wait(30):
-                        return
+                try:
+                    # Sync Service, Interfaces, Queues, Traffic, etc.
+                    if adapter._is_connected:
+                        try:
+                            # Sincronizar operaciones pendientes cada 15 segundos
+                            if now - getattr(self, f'last_pending_sync_{router_id}', 0) > 15.0:
+                                setattr(self, f'last_pending_sync_{router_id}', now)
+                                
+                                def run_sync():
+                                    with self._sync_lock:
+                                        if router_id in self._active_syncs:
+                                            return
+                                        self._active_syncs.add(router_id)
 
-                self.router_sessions[router_id] = adapter
-                
-                # 3. Fast monitoring loop
-                last_metrics_check = 0
-                while not stop_event.is_set():
-                    now = time.time()
-                    
-                    try:
-                        # ---------------------------------------------------------
-                        # SYNC SERVICE: Procesar Operaciones Pendientes (suspend/activate)
-                        # ---------------------------------------------------------
-                        if adapter._is_connected:
-                            try:
-                                # Sincronizar operaciones pendientes cada 15 segundos
-                                if now - getattr(self, f'last_pending_sync_{router_id}', 0) > 15.0:
-                                    setattr(self, f'last_pending_sync_{router_id}', now)
-                                    
-                                    def run_sync():
-                                        # Evitar ejecuciones duplicadas
+                                    try:
+                                        from src.infrastructure.database.db_manager import get_db
+                                        db_local = get_db()
+                                        from src.application.services.sync_service import SyncService
+                                        sync_service = SyncService(db_local)
+                                        router_info = router.to_dict()
+                                        result = sync_service.sync_router_operations(router_id, router_info)
+                                        
+                                        if result['completed'] > 0:
+                                            logger.info(f"🔄 Sincronizadas {result['completed']} operaciones para router {router_id}")
+                                            self._safe_emit('sync_completed', {
+                                                'router_id': router_id,
+                                                'router_name': router.alias,
+                                                'completed': result['completed'],
+                                                'timestamp': datetime.now().isoformat()
+                                            })
+                                    finally:
                                         with self._sync_lock:
                                             if router_id in self._active_syncs:
-                                                return
-                                            self._active_syncs.add(router_id)
+                                                self._active_syncs.remove(router_id)
 
-                                        try:
-                                            from src.infrastructure.database.db_manager import get_app
-                                            app = get_app()
-                                            if not app: return
+                                threading.Thread(target=run_sync, daemon=True).start()
+                        except Exception as e:
+                            logger.error(f"Error iniciando Sync Service: {e}")
 
-                                            with app.app_context():
-                                                try:
-                                                    from src.application.services.sync_service import SyncService
-                                                    from flask import g
-                                                    # HEREDAR CONTEXTO DEL HILO PADRE (O DEL ROUTER)
-                                                    g.tenant_id = router.tenant_id
-                                                    
-                                                    # ⚠️ NO compartir adaptador: RouterOS API no es thread-safe.
-                                                    # SyncService creará su propia conexión temporal.
-                                                    sync_service = SyncService(get_db())
-                                                    router_info = router.to_dict()
-                                                    # Asegurar que el dict tenga los campos necesarios para conectar
-                                                    router_info['ip_address'] = router_info.get('ip_address') or router_info.get('host_address') or router.host_address
-                                                    router_info['username'] = router_info.get('username') or router_info.get('api_username') or router.api_username
-                                                    router_info['password'] = router_info.get('password') or router_info.get('api_password') or router.api_password
-                                                    router_info['api_port'] = router_info.get('api_port') or router.api_port
-                                                    result = sync_service.sync_router_operations(router_id, router_info)
-                                                    
-                                                    if result['completed'] > 0:
-                                                        logger.info(f"🔄 Sincronizadas {result['completed']} operaciones para router {router_id}")
-                                                        if self.socketio:
-                                                            self.socketio.emit('sync_completed', {
-                                                                'router_id': router_id,
-                                                                'router_name': router.alias,
-                                                                'completed': result['completed'],
-                                                                'timestamp': datetime.now().isoformat()
-                                                            })
-                                                except Exception as e:
-                                                    logger.error(f"Error en hilo de sincronización: {e}")
-                                        finally:
-                                            with self._sync_lock:
-                                                if router_id in self._active_syncs:
-                                                    self._active_syncs.remove(router_id)
+                    # Pre-fetch surgical data
+                    try:
+                        all_ifaces = adapter._get_resource('/interface').call('print', {".proplist": "name,rx-byte,tx-byte,disabled,last-link-up-time"})
+                        all_queues = adapter._get_resource('/queue/simple').call('print', {".proplist": "name,target,rate,max-limit,burst-limit,disabled"})
+                    except Exception as mt_err:
+                        logger.warning(f"Error surgical pre-fetch: {mt_err}")
+                        all_ifaces, all_queues = [], []
 
-                                    threading.Thread(target=run_sync, daemon=True).start()
-                            except Exception as e:
-                                logger.error(f"Error iniciando Sync Service: {e}")
-                        # ---------------------------------------------------------
-
-                        # Pre-fetch surgical data for this cycle
-                        try:
-                            # 1. Interfaces (Para status y monitor-traffic)
-                            all_ifaces = adapter._get_resource('/interface').call('print', {".proplist": "name,rx-byte,tx-byte,disabled,last-link-up-time"})
-                            # 2. Queues (Para tráfico fallback y limites)
-                            all_queues = adapter._get_resource('/queue/simple').call('print', {".proplist": "name,target,rate,max-limit,burst-limit,disabled"})
-                        except Exception as mt_err:
-                            logger.warning(f"Error surgical pre-fetch: {mt_err}")
-                            all_ifaces, all_queues = [], []
-
-                        # Traer Tráfico de Interfaces (Usando Bulk para mayor velocidad)
-                        current_interfaces = list(self.monitored_interfaces.get(router_id, []))
+                    # Traffic Interfaces (Graphed in Modal)
+                    current_interfaces = list(self.monitored_interfaces.get(router_id, []))
+                    if current_interfaces:
                         traffic_data = {}
-                        if current_interfaces:
-                            traffic_data = adapter.get_bulk_traffic(current_interfaces, all_ifaces=all_ifaces, all_queues=all_queues)
-                            
-                            if traffic_data and self.socketio:
-                                self.socketio.emit('interface_traffic', {
-                                    'router_id': router_id,
-                                    'traffic': traffic_data,
-                                    'timestamp': now
-                                }, room=f"router_{router_id}")
-
-                        # ---------------------------------------------------------
-                        # BACKGROUND DB SYNC: Full status refresh for ALL active clients (Every 60s)
-                        # ---------------------------------------------------------
-                        if now - self.last_db_sync.get(router_id, 0) > 60:
-                            self.last_db_sync[router_id] = now
-                            try:
-                                from src.infrastructure.database.models import Client
-                                session = get_db().session_factory()
-                                try:
-                                    all_active = session.query(Client.id).filter(
-                                        Client.router_id == router_id, 
-                                        Client.status == 'active'
-                                    ).all()
-                                    all_ids = [c.id for c in all_active]
-                                finally:
-                                    session.close()
-                                
-                                if all_ids:
-                                    # Perform full background snapshot and sync to DB
-                                    full_snapshot = self.traffic_engine.get_snapshot(
-                                        adapter, 
-                                        all_ids, 
-                                        get_db().session_factory,
-                                        raw_ifaces=all_ifaces,
-                                        raw_queues=all_queues
-                                    )
-                                    # Get last-seen metadata for better offline precision
-                                    offline_meta = adapter.get_all_last_seen()
-                                    self.update_clients_online_status(router_id, full_snapshot, offline_metadata=offline_meta)
-                                    # logger.info(f"💾 Background sync: Updated status for {len(all_ids)} clients on router {router_id}")
-                            except Exception as sync_e:
-                                logger.error(f"Error in background sync for router {router_id}: {sync_e}")
-
-                        # CLIENT STATUS & TRAFFIC (Cada ciclo para máxima fluidez)
-                        router_monitored_clients = list(self.monitored_clients.get(router_id, []))
-                        client_traffic = {} # Inicializar para evitar UnboundLocalError
-                        if router_monitored_clients:
-                            # Periocidad de Sincronización de Nombres Técnicos (Cada 5 min)
-                            # Ejecutar síncronamente dentro del loop para evitar colisiones de socket
-                            if now - self.last_name_sync.get(router_id, 0) > 300:
-                                self.last_name_sync[router_id] = now
-                                self._sync_technical_names(router_id, adapter)
-
-                            # USAR NUEVO MOTOR QUIRÚRGICO MODULAR (Encapsulado y Blindado)
-                            # get_snapshot maneja internamente interfaces, colas y status
-                            try:
-                                client_traffic = self.traffic_engine.get_snapshot(
-                                    adapter, 
-                                    router_monitored_clients, 
-                                    get_db().session_factory,
-                                    raw_ifaces=all_ifaces,
-                                    raw_queues=all_queues
-                                )
-
-                                # PROTECCIÓN ANTI-VACIADO: Solo actualizar si obtuvimos datos válidos
-                                if client_traffic:
-                                    # SYNC TO DB: Ensure statuses are persisted for currently viewed clients
-                                    self.update_clients_online_status(router_id, client_traffic)
-                                else:
-                                    logger.warning(f"⚠️ Snapshot vacío para router {router_id} ({router.alias}). Saltando actualización de DB para evitar falsos negativos.")
-                            except Exception as e:
-                                logger.error(f"❌ Error crítico en recolección de tráfico router {router_id}: {e}")
-                                # No llamamos a update_clients_online_status si falló el snapshot
-                                raise e
-                            
-                            # APLICAR DELTA ENCODING
-                            if client_traffic and self.socketio:
-                                router_last = self.last_emitted_data.get(router_id, {})
-                                delta_data = {}
-                                
-                                for cid, cdata in client_traffic.items():
-                                    last_cdata = router_last.get(cid)
-                                    # Solo enviar si algo importante cambió (status o gran variación de tráfico)
-                                    # O si es la primera vez que se envía
-                                    if not last_cdata:
-                                        delta_data[cid] = cdata
-                                    else:
-                                        status_changed = cdata['status'] != last_cdata['status']
-                                        # Variación > 10% o > 50kbps
-                                        up_diff = abs(cdata['upload'] - last_cdata['upload'])
-                                        dw_diff = abs(cdata['download'] - last_cdata['download'])
-                                        traffic_changed = up_diff > 50000 or dw_diff > 50000 or \
-                                                         up_diff > (last_cdata['upload'] * 0.1) or \
-                                                         dw_diff > (last_cdata['download'] * 0.1)
-                                        
-                                        if status_changed or traffic_changed:
-                                            delta_data[cid] = cdata
-                                
-                                if delta_data:
-                                    # Actualizar cache de último estado
-                                    router_last.update(delta_data)
-                                    self.last_emitted_data[router_id] = router_last
-                                    # Emitir SOLO el delta
-                                    self.socketio.emit('client_traffic', delta_data, room=f"router_{router_id}")
-
-                        dashboard_ifaces = self.dashboard_interfaces.get(router_id, [])
-                        if dashboard_ifaces:
-                            total_tx = 0
-                            total_rx = 0
-                            for iface in dashboard_ifaces:
-                                if iface in client_traffic:
-                                    total_tx += client_traffic[iface].get('tx', 0)
-                                    total_rx += client_traffic[iface].get('rx', 0)
-                                else:
-                                    res = adapter.get_interface_traffic(iface)
-                                    total_tx += res.get('tx', 0)
-                                    total_rx += res.get('rx', 0)
-                                        
-                            if self.socketio:
-                                self.socketio.emit('dashboard_traffic_update', {
-                                    'router_id': router_id,
-                                    'tx': total_tx,
-                                    'rx': total_rx,
-                                    'timestamp': now
-                                })
-
-                        # Check system resources (CPU/RAM) cada 5 segundos (Optimizado)
-                        if now - last_metrics_check >= 5.0:
-                            last_metrics_check = now
-                            system_info = adapter.get_system_info()
-                            if self.socketio:
-                                self.socketio.emit('router_metrics', {
-                                    'router_id': router_id,
-                                    'cpu': system_info.get('cpu_load', '0'),
-                                    'memory': system_info.get('memory_usage', 0),
-                                    'uptime': system_info.get('uptime', ''),
-                                    'timestamp': now
-                                }, room=f"router_{router_id}")
-                            
-                            # Monitor Watchdog Log
-                            logger.info(f"💓 Monitor {router_id} ({router.alias}) loop alive. Clients: {len(router_monitored_clients)}, Ifaces: {len(current_interfaces)}")
-
-                    except Exception as e:
-                        # [WinError 10038] indicates a corrupted socket (usually thread-safety violation or OS drop)
-                        # We must force reconnection in next cycle
-                        err_msg = str(e)
-                        is_socket_error = any(x in err_msg for x in ["10038", "10054", "10060", "ConnectionReset", "Broken pipe"])
+                        for iface_name in current_interfaces:
+                            # 1. Intentar obtener de colas (por si es un alias o cliente)
+                            temp_q = adapter.get_bulk_traffic([iface_name], all_queues=all_queues)
+                            if temp_q and iface_name in temp_q and (temp_q[iface_name]['tx'] > 0 or temp_q[iface_name]['rx'] > 0):
+                                traffic_data[iface_name] = temp_q[iface_name]
+                            else:
+                                # 2. Intentar obtener directamente de la interfaz (monitor-traffic)
+                                traffic_data[iface_name] = adapter.get_interface_traffic(iface_name)
                         
-                        if is_socket_error:
-                            logger.error(f"🚨 Socket corrompido en monitoreo {router_id} ({router.alias}): {e}. Forzando reconexión inmediata...")
-                            try:
-                                from src.application.services.reciclador_service import RecicladorService
-                                RecicladorService.capture(e, category='monitoring', severity='warning', context={'router_id': router_id, 'alias': router.alias})
-                            except: pass
-                            adapter._is_connected = False
-                            # Forzar cierre del socket viejo si es posible
-                            try:
-                                adapter.disconnect()
-                            except: pass
-                        else:
-                            logger.error(f"Error en loop de monitoreo para router {router_id}: {e}")
-                            try:
-                                from src.application.services.reciclador_service import RecicladorService
-                                RecicladorService.capture(e, category='monitoring', severity='error', context={'router_id': router_id, 'alias': router.alias})
-                            except: pass
+                        if traffic_data:
+                            self._safe_emit('interface_traffic', {
+                                'router_id': router_id,
+                                'traffic': traffic_data,
+                                'timestamp': now
+                            }, room=f"router_{router_id}")
 
-                        if not adapter._is_connected:
-                            logger.warning(f"Intentando reconectar con router {router_id} ({router.alias})...")
-                            connected = adapter.connect(router.host_address, router.api_username, router.api_password, router.api_port, timeout=5)
-                            if not connected:
-                                # Si falla, esperar un poco antes de la siguiente iteración del loop principal
-                                time.sleep(5)
-                    
-                    time.sleep(1.5) # Intervalo optimizado para reducir carga en MikroTik y CPU
+                    # Background DB Sync (60s)
+                    if now - self.last_db_sync.get(router_id, 0) > 60:
+                        self.last_db_sync[router_id] = now
+                        try:
+                            from src.infrastructure.database.models import Client
+                            session_sync = get_db().session_factory()
+                            try:
+                                all_active = session_sync.query(Client.id).filter(Client.router_id == router_id, Client.status == 'active').all()
+                                all_ids = [c.id for c in all_active]
+                            finally:
+                                session_sync.close()
+                            
+                            if all_ids:
+                                full_snapshot = self.traffic_engine.get_snapshot(adapter, all_ids, get_db().session_factory, raw_ifaces=all_ifaces, raw_queues=all_queues)
+                                offline_meta = adapter.get_all_last_seen()
+                                self.update_clients_online_status(router_id, full_snapshot, offline_metadata=offline_meta)
+                        except Exception as sync_e:
+                            logger.error(f"Error in background sync: {sync_e}")
 
+                    # Client Monitoring
+                    router_monitored_clients = list(self.monitored_clients.get(router_id, []))
+                    if router_monitored_clients:
+                        if now - self.last_name_sync.get(router_id, 0) > 300:
+                            self.last_name_sync[router_id] = now
+                            self._sync_technical_names(router_id, adapter)
 
-            except Exception as e:
-                logger.critical(f"Critical error in monitor thread for router {router_id}: {e}")
-            finally:
-                if adapter:
-                    adapter.disconnect()
-                if router_id in self.router_sessions:
-                    del self.router_sessions[router_id]
-                logger.info(f"Monitor thread for router {router_id} finished")
+                        client_traffic = self.traffic_engine.get_snapshot(adapter, router_monitored_clients, get_db().session_factory, raw_ifaces=all_ifaces, raw_queues=all_queues)
+                        if client_traffic:
+                            self.update_clients_online_status(router_id, client_traffic)
+                            
+                            router_last = self.last_emitted_data.get(router_id, {})
+                            delta_data = {}
+                            for cid, cdata in client_traffic.items():
+                                last_cdata = router_last.get(cid)
+                                if not last_cdata or cdata['status'] != last_cdata['status'] or \
+                                   abs(cdata['upload'] - last_cdata['upload']) > 50000 or \
+                                   abs(cdata['download'] - last_cdata['download']) > 50000:
+                                    delta_data[cid] = cdata
+                            
+                            if delta_data:
+                                router_last.update(delta_data)
+                                self.last_emitted_data[router_id] = router_last
+                                self._safe_emit('client_traffic', delta_data, room=f"router_{router_id}")
+
+                    # Dashboard Interfaces
+                    dashboard_ifaces = self.dashboard_interfaces.get(router_id, [])
+                    if dashboard_ifaces:
+                        total_tx, total_rx = 0, 0
+                        for iface in dashboard_ifaces:
+                            res = adapter.get_interface_traffic(iface)
+                            total_tx += res.get('tx', 0)
+                            total_rx += res.get('rx', 0)
+                        self._safe_emit('dashboard_traffic_update', {'router_id': router_id, 'tx': total_tx, 'rx': total_rx, 'timestamp': now})
+
+                    # Router Metrics (5s)
+                    if now - last_metrics_check >= 5.0:
+                        last_metrics_check = now
+                        system_info = adapter.get_system_info()
+                        self._safe_emit('router_metrics', {'router_id': router_id, 'cpu': system_info.get('cpu_load', '0'), 'memory': system_info.get('memory_usage', 0), 'uptime': system_info.get('uptime', ''), 'timestamp': now}, room=f"router_{router_id}")
+
+                except Exception as loop_e:
+                    logger.error(f"Error in fast loop for router {router_id}: {loop_e}")
+                    if not adapter._is_connected:
+                        break # Force re-connect
+
+                time.sleep(1.5)
+
+        except Exception as e:
+            logger.critical(f"Critical error in monitor thread for router {router_id}: {e}")
+        finally:
+            if adapter: adapter.disconnect()
+            if router_id in self.router_sessions: del self.router_sessions[router_id]
+            logger.info(f"Monitor thread for router {router_id} finished")
 
     def add_monitored_interface(self, router_id: int, interface_name: str):
         if router_id not in self.monitored_interfaces:
@@ -587,52 +476,33 @@ class MonitoringManager:
         """
         logger.info(f"⚙️ Iniciando sincronización de nombres técnicos para router {router_id}...")
         try:
-            from src.infrastructure.database.db_manager import get_app, get_db
-            app = get_app()
-            if not app: return
-
-            # 1. Obtener todos los objetos del MikroTik (Surgical)
-            all_ifaces = adapter._get_resource('/interface').call('print', {".proplist": "name"})
-            all_queues = adapter._get_resource('/queue/simple').call('print', {".proplist": "name,target"})
-
-            iface_map = {i.get('name').lower(): i.get('name') for i in all_ifaces if i.get('name')}
+            from src.infrastructure.database.db_manager import get_db
+            db_manager = get_db()
+            db = db_manager.session
+            from src.infrastructure.database.models import Client
+            clients = db.query(Client).filter(Client.router_id == router_id).all()
             
-            queue_by_name = {q.get('name').lower(): q.get('name') for q in all_queues if q.get('name')}
-            queue_by_ip = {}
-            for q in all_queues:
-                target = q.get('target', '')
-                if target:
-                    q_ip = target.split('/')[0].strip()
-                    if q_ip: queue_by_ip[q_ip] = q.get('name')
-
-            # 2. Actualizar DB
-            with app.app_context():
-                db_manager = get_db()
-                db = db_manager.session
-                from src.infrastructure.database.models import Client
-                clients = db.query(Client).filter(Client.router_id == router_id).all()
+            updates = 0
+            for client in clients:
+                user_l = client.username.lower()
+                legal_norm = normalize_name(client.legal_name)
+                c_ip = client.ip_address.strip() if client.ip_address else None
+                    
+                # A. Resolver Interfaz
+                iface_patterns = [user_l, f"<{user_l}>", f"pppoe-{user_l}", f"<pppoe-{user_l}>"]
+                resolved_iface = next((iface_map[p] for p in iface_patterns if p in iface_map), None)
                 
-                updates = 0
-                for client in clients:
-                    user_l = client.username.lower()
-                    legal_norm = normalize_name(client.legal_name)
-                    c_ip = client.ip_address.strip() if client.ip_address else None
-                    
-                    # A. Resolver Interfaz
-                    iface_patterns = [user_l, f"<{user_l}>", f"pppoe-{user_l}", f"<pppoe-{user_l}>"]
-                    resolved_iface = next((iface_map[p] for p in iface_patterns if p in iface_map), None)
-                    
-                    # B. Resolver Cola
-                    queue_patterns = [user_l, f"<{user_l}>", legal_norm, f"<{legal_norm}>", user_l.replace('-', '_')]
-                    resolved_queue = next((queue_by_name[p] for p in queue_patterns if p in queue_by_name), None)
-                    if not resolved_queue and c_ip in queue_by_ip:
-                        resolved_queue = queue_by_ip[c_ip]
-                    
-                    # Guardar si cambió
-                    if client.mikrotik_queue_name != resolved_queue or client.mikrotik_interface_name != resolved_iface:
-                        client.mikrotik_queue_name = resolved_queue
-                        client.mikrotik_interface_name = resolved_iface
-                        updates += 1
+                # B. Resolver Cola
+                queue_patterns = [user_l, f"<{user_l}>", legal_norm, f"<{legal_norm}>", user_l.replace('-', '_')]
+                resolved_queue = next((queue_by_name[p] for p in queue_patterns if p in queue_by_name), None)
+                if not resolved_queue and c_ip in queue_by_ip:
+                    resolved_queue = queue_by_ip[c_ip]
+                
+                # Guardar si cambió
+                if client.mikrotik_queue_name != resolved_queue or client.mikrotik_interface_name != resolved_iface:
+                    client.mikrotik_queue_name = resolved_queue
+                    client.mikrotik_interface_name = resolved_iface
+                    updates += 1
                 
                 if updates > 0:
                     db.commit()

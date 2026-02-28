@@ -101,6 +101,25 @@ class SystemCapability(CapabilityBase):
             logger.error(f"Error ejecutando ping masivo: {e}")
             return {}
 
+    def get_interface_traffic(self, interface_name: str) -> Dict[str, int]:
+        """Obtiene tráfico en tiempo real (bps) para una interfaz específica."""
+        try:
+            # Usar monitor-traffic para obtener bits por segundo directos
+            res = self._api.get_resource('/interface').call('monitor-traffic', {
+                'interface': interface_name,
+                'once': ''
+            })
+            if res:
+                data = res[0]
+                # MikroTik: FastPath traffic (fp-) doesn't show in standard counters
+                rx = int(data.get('rx-bits-per-second', 0)) + int(data.get('fp-rx-bits-per-second', 0))
+                tx = int(data.get('tx-bits-per-second', 0)) + int(data.get('fp-tx-bits-per-second', 0))
+                return {'tx': tx, 'rx': rx}
+            return {'tx': 0, 'rx': 0}
+        except Exception as e:
+            logger.error(f"Error monitoreando tráfico de interfaz {interface_name}: {e}")
+            return {'tx': 0, 'rx': 0}
+
     def get_all_last_seen(self) -> Dict[str, str]:
         """
         Obtiene 'Last Seen' combinando DHCP y PPPoE.
